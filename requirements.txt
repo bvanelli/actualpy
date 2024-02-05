@@ -1,0 +1,4 @@
+requests>=2
+sqlmodel==0.0.14
+pydantic>=2
+sqlalchemy>=1.4
