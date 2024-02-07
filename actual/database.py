@@ -65,6 +65,8 @@ class Categories(SQLModel, table=True):
     tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
     goal_def: Optional[str] = Field(default=None, sa_column=Column("goal_def", Text, server_default=text("null")))
 
+    transactions: List["Transactions"] = Relationship(back_populates="category_")
+
 
 class CategoryGroups(SQLModel, table=True):
     __tablename__ = "category_groups"

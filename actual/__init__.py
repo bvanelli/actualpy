@@ -93,7 +93,7 @@ class Actual:
         self._token = token
         return self._token
 
-    def headers(self, file_id: str = None):
+    def headers(self, file_id: str = None) -> dict:
         if not self._token:
             self.login()
         headers = {"X-ACTUAL-TOKEN": self._token}
@@ -115,10 +115,10 @@ class Actual:
         else:
             user_files = self.user_files()
             for file in user_files:
-                if file.file_id == file_id or file.name == file_id:
+                if (file.file_id == file_id or file.name == file_id) and file.deleted == 0:
                     self._file_id = file.file_id
                     return file
-            raise UnknownFileId(f"Could not find a file id ofr identifier '{file_id}'")
+            raise UnknownFileId(f"Could not find a file id or identifier '{file_id}'")
 
     def download_budget(self):
         db = requests.get(f"{self.api_url}/{Endpoints.DOWNLOAD_USER_FILE}", headers=self.headers())
@@ -159,7 +159,7 @@ class Actual:
             query = s.query(Categories)
             return query.all()
 
-    def get_accounts(self):
+    def get_accounts(self) -> List[Accounts]:
         with self._session_maker() as s:
             query = s.query(Accounts)
             return query.all()
