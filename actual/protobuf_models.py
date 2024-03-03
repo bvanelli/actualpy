@@ -1,3 +1,6 @@
+import datetime
+import uuid
+
 import proto
 
 """
@@ -37,7 +40,40 @@ class SyncRequest(proto.Message):
     keyId = proto.Field(proto.STRING, number=5)
     since = proto.Field(proto.STRING, number=6)
 
+    def set_timestamp(self, client_id: str = None, now: datetime.datetime = None) -> str:
+        """Actual uses Hybrid Unique Logical Clock (HULC) timestamp generator.
+
+        Timestamps serialize into a 46-character collatable string
+         *    example: 2015-04-24T22:23:42.123Z-1000-0123456789ABCDEF
+         *    example: 2015-04-24T22:23:42.123Z-1000-A219E7A71CC18912
+
+        See https://github.com/actualbudget/actual/blob/a9362cc6f9b974140a760ad05816cac51c849769/packages/crdt/src/crdt/timestamp.ts
+        for reference.
+        """
+        if not now:
+            now = datetime.datetime.utcnow()
+        if not client_id:
+            client_id = self.client_id()
+        self.since = f"{now.isoformat(timespec='milliseconds')}Z-0000-{client_id}"
+        return self.since
+
+    def set_null_timestamp(self) -> str:
+        return self.set_timestamp(None, datetime.datetime(1970, 1, 1, 0, 0, 0, 0))
+
+    def client_id(self):
+        """Creates a client id for the HULC request. Copied implementation from:
+
+        https://github.com/actualbudget/actual/blob/a9362cc6f9b974140a760ad05816cac51c849769/packages/crdt/src/crdt/timestamp.ts#L80
+        """
+        return str(uuid.uuid4()).replace("-", "")[-16:]
+
 
 class SyncResponse(proto.Message):
     messages = proto.RepeatedField(MessageEnvelope, number=1)
     merkle = proto.Field(proto.STRING, number=2)
+
+    def get_messages(self) -> list[Message]:
+        messages = []
+        for message in self.messages:  # noqa
+            messages.append(Message.deserialize(message.content))
+        return messages

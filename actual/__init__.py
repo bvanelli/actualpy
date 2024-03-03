@@ -12,6 +12,7 @@ import sqlalchemy.orm
 
 from actual.database import Accounts, Categories, Transactions
 from actual.models import RemoteFile
+from actual.protobuf_models import SyncRequest, SyncResponse
 
 
 class Endpoints(enum.Enum):
@@ -73,7 +74,7 @@ class Actual:
         self.api_url = base_url
         self._token = token
         self._password = password
-        self._file_id = None
+        self._file: RemoteFile | None = None
         self._data_dir = data_dir
         self._session_maker = None
         if token is None and password is None:
@@ -97,8 +98,8 @@ class Actual:
         if not self._token:
             self.login()
         headers = {"X-ACTUAL-TOKEN": self._token}
-        if self._file_id:
-            headers["X-ACTUAL-FILE-ID"] = file_id or self._file_id
+        if self._file.file_id:
+            headers["X-ACTUAL-FILE-ID"] = file_id or self._file.file_id
         return headers
 
     def user_files(self) -> List[RemoteFile]:
@@ -110,14 +111,13 @@ class Actual:
     def set_file(self, file_id: Union[str, RemoteFile]) -> RemoteFile:
         """Sets the file id for the class for further requests."""
         if isinstance(file_id, RemoteFile):
-            self._file_id = file_id.file_id
+            self._file = file_id.file
             return file_id
         else:
             user_files = self.user_files()
             for file in user_files:
                 if (file.file_id == file_id or file.name == file_id) and file.deleted == 0:
-                    self._file_id = file.file_id
-                    return file
+                    return self.set_file(file)
             raise UnknownFileId(f"Could not find a file id or identifier '{file_id}'")
 
     def download_budget(self):
@@ -134,6 +134,22 @@ class Actual:
         zip_file.extractall(self._data_dir)
         engine = sqlalchemy.create_engine(f"sqlite:///{self._data_dir}/db.sqlite")
         self._session_maker = sqlalchemy.orm.sessionmaker(engine)
+        # after downloading the budget, some pending transactions still need to be retrieved using sync
+        request = SyncRequest({"messages": [], "fileId": self._file.file_id, "groupId": self._file.group_id})
+        request.set_null_timestamp()
+        changes_not_stored = self.sync(request)
+        for message in changes_not_stored.get_messages():
+            print(message)
+
+    def sync(self, request: SyncRequest) -> SyncResponse:
+        response = requests.post(
+            f"{self.api_url}/{Endpoints.SYNC}",
+            headers=self.headers() | {"Content-Type": "application/actual-sync"},
+            data=SyncRequest.serialize(request),
+        )
+        response.raise_for_status()
+        parsed_response = SyncResponse.deserialize(response.content)
+        return parsed_response  # noqa
 
     def get_transactions(self) -> List[Transactions]:
         with self._session_maker() as s:
