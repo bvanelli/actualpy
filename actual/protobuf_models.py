@@ -26,6 +26,15 @@ class Message(proto.Message):
     column = proto.Field(proto.STRING, number=3)
     value = proto.Field(proto.STRING, number=4)
 
+    def get_value(self) -> str | int:
+        datatype, _, value = self.value.partition(":")
+        if datatype == "S":
+            return value
+        elif datatype == "N":
+            return int(value)
+        else:
+            raise ValueError(f"Conversion not supported for datatype '{datatype}'")
+
 
 class MessageEnvelope(proto.Message):
     timestamp = proto.Field(proto.STRING, number=1)

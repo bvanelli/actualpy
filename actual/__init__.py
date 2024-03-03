@@ -9,10 +9,11 @@ import pydantic
 import requests
 import sqlalchemy
 import sqlalchemy.orm
+from sqlalchemy.orm import joinedload
 
-from actual.database import Accounts, Categories, Transactions
+from actual.database import Accounts, Categories, Transactions, get_class_by_table_name
 from actual.models import RemoteFile
-from actual.protobuf_models import SyncRequest, SyncResponse
+from actual.protobuf_models import Message, SyncRequest, SyncResponse
 
 
 class Endpoints(enum.Enum):
@@ -25,6 +26,7 @@ class Endpoints(enum.Enum):
     GET_USER_FILE_INFO = "sync/get-user-file-info"
     DOWNLOAD_USER_FILE = "sync/download-user-file"
     UPLOAD_USER_FILE = "sync/upload-user-file"
+    RESET_USER_FILE = "sync/reset-user-file"
     # data related
     DATA_FILE_INDEX = "data-file-index.txt"
     DEFAULT_DB = "data/default-db.sqlite"
@@ -94,24 +96,29 @@ class Actual:
         self._token = token
         return self._token
 
-    def headers(self, file_id: str = None) -> dict:
+    def headers(self, file_id: str = None, extra_headers: dict = None) -> dict:
+        """Generates headers by retrieving a token, if one is not provided, and auto-filling the file id."""
         if not self._token:
             self.login()
         headers = {"X-ACTUAL-TOKEN": self._token}
-        if self._file.file_id:
+        if self._file and self._file.file_id:
             headers["X-ACTUAL-FILE-ID"] = file_id or self._file.file_id
+        if extra_headers:
+            headers = headers | extra_headers
         return headers
 
     def user_files(self) -> List[RemoteFile]:
+        """Lists user files from remote. Requires authentication to return all results."""
         response = requests.get(f"{self.api_url}/{Endpoints.LIST_USER_FILES}", headers=self.headers())
         response.raise_for_status()
         files = response.json()
         return pydantic.parse_obj_as(List[RemoteFile], files["data"])
 
     def set_file(self, file_id: Union[str, RemoteFile]) -> RemoteFile:
-        """Sets the file id for the class for further requests."""
+        """Sets the file id for the class for further requests. The file_id argument can be either a name or remote
+        id from the file. If the name is provided, only the first match is taken."""
         if isinstance(file_id, RemoteFile):
-            self._file = file_id.file
+            self._file = file_id
             return file_id
         else:
             user_files = self.user_files()
@@ -119,6 +126,31 @@ class Actual:
                 if (file.file_id == file_id or file.name == file_id) and file.deleted == 0:
                     return self.set_file(file)
             raise UnknownFileId(f"Could not find a file id or identifier '{file_id}'")
+
+    def reset_file(self, file_id: Union[str, RemoteFile] = None) -> bool:
+        if not self._file:
+            if file_id is None:
+                raise UnknownFileId("Could not reset the file without a valid 'file_id'")
+            self.set_file(file_id)
+        request = requests.post(
+            f"{self.api_url}/{Endpoints.RESET_USER_FILE}", json={"fileId": self._file.file_id, "token": self._token}
+        )
+        request.raise_for_status()
+        return request.json()["status"] == "ok"
+
+    def apply_changes(self, messages: list[Message]):
+        if not self._session_maker:
+            raise UnknownFileId("No valid file available, download one with download_budget")
+        with self._session_maker() as s:
+            s: sqlalchemy.orm.Session
+            for message in messages:
+                table = get_class_by_table_name(message.dataset)
+                entry = s.query(table).get(message.row)
+                if not entry:
+                    entry = table(id=message.row)
+                setattr(entry, message.column, message.get_value())
+                s.add(entry)
+            s.commit()
 
     def download_budget(self):
         db = requests.get(f"{self.api_url}/{Endpoints.DOWNLOAD_USER_FILE}", headers=self.headers())
@@ -136,15 +168,14 @@ class Actual:
         self._session_maker = sqlalchemy.orm.sessionmaker(engine)
         # after downloading the budget, some pending transactions still need to be retrieved using sync
         request = SyncRequest({"messages": [], "fileId": self._file.file_id, "groupId": self._file.group_id})
-        request.set_null_timestamp()
-        changes_not_stored = self.sync(request)
-        for message in changes_not_stored.get_messages():
-            print(message)
+        request.set_null_timestamp()  # using 0 timestamp to retrieve all changes
+        changes = self.sync(request)
+        self.apply_changes(changes.get_messages())
 
     def sync(self, request: SyncRequest) -> SyncResponse:
         response = requests.post(
             f"{self.api_url}/{Endpoints.SYNC}",
-            headers=self.headers() | {"Content-Type": "application/actual-sync"},
+            headers=self.headers(extra_headers={"Content-Type": "application/actual-sync"}),
             data=SyncRequest.serialize(request),
         )
         response.raise_for_status()
@@ -155,6 +186,7 @@ class Actual:
         with self._session_maker() as s:
             query = (
                 s.query(Transactions)
+                .options(joinedload(Transactions.account), joinedload(Transactions.category_))
                 .filter(
                     Transactions.date.isnot(None),
                     Transactions.acct.isnot(None),

@@ -14,6 +14,16 @@ from sqlalchemy import (
 from sqlmodel import Field, Relationship, SQLModel
 
 
+def get_class_by_table_name(table_name: str) -> SQLModel | None:
+    """
+    Returns, based on the defined tables __tablename__ the corresponding SQLModel object. If not found, returns None.
+    """
+    for entry in SQLModel._sa_registry.mappers:
+        if entry.entity.__tablename__ == table_name:
+            return entry.entity
+    return None
+
+
 class Meta(SQLModel, table=True):
     __tablename__ = "__meta__"
 
