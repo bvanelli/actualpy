@@ -1,3 +1,6 @@
+import datetime
+import decimal
+import uuid
 from typing import List, Optional
 
 from sqlalchemy import (
@@ -10,7 +13,10 @@ from sqlalchemy import (
     LargeBinary,
     Text,
     text,
+    Transaction,
 )
+from actual.protobuf_models import Message
+
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -262,6 +268,41 @@ class Transactions(SQLModel, table=True):
 
     account: Optional["Accounts"] = Relationship(back_populates="transactions")
     category_: Optional["Categories"] = Relationship(back_populates="transactions")
+
+    @classmethod
+    def new(
+        cls,
+        account_id: str,
+        amount: decimal.Decimal,
+        date: datetime.date,
+        category: Optional[Categories] = None,
+        notes: Optional[str] = None,
+    ):
+        date_int = datetime.datetime.combine(date, datetime.datetime.min.time()).timestamp()
+        return cls(
+            id=str(uuid.uuid4()),
+            acct=account_id,
+            date=date_int,
+            amount=int(amount * 100),
+            category=category.id if category else None,
+            notes=notes,
+        )
+
+    def convert(self) -> List[Message]:
+        """Convert the object into distinct entries for sync method. Based on the original implementation:
+
+        https://github.com/actualbudget/actual/blob/98c17bd5e0f13e27a09a7f6ac176510530572be7/packages/loot-core/src/server/aql/schema-helpers.ts#L146
+        """
+        dataset = self.__tablename__
+        changes = []
+        row = str(self.id)  # also helps lazy loading the instance
+        for column, value in self.model_dump().items():
+            if value is None or column == "id":
+                continue
+            m = Message(dict(dataset=dataset, row=row, column=column))
+            m.set_value(value)
+            changes.append(m)
+        return changes
 
 
 class ZeroBudgetMonths(SQLModel, table=True):

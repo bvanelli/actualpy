@@ -202,6 +202,17 @@ class Actual:
             )
             return query.all()
 
+    def add_transaction(self, transactions: List[Transactions]):
+        with self._session_maker() as s:
+            s.add_all(transactions)
+            s.commit()
+            # do server synchronization
+            for t in transactions:
+                s = SyncRequest({"fileId": self._file.file_id, "groupId": self._file.group_id})
+                s.set_timestamp()
+                s.set_messages(t.convert())
+                self.sync(s)
+
     def get_categories(self) -> List[Categories]:
         with self._session_maker() as s:
             query = s.query(Categories)
