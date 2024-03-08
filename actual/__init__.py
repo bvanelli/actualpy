@@ -1,3 +1,4 @@
+from __future__ import annotations
 import enum
 import io
 import pathlib
@@ -11,7 +12,7 @@ import sqlalchemy
 import sqlalchemy.orm
 from sqlalchemy.orm import joinedload
 
-from actual.database import Accounts, Categories, Transactions, get_class_by_table_name
+from actual.database import Accounts, Categories, Transactions, get_class_by_table_name, Payees
 from actual.models import RemoteFile
 from actual.protobuf_models import Message, SyncRequest, SyncResponse
 
@@ -75,24 +76,25 @@ class Actual:
         """
         self.api_url = base_url
         self._token = token
-        self._password = password
         self._file: RemoteFile | None = None
-        self._data_dir = data_dir
+        self._data_dir = pathlib.Path(data_dir)
         self._session_maker = None
         if token is None and password is None:
             raise ValueError("Either provide a valid token or a password.")
+        # already try to login if password was provided
+        if password:
+            self.login(password)
 
-    def login(self) -> str:
+    def login(self, password: str) -> str:
         """Logs in on the Actual server using the password provided. Raises `AuthorizationError` if it fails to
         authenticate the user."""
-        if not self._password:
+        if not password:
             raise AuthorizationError("Trying to login but not password was provided.")
-        response = requests.post(f"{self.api_url}/{Endpoints.LOGIN}", json={"password": self._password})
+        response = requests.post(f"{self.api_url}/{Endpoints.LOGIN}", json={"password": password})
         response.raise_for_status()
         token = response.json()["data"]["token"]
         if token is None:
             raise AuthorizationError("Could not validate password on login.")
-        self._password = None  # erase password
         self._token = token
         return self._token
 
@@ -138,12 +140,36 @@ class Actual:
         request.raise_for_status()
         return request.json()["status"] == "ok"
 
+    def upload_file(self):
+        if not self._data_dir:
+            raise UnknownFileId("No current file loaded.")
+        binary_data = io.BytesIO()
+        z = zipfile.ZipFile(binary_data)
+        z.write(self._data_dir / "db.sqlite", "db.sqlite")
+        z.write(self._data_dir / "metadata.json", "metadata.json")
+        binary_data.seek(0)
+        request = requests.post(
+            f"{self.api_url}/{Endpoints.UPLOAD_USER_FILE}",
+            data=binary_data.read(),
+            headers=self.headers(
+                extra_headers={
+                    "X-ACTUAL-FORMAT": 2,
+                    "X-ACTUAL-NAME": self._file.name,
+                    "Content-Type": "application/encrypted-file",
+                }
+            ),
+        )
+        return request.json()
+
     def apply_changes(self, messages: list[Message]):
         if not self._session_maker:
             raise UnknownFileId("No valid file available, download one with download_budget")
         with self._session_maker() as s:
             s: sqlalchemy.orm.Session
             for message in messages:
+                if message.dataset == "prefs":
+                    # ignore because it's an internal preference from actual
+                    continue
                 table = get_class_by_table_name(message.dataset)
                 entry = s.query(table).get(message.row)
                 if not entry:
@@ -186,7 +212,11 @@ class Actual:
         with self._session_maker() as s:
             query = (
                 s.query(Transactions)
-                .options(joinedload(Transactions.account), joinedload(Transactions.category_))
+                .options(
+                    joinedload(Transactions.account),
+                    joinedload(Transactions.category_),
+                    joinedload(Transactions.payee),
+                )
                 .filter(
                     Transactions.date.isnot(None),
                     Transactions.acct.isnot(None),
@@ -221,4 +251,9 @@ class Actual:
     def get_accounts(self) -> List[Accounts]:
         with self._session_maker() as s:
             query = s.query(Accounts)
+            return query.all()
+
+    def get_payees(self) -> List[Payees]:
+        with self._session_maker() as s:
+            query = s.query(Payees)
             return query.all()

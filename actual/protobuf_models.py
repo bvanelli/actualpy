@@ -53,12 +53,14 @@ class Message(proto.Message):
     column = proto.Field(proto.STRING, number=3)
     value = proto.Field(proto.STRING, number=4)
 
-    def get_value(self) -> str | int:
+    def get_value(self) -> str | int | float | None:
         datatype, _, value = self.value.partition(":")
         if datatype == "S":
             return value
         elif datatype == "N":
             return int(value)
+        elif datatype == "0":
+            return None
         else:
             raise ValueError(f"Conversion not supported for datatype '{datatype}'")
 

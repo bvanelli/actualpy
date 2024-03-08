@@ -1,3 +1,4 @@
+from __future__ import annotations
 import datetime
 import decimal
 import uuid
@@ -13,7 +14,6 @@ from sqlalchemy import (
     LargeBinary,
     Text,
     text,
-    Transaction,
 )
 from actual.protobuf_models import Message
 
@@ -158,6 +158,8 @@ class Payees(SQLModel, table=True):
     tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
     transfer_acct: Optional[str] = Field(default=None, sa_column=Column("transfer_acct", Text))
 
+    transactions: List["Transactions"] = Relationship(back_populates="payee")
+
 
 class ReflectBudgets(SQLModel, table=True):
     __tablename__ = "reflect_budgets"
@@ -245,7 +247,7 @@ class Transactions(SQLModel, table=True):
     acct: Optional[str] = Field(default=None, sa_column=Column("acct", Text, ForeignKey("accounts.id")))
     category: Optional[str] = Field(default=None, sa_column=Column("category", Text, ForeignKey("categories.id")))
     amount: Optional[int] = Field(default=None, sa_column=Column("amount", Integer))
-    description: Optional[str] = Field(default=None, sa_column=Column("description", Text))
+    description: Optional[str] = Field(default=None, sa_column=Column("description", Text, ForeignKey("payees.id")))
     notes: Optional[str] = Field(default=None, sa_column=Column("notes", Text))
     date: Optional[int] = Field(default=None, sa_column=Column("date", Integer))
     financial_id: Optional[str] = Field(default=None, sa_column=Column("financial_id", Text))
@@ -268,6 +270,7 @@ class Transactions(SQLModel, table=True):
 
     account: Optional["Accounts"] = Relationship(back_populates="transactions")
     category_: Optional["Categories"] = Relationship(back_populates="transactions")
+    payee: Optional["Payees"] = Relationship(back_populates="transactions")
 
     @classmethod
     def new(
@@ -276,15 +279,17 @@ class Transactions(SQLModel, table=True):
         amount: decimal.Decimal,
         date: datetime.date,
         category: Optional[Categories] = None,
+        payee: Optional[Payees] = None,
         notes: Optional[str] = None,
     ):
-        date_int = datetime.datetime.combine(date, datetime.datetime.min.time()).timestamp()
+        date_int = int(datetime.date.strftime(date, "%Y%m%d"))
         return cls(
             id=str(uuid.uuid4()),
             acct=account_id,
             date=date_int,
             amount=int(amount * 100),
-            category=category.id if category else None,
+            category=category,
+            payee=payee,
             notes=notes,
         )
 
