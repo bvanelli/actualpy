@@ -1,10 +1,12 @@
 from __future__ import annotations
+
+import contextlib
 import enum
 import io
 import pathlib
 import tempfile
 import zipfile
-from typing import List, Union
+from typing import List, Union, TYPE_CHECKING
 
 import pydantic
 import requests
@@ -15,6 +17,10 @@ from sqlalchemy.orm import joinedload
 from actual.database import Accounts, Categories, Transactions, get_class_by_table_name, Payees
 from actual.models import RemoteFile
 from actual.protobuf_models import Message, SyncRequest, SyncResponse
+
+
+if TYPE_CHECKING:
+    from actual.database import BaseModel
 
 
 class Endpoints(enum.Enum):
@@ -59,6 +65,7 @@ class Actual:
         base_url: str = "http://localhost:5006",
         token: str = None,
         password: str = None,
+        file: str = None,
         data_dir: Union[str, pathlib.Path] = None,
     ):
         """
@@ -71,6 +78,7 @@ class Actual:
         :param base_url: url of the running Actual server
         :param token: the token for authentication, if this is available (optional)
         :param password: the password for authentication. It will be used on the .login() method to retrieve the token.
+        :param file: the name or id of the file to be set
         :param data_dir: where to store the downloaded files from the server. If not specified, a temporary folder will
             be created instead.
         """
@@ -79,11 +87,32 @@ class Actual:
         self._file: RemoteFile | None = None
         self._data_dir = pathlib.Path(data_dir)
         self._session_maker = None
+        self._session: sqlalchemy.orm.Session | None = None
         if token is None and password is None:
             raise ValueError("Either provide a valid token or a password.")
         # already try to login if password was provided
         if password:
             self.login(password)
+        # set the correct file
+        if file:
+            self.set_file(file)
+
+    def __enter__(self) -> Actual:
+        self.download_budget()
+        self._session = self._session_maker()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._session.close()
+
+    @contextlib.contextmanager
+    def with_session(self) -> sqlalchemy.orm.Session:
+        s = self._session if self._session else self._session_maker()
+        try:
+            yield s
+        finally:
+            if not self._session:
+                s.close()
 
     def login(self, password: str) -> str:
         """Logs in on the Actual server using the password provided. Raises `AuthorizationError` if it fails to
@@ -101,7 +130,7 @@ class Actual:
     def headers(self, file_id: str = None, extra_headers: dict = None) -> dict:
         """Generates headers by retrieving a token, if one is not provided, and auto-filling the file id."""
         if not self._token:
-            self.login()
+            raise AuthorizationError("Token not available for requests. Use the login() method or provide a token.")
         headers = {"X-ACTUAL-TOKEN": self._token}
         if self._file and self._file.file_id:
             headers["X-ACTUAL-FILE-ID"] = file_id or self._file.file_id
@@ -130,6 +159,8 @@ class Actual:
             raise UnknownFileId(f"Could not find a file id or identifier '{file_id}'")
 
     def reset_file(self, file_id: Union[str, RemoteFile] = None) -> bool:
+        """Resets the file. If the file_id is not provided, the current file set is reset. Usually used together with
+        the upload_file() method."""
         if not self._file:
             if file_id is None:
                 raise UnknownFileId("Could not reset the file without a valid 'file_id'")
@@ -141,6 +172,7 @@ class Actual:
         return request.json()["status"] == "ok"
 
     def upload_file(self):
+        """Uploads the current file to the Actual server."""
         if not self._data_dir:
             raise UnknownFileId("No current file loaded.")
         binary_data = io.BytesIO()
@@ -162,10 +194,10 @@ class Actual:
         return request.json()
 
     def apply_changes(self, messages: list[Message]):
+        """Applies a list of sync changes, based on what the sync method returned on the remote."""
         if not self._session_maker:
-            raise UnknownFileId("No valid file available, download one with download_budget")
-        with self._session_maker() as s:
-            s: sqlalchemy.orm.Session
+            raise UnknownFileId("No valid file available, download one with download_budget()")
+        with self.with_session() as s:
             for message in messages:
                 if message.dataset == "prefs":
                     # ignore because it's an internal preference from actual
@@ -179,6 +211,9 @@ class Actual:
             s.commit()
 
     def download_budget(self):
+        """Downloads the budget file from the remote. After the file is downloaded, the sync endpoint is queries
+        for the list of pending changes. The changes are individual row updates, that are then applied on by one to
+        the downloaded database state."""
         db = requests.get(f"{self.api_url}/{Endpoints.DOWNLOAD_USER_FILE}", headers=self.headers())
         db.raise_for_status()
         f = io.BytesIO(db.content)
@@ -199,6 +234,8 @@ class Actual:
         self.apply_changes(changes.get_messages())
 
     def sync(self, request: SyncRequest) -> SyncResponse:
+        """Calls the sync endpoint with a request and returns the response. Both the request and response are
+        protobuf models."""
         response = requests.post(
             f"{self.api_url}/{Endpoints.SYNC}",
             headers=self.headers(extra_headers={"Content-Type": "application/actual-sync"}),
@@ -232,28 +269,31 @@ class Actual:
             )
             return query.all()
 
-    def add_transaction(self, transactions: List[Transactions]):
-        with self._session_maker() as s:
-            s.add_all(transactions)
+    def add(self, model: BaseModel):
+        """Adds a new entry to the"""
+        with self.with_session() as s:
+            # add to database and see if all works well
+            s.add(model)
+            # generate a sync request and sync it to the server
+            req = SyncRequest({"fileId": self._file.file_id, "groupId": self._file.group_id})
+            req.set_timestamp()
+            req.set_messages(model.convert())
+            self.sync(req)
             s.commit()
-            # do server synchronization
-            for t in transactions:
-                s = SyncRequest({"fileId": self._file.file_id, "groupId": self._file.group_id})
-                s.set_timestamp()
-                s.set_messages(t.convert())
-                self.sync(s)
+            if not self._session:
+                s.close()
 
     def get_categories(self) -> List[Categories]:
-        with self._session_maker() as s:
+        with self.with_session() as s:
             query = s.query(Categories)
             return query.all()
 
     def get_accounts(self) -> List[Accounts]:
-        with self._session_maker() as s:
+        with self.with_session() as s:
             query = s.query(Accounts)
             return query.all()
 
     def get_payees(self) -> List[Payees]:
-        with self._session_maker() as s:
+        with self.with_session() as s:
             query = s.query(Payees)
             return query.all()

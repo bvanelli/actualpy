@@ -1,7 +1,6 @@
 from __future__ import annotations
 import datetime
 import uuid
-from typing import Union
 
 import proto
 
@@ -54,6 +53,10 @@ class Message(proto.Message):
     value = proto.Field(proto.STRING, number=4)
 
     def get_value(self) -> str | int | float | None:
+        """Serialization types from Actual. Source:
+
+        https://github.com/actualbudget/actual/blob/998efb9447da6f8ce97956cbe83d6e8a3c18cf53/packages/loot-core/src/server/sync/index.ts#L154-L160
+        """
         datatype, _, value = self.value.partition(":")
         if datatype == "S":
             return value
@@ -64,11 +67,13 @@ class Message(proto.Message):
         else:
             raise ValueError(f"Conversion not supported for datatype '{datatype}'")
 
-    def set_value(self, value: str | int) -> str:
+    def set_value(self, value: str | int | float | None) -> str:
         if isinstance(value, str):
             datatype = "S"
         elif isinstance(value, int):
             datatype = "N"
+        elif value is None:
+            datatype = "0"
         else:
             raise ValueError(f"Conversion not supported for datatype '{type(value)}'")
         self.value = f"{datatype}:{value}"

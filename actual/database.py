@@ -1,8 +1,7 @@
-from __future__ import annotations
 import datetime
 import decimal
 import uuid
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from sqlalchemy import (
     Boolean,
@@ -20,7 +19,7 @@ from actual.protobuf_models import Message
 from sqlmodel import Field, Relationship, SQLModel
 
 
-def get_class_by_table_name(table_name: str) -> SQLModel | None:
+def get_class_by_table_name(table_name: str) -> Union[SQLModel, None]:
     """
     Returns, based on the defined tables __tablename__ the corresponding SQLModel object. If not found, returns None.
     """
@@ -28,6 +27,26 @@ def get_class_by_table_name(table_name: str) -> SQLModel | None:
         if entry.entity.__tablename__ == table_name:
             return entry.entity
     return None
+
+
+class BaseModel(SQLModel):
+    def convert(self) -> List[Message]:
+        """Convert the object into distinct entries for sync method. Based on the original implementation:
+
+        https://github.com/actualbudget/actual/blob/98c17bd5e0f13e27a09a7f6ac176510530572be7/packages/loot-core/src/server/aql/schema-helpers.ts#L146
+        """
+        dataset = self.__tablename__
+        changes = []
+        row = getattr(self, "id", None)  # also helps lazy loading the instance
+        if row is None:
+            raise AttributeError(f"Cannot convert model {self.__name__} because it misses the 'id' attribute.")
+        for column, value in self.model_dump().items():
+            if value is None or column == "id":
+                continue
+            m = Message(dict(dataset=dataset, row=row, column=column))
+            m.set_value(value)
+            changes.append(m)
+        return changes
 
 
 class Meta(SQLModel, table=True):
@@ -232,7 +251,7 @@ class TransactionFilters(SQLModel, table=True):
     tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
 
 
-class Transactions(SQLModel, table=True):
+class Transactions(BaseModel, table=True):
     __table_args__ = (
         Index("trans_category", "category"),
         Index("trans_category_date", "category", "date"),
@@ -292,22 +311,6 @@ class Transactions(SQLModel, table=True):
             payee=payee,
             notes=notes,
         )
-
-    def convert(self) -> List[Message]:
-        """Convert the object into distinct entries for sync method. Based on the original implementation:
-
-        https://github.com/actualbudget/actual/blob/98c17bd5e0f13e27a09a7f6ac176510530572be7/packages/loot-core/src/server/aql/schema-helpers.ts#L146
-        """
-        dataset = self.__tablename__
-        changes = []
-        row = str(self.id)  # also helps lazy loading the instance
-        for column, value in self.model_dump().items():
-            if value is None or column == "id":
-                continue
-            m = Message(dict(dataset=dataset, row=row, column=column))
-            m.set_value(value)
-            changes.append(m)
-        return changes
 
 
 class ZeroBudgetMonths(SQLModel, table=True):
