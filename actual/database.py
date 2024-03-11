@@ -14,9 +14,9 @@ from sqlalchemy import (
     Text,
     text,
 )
-from actual.protobuf_models import Message
-
 from sqlmodel import Field, Relationship, SQLModel
+
+from actual.protobuf_models import Message
 
 
 def get_class_by_table_name(table_name: str) -> Union[SQLModel, None]:
