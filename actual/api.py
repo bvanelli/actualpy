@@ -6,8 +6,8 @@ from typing import List, Optional
 import requests
 from pydantic import BaseModel, Field
 
-from actual import SyncRequest, SyncResponse
 from actual.exceptions import AuthorizationError, UnknownFileId
+from actual.protobuf_models import SyncRequest, SyncResponse
 
 
 class Endpoints(enum.Enum):
@@ -18,6 +18,7 @@ class Endpoints(enum.Enum):
     SYNC = "sync/sync"
     LIST_USER_FILES = "sync/list-user-files"
     GET_USER_FILE_INFO = "sync/get-user-file-info"
+    UPDATE_USER_FILE_NAME = "sync/update-user-file-name"
     DOWNLOAD_USER_FILE = "sync/download-user-file"
     UPLOAD_USER_FILE = "sync/upload-user-file"
     RESET_USER_FILE = "sync/reset-user-file"
@@ -107,6 +108,14 @@ class InfoDTO(BaseModel):
     build: BuildDTO
 
 
+class IsBootstrapedDTO(BaseModel):
+    bootstrapped: bool
+
+
+class BootstrapInfoDTO(StatusDTO):
+    data: IsBootstrapedDTO
+
+
 class ActualServer:
     def __init__(
         self,
@@ -158,6 +167,24 @@ class ActualServer:
         response.raise_for_status()
         return ValidateDTO.parse_obj(response.json())
 
+    def needs_bootstrap(self) -> BootstrapInfoDTO:
+        """Checks if the Actual needs bootstrap, in other words, if it needs a master password for the server."""
+        response = requests.get(f"{self.api_url}/{Endpoints.NEEDS_BOOTSTRAP}")
+        response.raise_for_status()
+        return BootstrapInfoDTO.parse_obj(response.json())
+
+    def data_file_index(self) -> List[str]:
+        """Gets all the migration file references for the actual server."""
+        response = requests.get(f"{self.api_url}/{Endpoints.DATA_FILE_INDEX}")
+        response.raise_for_status()
+        return response.content.decode().splitlines()
+
+    def data_file(self, file_path: str) -> bytes:
+        """Gets the content of the individual migration file from server."""
+        response = requests.get(f"{self.api_url}/data/{file_path}")
+        response.raise_for_status()
+        return response.content
+
     def reset_user_file(self, file_id: str) -> StatusDTO:
         """Resets the file. If the file_id is not provided, the current file set is reset. Usually used together with
         the upload_user_file() method."""
@@ -177,14 +204,15 @@ class ActualServer:
         db.raise_for_status()
         return db.content
 
-    def upload_user_file(self, binary_data: bytes, file_name: str = "My Finances") -> UploadUserFileDTO:
+    def upload_user_file(self, binary_data: bytes, file_id: str, file_name: str = "My Finances") -> UploadUserFileDTO:
         """Uploads the binary data, which is a zip folder containing the `db.sqlite` and the `metadata.json`."""
         request = requests.post(
             f"{self.api_url}/{Endpoints.UPLOAD_USER_FILE}",
             data=binary_data,
             headers=self.headers(
                 extra_headers={
-                    "X-ACTUAL-FORMAT": 2,
+                    "X-ACTUAL-FORMAT": "2",
+                    "X-ACTUAL-FILE-ID": file_id,
                     "X-ACTUAL-NAME": file_name,
                     "Content-Type": "application/encrypted-file",
                 }
@@ -205,6 +233,16 @@ class ActualServer:
         response = requests.get(f"{self.api_url}/{Endpoints.GET_USER_FILE_INFO}", headers=self.headers(file_id))
         response.raise_for_status()
         return RemoteFileDTO.parse_obj(response.json())
+
+    def update_user_file_name(self, file_id: str, file_name: str) -> StatusDTO:
+        """Updates the file name for the budget on the remote server."""
+        response = requests.post(
+            f"{self.api_url}/{Endpoints.UPDATE_USER_FILE_NAME}",
+            json={"fileId": file_id, "name": file_name, "token": self._token},
+            headers=self.headers(),
+        )
+        response.raise_for_status()
+        return StatusDTO.parse_obj(response.json())
 
     def user_get_key(self, file_id: str) -> UserGetKeyDTO:
         """Gets the key information associated with a user file, including the algorithm, key, salt and iv."""

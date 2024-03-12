@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 import pathlib
+import re
+import sqlite3
 import tempfile
+import uuid
 import zipfile
 from typing import TYPE_CHECKING, List, Union
 
@@ -20,7 +24,6 @@ from actual.database import (
     get_class_by_table_name,
 )
 from actual.exceptions import InvalidZipFile, UnknownFileId
-from actual.models import RemoteFile
 from actual.protobuf_models import Message, SyncRequest
 
 if TYPE_CHECKING:
@@ -51,8 +54,8 @@ class Actual(ActualServer):
             be created instead.
         """
         super().__init__(base_url, token, password)
-        self._file: RemoteFile | None = None
-        self._data_dir = pathlib.Path(data_dir)
+        self._file: RemoteFileListDTO | None = None
+        self._data_dir = pathlib.Path(data_dir) if data_dir else None
         self._session_maker = None
         self._session: sqlalchemy.orm.Session | None = None
         # set the correct file
@@ -60,12 +63,14 @@ class Actual(ActualServer):
             self.set_file(file)
 
     def __enter__(self) -> Actual:
-        self.download_budget()
-        self._session = self._session_maker()
+        if self._file:
+            self.download_budget()
+            self._session = self._session_maker()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self._session.close()
+        if self._session:
+            self._session.close()
 
     @contextlib.contextmanager
     def with_session(self) -> sqlalchemy.orm.Session:
@@ -89,16 +94,55 @@ class Actual(ActualServer):
                     return self.set_file(file)
             raise UnknownFileId(f"Could not find a file id or identifier '{file_id}'")
 
-    def upload_file(self):
+    def create_budget(self, budget_name: str):
+        """Creates a budget using the remote server default database and migrations."""
+        migration_files = self.data_file_index()
+        # create folder for the files
+        if not self._data_dir:
+            self._data_dir = pathlib.Path(tempfile.mkdtemp())
+        # first migration file is the default database
+        migration = self.data_file(migration_files[0])
+        (self._data_dir / "db.sqlite").write_bytes(migration)
+        # also write the metadata file with default fields
+        random_id = str(uuid.uuid4()).replace("-", "")[:7]
+        file_id = str(uuid.uuid4())
+        (self._data_dir / "metadata.json").write_text(
+            json.dumps(
+                {
+                    "id": f"My-Finances-{random_id}",
+                    "budgetName": budget_name,
+                    "userId": self._token,
+                    "cloudFileId": file_id,
+                    "resetClock": True,
+                }
+            )
+        )
+        self._file = RemoteFileListDTO(name=budget_name, fileId=file_id, groupId=None, deleted=0, encryptKeyId=None)
+        # create engine for downloaded database and run migrations
+        conn = sqlite3.connect(self._data_dir / "db.sqlite")
+        for file in migration_files[1:]:
+            file_id = file.split("_")[0].split("/")[1]
+            migration = self.data_file(file)
+            sql_statements = migration.decode()
+            if file.endswith(".js"):
+                # there is one migration which is Javascript. All entries inside db.execQuery(`...`) must be executed
+                exec_entries = re.findall(r"db\.execQuery\(`([^`]*)`\)", sql_statements, re.DOTALL)
+                sql_statements = "\n".join(exec_entries)
+            conn.executescript(sql_statements)
+            conn.execute(f"INSERT INTO __migrations__ (id) VALUES ({file_id});")
+        conn.commit()
+        conn.close()
+
+    def upload_budget(self):
         """Uploads the current file to the Actual server."""
         if not self._data_dir:
             raise UnknownFileId("No current file loaded.")
         binary_data = io.BytesIO()
-        z = zipfile.ZipFile(binary_data)
-        z.write(self._data_dir / "db.sqlite", "db.sqlite")
-        z.write(self._data_dir / "metadata.json", "metadata.json")
-        binary_data.seek(0)
-        return self.upload_user_file(binary_data.read(), self._file.name)
+        with zipfile.ZipFile(binary_data, "a", zipfile.ZIP_DEFLATED, False) as z:
+            z.write(self._data_dir / "db.sqlite", "db.sqlite")
+            z.write(self._data_dir / "metadata.json", "metadata.json")
+            binary_data.seek(0)
+        return self.upload_user_file(binary_data.getvalue(), self._file.file_id, self._file.name)
 
     def apply_changes(self, messages: list[Message]):
         """Applies a list of sync changes, based on what the sync method returned on the remote."""
@@ -107,7 +151,10 @@ class Actual(ActualServer):
         with self.with_session() as s:
             for message in messages:
                 if message.dataset == "prefs":
-                    # ignore because it's an internal preference from actual
+                    # write it to metadata.json instead
+                    config = json.loads((self._data_dir / "metadata.json").read_text() or "{}")
+                    config[message.row] = message.get_value()
+                    (self._data_dir / "metadata.json").write_text(json.dumps(config))
                     continue
                 table = get_class_by_table_name(message.dataset)
                 entry = s.query(table).get(message.row)
@@ -138,6 +185,12 @@ class Actual(ActualServer):
         request.set_null_timestamp()  # using 0 timestamp to retrieve all changes
         changes = self.sync(request)
         self.apply_changes(changes.get_messages())
+
+    def load_clock(self):
+        """See implementation at:
+        https://github.com/actualbudget/actual/blob/5bcfc71be67c6e7b7c8b444e4c4f60da9ea9fdaa/packages/loot-core/src/server/db/index.ts#L81-L98
+        """
+        pass
 
     def get_transactions(self) -> List[Transactions]:
         with self._session_maker() as s:
