@@ -1,5 +1,5 @@
 requests>=2
-sqlmodel==0.0.14
+sqlmodel==0.0.16
 pydantic>=2
 sqlalchemy>=1.4
 proto-plus>=1

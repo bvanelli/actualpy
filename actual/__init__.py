@@ -21,6 +21,7 @@ from actual.database import (
     Categories,
     Payees,
     Transactions,
+    get_attribute_by_table_name,
     get_class_by_table_name,
 )
 from actual.exceptions import InvalidZipFile, UnknownFileId
@@ -170,10 +171,11 @@ class Actual(ActualServer):
                     (self._data_dir / "metadata.json").write_text(json.dumps(config))
                     continue
                 table = get_class_by_table_name(message.dataset)
+                column = get_attribute_by_table_name(message.dataset, message.column)
                 entry = s.query(table).get(message.row)
                 if not entry:
                     entry = table(id=message.row)
-                setattr(entry, message.column, message.get_value())
+                setattr(entry, column, message.get_value())
                 s.add(entry)
             s.commit()
 
@@ -213,13 +215,13 @@ class Actual(ActualServer):
                 s.query(Transactions)
                 .options(
                     joinedload(Transactions.account),
-                    joinedload(Transactions.category_),
+                    joinedload(Transactions.category),
                     joinedload(Transactions.payee),
                 )
                 .filter(
                     Transactions.date.isnot(None),
                     Transactions.acct.isnot(None),
-                    sqlalchemy.or_(Transactions.isChild == 0, Transactions.parent_id.isnot(None)),
+                    sqlalchemy.or_(Transactions.is_child == 0, Transactions.parent_id.isnot(None)),
                     sqlalchemy.func.coalesce(Transactions.tombstone, 0) == 0,
                 )
                 .order_by(
