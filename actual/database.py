@@ -297,9 +297,9 @@ class Transactions(BaseModel, table=True):
         account_id: str,
         amount: decimal.Decimal,
         date: datetime.date,
+        notes: Optional[str] = None,
         category: Optional[Categories] = None,
         payee: Optional[Payees] = None,
-        notes: Optional[str] = None,
     ):
         date_int = int(datetime.date.strftime(date, "%Y%m%d"))
         return cls(
@@ -310,6 +310,9 @@ class Transactions(BaseModel, table=True):
             category=category,
             payee=payee,
             notes=notes,
+            reconciled=0,
+            cleared=0,
+            sort_order=datetime.datetime.utcnow().timestamp(),
         )
 
 

@@ -88,11 +88,36 @@ class Actual(ActualServer):
             self._file = file_id
             return file_id
         else:
+            selected_files = []
             user_files = self.list_user_files()
             for file in user_files.data:
                 if (file.file_id == file_id or file.name == file_id) and file.deleted == 0:
-                    return self.set_file(file)
-            raise UnknownFileId(f"Could not find a file id or identifier '{file_id}'")
+                    selected_files.append(file)
+            if len(selected_files) == 0:
+                raise UnknownFileId(f"Could not find a file id or identifier '{file_id}'")
+            elif len(selected_files) > 1:
+                raise UnknownFileId(f"Multiple files found with identifier '{file_id}'")
+            return self.set_file(selected_files[0])
+
+    def run_migrations(self, migration_files: list[str]):
+        """Runs the migration files, skipping the ones that have already been run. The files can be retrieved from
+        .data_file_index() method. This first file is the base database, and the following files are migrations.
+        Migrations can also be .js files. In this case, we have to extract and execute queries from the standard JS."""
+        conn = sqlite3.connect(self._data_dir / "db.sqlite")
+        for file in migration_files[1:]:
+            file_id = file.split("_")[0].split("/")[1]
+            if conn.execute(f"SELECT id FROM __migrations__ WHERE id = '{file_id}';").fetchall():
+                continue  # skip migration as it was already ran
+            migration = self.data_file(file)  # retrieves file from actual server
+            sql_statements = migration.decode()
+            if file.endswith(".js"):
+                # there is one migration which is Javascript. All entries inside db.execQuery(`...`) must be executed
+                exec_entries = re.findall(r"db\.execQuery\(`([^`]*)`\)", sql_statements, re.DOTALL)
+                sql_statements = "\n".join(exec_entries)
+            conn.executescript(sql_statements)
+            conn.execute(f"INSERT INTO __migrations__ (id) VALUES ({file_id});")
+        conn.commit()
+        conn.close()
 
     def create_budget(self, budget_name: str):
         """Creates a budget using the remote server default database and migrations."""
@@ -119,19 +144,7 @@ class Actual(ActualServer):
         )
         self._file = RemoteFileListDTO(name=budget_name, fileId=file_id, groupId=None, deleted=0, encryptKeyId=None)
         # create engine for downloaded database and run migrations
-        conn = sqlite3.connect(self._data_dir / "db.sqlite")
-        for file in migration_files[1:]:
-            file_id = file.split("_")[0].split("/")[1]
-            migration = self.data_file(file)
-            sql_statements = migration.decode()
-            if file.endswith(".js"):
-                # there is one migration which is Javascript. All entries inside db.execQuery(`...`) must be executed
-                exec_entries = re.findall(r"db\.execQuery\(`([^`]*)`\)", sql_statements, re.DOTALL)
-                sql_statements = "\n".join(exec_entries)
-            conn.executescript(sql_statements)
-            conn.execute(f"INSERT INTO __migrations__ (id) VALUES ({file_id});")
-        conn.commit()
-        conn.close()
+        self.run_migrations(migration_files[1:])
 
     def upload_budget(self):
         """Uploads the current file to the Actual server."""
@@ -180,6 +193,8 @@ class Actual(ActualServer):
         zip_file.extractall(self._data_dir)
         engine = sqlalchemy.create_engine(f"sqlite:///{self._data_dir}/db.sqlite")
         self._session_maker = sqlalchemy.orm.sessionmaker(engine)
+        # actual js always calls validation
+        self.validate()
         # after downloading the budget, some pending transactions still need to be retrieved using sync
         request = SyncRequest({"messages": [], "fileId": self._file.file_id, "groupId": self._file.group_id})
         request.set_null_timestamp()  # using 0 timestamp to retrieve all changes
