@@ -1,63 +1,43 @@
-import enum
-import io
-import pathlib
-import tempfile
-import zipfile
-from typing import List, Union
+from __future__ import annotations
 
-import pydantic
-import requests
+import contextlib
+import io
+import json
+import pathlib
+import re
+import sqlite3
+import tempfile
+import uuid
+import zipfile
+from typing import TYPE_CHECKING, List, Union
+
 import sqlalchemy
 import sqlalchemy.orm
 from sqlalchemy.orm import joinedload
 
-from actual.database import Accounts, Categories, Transactions, get_class_by_table_name
-from actual.models import RemoteFile
-from actual.protobuf_models import Message, SyncRequest, SyncResponse
+from actual.api import ActualServer, RemoteFileListDTO
+from actual.database import (
+    Accounts,
+    Categories,
+    Payees,
+    Transactions,
+    get_attribute_by_table_name,
+    get_class_by_table_name,
+)
+from actual.exceptions import InvalidZipFile, UnknownFileId
+from actual.protobuf_models import Message, SyncRequest
+
+if TYPE_CHECKING:
+    from actual.database import BaseModel
 
 
-class Endpoints(enum.Enum):
-    LOGIN = "account/login"
-    INFO = "info"
-    ACCOUNT_VALIDATE = "account/validate"
-    NEEDS_BOOTSTRAP = "account/needs-bootstrap"
-    SYNC = "sync/sync"
-    LIST_USER_FILES = "sync/list-user-files"
-    GET_USER_FILE_INFO = "sync/get-user-file-info"
-    DOWNLOAD_USER_FILE = "sync/download-user-file"
-    UPLOAD_USER_FILE = "sync/upload-user-file"
-    RESET_USER_FILE = "sync/reset-user-file"
-    # data related
-    DATA_FILE_INDEX = "data-file-index.txt"
-    DEFAULT_DB = "data/default-db.sqlite"
-    MIGRATIONS = "data/migrations"
-
-    def __str__(self):
-        return self.value
-
-
-class ActualError(Exception):
-    pass
-
-
-class AuthorizationError(ActualError):
-    pass
-
-
-class UnknownFileId(ActualError):
-    pass
-
-
-class InvalidZipFile(ActualError):
-    pass
-
-
-class Actual:
+class Actual(ActualServer):
     def __init__(
         self,
         base_url: str = "http://localhost:5006",
         token: str = None,
         password: str = None,
+        file: str = None,
         data_dir: Union[str, pathlib.Path] = None,
     ):
         """
@@ -70,92 +50,141 @@ class Actual:
         :param base_url: url of the running Actual server
         :param token: the token for authentication, if this is available (optional)
         :param password: the password for authentication. It will be used on the .login() method to retrieve the token.
+        :param file: the name or id of the file to be set
         :param data_dir: where to store the downloaded files from the server. If not specified, a temporary folder will
             be created instead.
         """
-        self.api_url = base_url
-        self._token = token
-        self._password = password
-        self._file: RemoteFile | None = None
-        self._data_dir = data_dir
+        super().__init__(base_url, token, password)
+        self._file: RemoteFileListDTO | None = None
+        self._data_dir = pathlib.Path(data_dir) if data_dir else None
         self._session_maker = None
-        if token is None and password is None:
-            raise ValueError("Either provide a valid token or a password.")
+        self._session: sqlalchemy.orm.Session | None = None
+        # set the correct file
+        if file:
+            self.set_file(file)
 
-    def login(self) -> str:
-        """Logs in on the Actual server using the password provided. Raises `AuthorizationError` if it fails to
-        authenticate the user."""
-        if not self._password:
-            raise AuthorizationError("Trying to login but not password was provided.")
-        response = requests.post(f"{self.api_url}/{Endpoints.LOGIN}", json={"password": self._password})
-        response.raise_for_status()
-        token = response.json()["data"]["token"]
-        if token is None:
-            raise AuthorizationError("Could not validate password on login.")
-        self._password = None  # erase password
-        self._token = token
-        return self._token
+    def __enter__(self) -> Actual:
+        if self._file:
+            self.download_budget()
+            self._session = self._session_maker()
+        return self
 
-    def headers(self, file_id: str = None, extra_headers: dict = None) -> dict:
-        """Generates headers by retrieving a token, if one is not provided, and auto-filling the file id."""
-        if not self._token:
-            self.login()
-        headers = {"X-ACTUAL-TOKEN": self._token}
-        if self._file and self._file.file_id:
-            headers["X-ACTUAL-FILE-ID"] = file_id or self._file.file_id
-        if extra_headers:
-            headers = headers | extra_headers
-        return headers
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._session:
+            self._session.close()
 
-    def user_files(self) -> List[RemoteFile]:
-        """Lists user files from remote. Requires authentication to return all results."""
-        response = requests.get(f"{self.api_url}/{Endpoints.LIST_USER_FILES}", headers=self.headers())
-        response.raise_for_status()
-        files = response.json()
-        return pydantic.parse_obj_as(List[RemoteFile], files["data"])
+    @contextlib.contextmanager
+    def with_session(self) -> sqlalchemy.orm.Session:
+        s = self._session if self._session else self._session_maker()
+        try:
+            yield s
+        finally:
+            if not self._session:
+                s.close()
 
-    def set_file(self, file_id: Union[str, RemoteFile]) -> RemoteFile:
+    def set_file(self, file_id: Union[str, RemoteFileListDTO]) -> RemoteFileListDTO:
         """Sets the file id for the class for further requests. The file_id argument can be either a name or remote
         id from the file. If the name is provided, only the first match is taken."""
-        if isinstance(file_id, RemoteFile):
+        if isinstance(file_id, RemoteFileListDTO):
             self._file = file_id
             return file_id
         else:
-            user_files = self.user_files()
-            for file in user_files:
+            selected_files = []
+            user_files = self.list_user_files()
+            for file in user_files.data:
                 if (file.file_id == file_id or file.name == file_id) and file.deleted == 0:
-                    return self.set_file(file)
-            raise UnknownFileId(f"Could not find a file id or identifier '{file_id}'")
+                    selected_files.append(file)
+            if len(selected_files) == 0:
+                raise UnknownFileId(f"Could not find a file id or identifier '{file_id}'")
+            elif len(selected_files) > 1:
+                raise UnknownFileId(f"Multiple files found with identifier '{file_id}'")
+            return self.set_file(selected_files[0])
 
-    def reset_file(self, file_id: Union[str, RemoteFile] = None) -> bool:
-        if not self._file:
-            if file_id is None:
-                raise UnknownFileId("Could not reset the file without a valid 'file_id'")
-            self.set_file(file_id)
-        request = requests.post(
-            f"{self.api_url}/{Endpoints.RESET_USER_FILE}", json={"fileId": self._file.file_id, "token": self._token}
+    def run_migrations(self, migration_files: list[str]):
+        """Runs the migration files, skipping the ones that have already been run. The files can be retrieved from
+        .data_file_index() method. This first file is the base database, and the following files are migrations.
+        Migrations can also be .js files. In this case, we have to extract and execute queries from the standard JS."""
+        conn = sqlite3.connect(self._data_dir / "db.sqlite")
+        for file in migration_files[1:]:
+            file_id = file.split("_")[0].split("/")[1]
+            if conn.execute(f"SELECT id FROM __migrations__ WHERE id = '{file_id}';").fetchall():
+                continue  # skip migration as it was already ran
+            migration = self.data_file(file)  # retrieves file from actual server
+            sql_statements = migration.decode()
+            if file.endswith(".js"):
+                # there is one migration which is Javascript. All entries inside db.execQuery(`...`) must be executed
+                exec_entries = re.findall(r"db\.execQuery\(`([^`]*)`\)", sql_statements, re.DOTALL)
+                sql_statements = "\n".join(exec_entries)
+            conn.executescript(sql_statements)
+            conn.execute(f"INSERT INTO __migrations__ (id) VALUES ({file_id});")
+        conn.commit()
+        conn.close()
+
+    def create_budget(self, budget_name: str):
+        """Creates a budget using the remote server default database and migrations."""
+        migration_files = self.data_file_index()
+        # create folder for the files
+        if not self._data_dir:
+            self._data_dir = pathlib.Path(tempfile.mkdtemp())
+        # first migration file is the default database
+        migration = self.data_file(migration_files[0])
+        (self._data_dir / "db.sqlite").write_bytes(migration)
+        # also write the metadata file with default fields
+        random_id = str(uuid.uuid4()).replace("-", "")[:7]
+        file_id = str(uuid.uuid4())
+        (self._data_dir / "metadata.json").write_text(
+            json.dumps(
+                {
+                    "id": f"My-Finances-{random_id}",
+                    "budgetName": budget_name,
+                    "userId": self._token,
+                    "cloudFileId": file_id,
+                    "resetClock": True,
+                }
+            )
         )
-        request.raise_for_status()
-        return request.json()["status"] == "ok"
+        self._file = RemoteFileListDTO(name=budget_name, fileId=file_id, groupId=None, deleted=0, encryptKeyId=None)
+        # create engine for downloaded database and run migrations
+        self.run_migrations(migration_files[1:])
+
+    def upload_budget(self):
+        """Uploads the current file to the Actual server."""
+        if not self._data_dir:
+            raise UnknownFileId("No current file loaded.")
+        binary_data = io.BytesIO()
+        with zipfile.ZipFile(binary_data, "a", zipfile.ZIP_DEFLATED, False) as z:
+            z.write(self._data_dir / "db.sqlite", "db.sqlite")
+            z.write(self._data_dir / "metadata.json", "metadata.json")
+            binary_data.seek(0)
+        return self.upload_user_file(binary_data.getvalue(), self._file.file_id, self._file.name)
 
     def apply_changes(self, messages: list[Message]):
+        """Applies a list of sync changes, based on what the sync method returned on the remote."""
         if not self._session_maker:
-            raise UnknownFileId("No valid file available, download one with download_budget")
-        with self._session_maker() as s:
-            s: sqlalchemy.orm.Session
+            raise UnknownFileId("No valid file available, download one with download_budget()")
+        with self.with_session() as s:
             for message in messages:
+                if message.dataset == "prefs":
+                    # write it to metadata.json instead
+                    config = json.loads((self._data_dir / "metadata.json").read_text() or "{}")
+                    config[message.row] = message.get_value()
+                    (self._data_dir / "metadata.json").write_text(json.dumps(config))
+                    continue
                 table = get_class_by_table_name(message.dataset)
+                column = get_attribute_by_table_name(message.dataset, message.column)
                 entry = s.query(table).get(message.row)
                 if not entry:
                     entry = table(id=message.row)
-                setattr(entry, message.column, message.get_value())
+                setattr(entry, column, message.get_value())
                 s.add(entry)
             s.commit()
 
     def download_budget(self):
-        db = requests.get(f"{self.api_url}/{Endpoints.DOWNLOAD_USER_FILE}", headers=self.headers())
-        db.raise_for_status()
-        f = io.BytesIO(db.content)
+        """Downloads the budget file from the remote. After the file is downloaded, the sync endpoint is queries
+        for the list of pending changes. The changes are individual row updates, that are then applied on by one to
+        the downloaded database state."""
+        file_bytes = self.download_user_file(self._file.file_id)
+        f = io.BytesIO(file_bytes)
         try:
             zip_file = zipfile.ZipFile(f)
         except zipfile.BadZipfile as e:
@@ -166,31 +195,33 @@ class Actual:
         zip_file.extractall(self._data_dir)
         engine = sqlalchemy.create_engine(f"sqlite:///{self._data_dir}/db.sqlite")
         self._session_maker = sqlalchemy.orm.sessionmaker(engine)
+        # actual js always calls validation
+        self.validate()
         # after downloading the budget, some pending transactions still need to be retrieved using sync
         request = SyncRequest({"messages": [], "fileId": self._file.file_id, "groupId": self._file.group_id})
         request.set_null_timestamp()  # using 0 timestamp to retrieve all changes
         changes = self.sync(request)
         self.apply_changes(changes.get_messages())
 
-    def sync(self, request: SyncRequest) -> SyncResponse:
-        response = requests.post(
-            f"{self.api_url}/{Endpoints.SYNC}",
-            headers=self.headers(extra_headers={"Content-Type": "application/actual-sync"}),
-            data=SyncRequest.serialize(request),
-        )
-        response.raise_for_status()
-        parsed_response = SyncResponse.deserialize(response.content)
-        return parsed_response  # noqa
+    def load_clock(self):
+        """See implementation at:
+        https://github.com/actualbudget/actual/blob/5bcfc71be67c6e7b7c8b444e4c4f60da9ea9fdaa/packages/loot-core/src/server/db/index.ts#L81-L98
+        """
+        pass
 
     def get_transactions(self) -> List[Transactions]:
         with self._session_maker() as s:
             query = (
                 s.query(Transactions)
-                .options(joinedload(Transactions.account), joinedload(Transactions.category_))
+                .options(
+                    joinedload(Transactions.account),
+                    joinedload(Transactions.category),
+                    joinedload(Transactions.payee),
+                )
                 .filter(
                     Transactions.date.isnot(None),
                     Transactions.acct.isnot(None),
-                    sqlalchemy.or_(Transactions.isChild == 0, Transactions.parent_id.isnot(None)),
+                    sqlalchemy.or_(Transactions.is_child == 0, Transactions.parent_id.isnot(None)),
                     sqlalchemy.func.coalesce(Transactions.tombstone, 0) == 0,
                 )
                 .order_by(
@@ -202,12 +233,34 @@ class Actual:
             )
             return query.all()
 
+    def add(self, model: BaseModel):
+        """Adds a new entry to the local database, sends a sync request to the remote server to synchronize
+        the local changes, then commits the change on the local database. It's important to note that this process
+        is not atomic, so if the process is interrupted before it completes successfully, the files would end up in
+        a unknown state."""
+        with self.with_session() as s:
+            # add to database and see if all works well
+            s.add(model)
+            # generate a sync request and sync it to the server
+            req = SyncRequest({"fileId": self._file.file_id, "groupId": self._file.group_id})
+            req.set_timestamp()
+            req.set_messages(model.convert())
+            self.sync(req)
+            s.commit()
+            if not self._session:
+                s.close()
+
     def get_categories(self) -> List[Categories]:
-        with self._session_maker() as s:
+        with self.with_session() as s:
             query = s.query(Categories)
             return query.all()
 
     def get_accounts(self) -> List[Accounts]:
-        with self._session_maker() as s:
+        with self.with_session() as s:
             query = s.query(Accounts)
+            return query.all()
+
+    def get_payees(self) -> List[Payees]:
+        with self.with_session() as s:
+            query = s.query(Payees)
             return query.all()
