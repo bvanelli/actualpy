@@ -1,4 +1,7 @@
-from typing import List, Optional
+import datetime
+import decimal
+import uuid
+from typing import List, Optional, Union
 
 from sqlalchemy import (
     Boolean,
@@ -13,15 +16,63 @@ from sqlalchemy import (
 )
 from sqlmodel import Field, Relationship, SQLModel
 
+from actual.protobuf_models import Message
 
-def get_class_by_table_name(table_name: str) -> SQLModel | None:
+"""
+This variable contains the internal model mappings for all databases. It solves a couple of issues, namely having the
+mapping from __tablename__ to the actual SQLAlchemy class, and later mapping the SQL column into the Pydantic field,
+which could be different and follows the Python naming convention. An example is the field `Transactions.is_parent`,
+that converts into the SQL equivalent `transactions.isParent`. In this case, we would have the following entries:
+
+    __TABLE_COLUMNS_MAP__ = {
+        "transactions": {
+            "entity": <class 'actual.database.Transactions'>,
+            "columns": {
+                "isParent": "is_parent"
+            }
+        }
+    }
+"""
+__TABLE_COLUMNS_MAP__ = dict()
+
+
+def get_class_by_table_name(table_name: str) -> Union[SQLModel, None]:
     """
     Returns, based on the defined tables __tablename__ the corresponding SQLModel object. If not found, returns None.
     """
-    for entry in SQLModel._sa_registry.mappers:
-        if entry.entity.__tablename__ == table_name:
-            return entry.entity
-    return None
+    return __TABLE_COLUMNS_MAP__.get(table_name, {}).get("entity", None)
+
+
+def get_attribute_by_table_name(table_name: str, column_name: str) -> Union[str, None]:
+    """
+    Returns, based, on the defined tables __tablename__ and the sacolumn name, the correct pydantic attribute.
+    If not found, returns None.
+
+    :param table_name: SQL table name.
+    :param column_name: SQL column name.
+    :return: Pydantic attribute name.
+    """
+    return __TABLE_COLUMNS_MAP__.get(table_name, {}).get("columns", {}).get(column_name, None)
+
+
+class BaseModel(SQLModel):
+    def convert(self) -> List[Message]:
+        """Convert the object into distinct entries for sync method. Based on the original implementation:
+
+        https://github.com/actualbudget/actual/blob/98c17bd5e0f13e27a09a7f6ac176510530572be7/packages/loot-core/src/server/aql/schema-helpers.ts#L146
+        """
+        dataset = self.__tablename__
+        changes = []
+        row = getattr(self, "id", None)  # also helps lazy loading the instance
+        if row is None:
+            raise AttributeError(f"Cannot convert model {self.__name__} because it misses the 'id' attribute.")
+        for column, value in self.model_dump().items():
+            if value is None or column == "id":
+                continue
+            m = Message(dict(dataset=dataset, row=row, column=column))
+            m.set_value(value)
+            changes.append(m)
+        return changes
 
 
 class Meta(SQLModel, table=True):
@@ -75,7 +126,7 @@ class Categories(SQLModel, table=True):
     tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
     goal_def: Optional[str] = Field(default=None, sa_column=Column("goal_def", Text, server_default=text("null")))
 
-    transactions: List["Transactions"] = Relationship(back_populates="category_")
+    transactions: List["Transactions"] = Relationship(back_populates="category")
 
 
 class CategoryGroups(SQLModel, table=True):
@@ -93,7 +144,7 @@ class CategoryMapping(SQLModel, table=True):
     __tablename__ = "category_mapping"
 
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
-    transferId: Optional[str] = Field(default=None, sa_column=Column("transferId", Text))
+    transfer_id: Optional[str] = Field(default=None, sa_column=Column("transferId", Text))
 
 
 class CreatedBudgets(SQLModel, table=True):
@@ -142,7 +193,7 @@ class PayeeMapping(SQLModel, table=True):
     __tablename__ = "payee_mapping"
 
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
-    targetId: Optional[str] = Field(default=None, sa_column=Column("targetId", Text))
+    target_id: Optional[str] = Field(default=None, sa_column=Column("targetId", Text))
 
 
 class Payees(SQLModel, table=True):
@@ -151,6 +202,8 @@ class Payees(SQLModel, table=True):
     category: Optional[str] = Field(default=None, sa_column=Column("category", Text))
     tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
     transfer_acct: Optional[str] = Field(default=None, sa_column=Column("transfer_acct", Text))
+
+    transactions: List["Transactions"] = Relationship(back_populates="payee")
 
 
 class ReflectBudgets(SQLModel, table=True):
@@ -224,7 +277,7 @@ class TransactionFilters(SQLModel, table=True):
     tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
 
 
-class Transactions(SQLModel, table=True):
+class Transactions(BaseModel, table=True):
     __table_args__ = (
         Index("trans_category", "category"),
         Index("trans_category_date", "category", "date"),
@@ -234,12 +287,12 @@ class Transactions(SQLModel, table=True):
     )
 
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
-    isParent: Optional[int] = Field(default=None, sa_column=Column("isParent", Integer, server_default=text("0")))
-    isChild: Optional[int] = Field(default=None, sa_column=Column("isChild", Integer, server_default=text("0")))
+    is_parent: Optional[int] = Field(default=None, sa_column=Column("isParent", Integer, server_default=text("0")))
+    is_child: Optional[int] = Field(default=None, sa_column=Column("isChild", Integer, server_default=text("0")))
     acct: Optional[str] = Field(default=None, sa_column=Column("acct", Text, ForeignKey("accounts.id")))
-    category: Optional[str] = Field(default=None, sa_column=Column("category", Text, ForeignKey("categories.id")))
+    category_id: Optional[str] = Field(default=None, sa_column=Column("category", Text, ForeignKey("categories.id")))
     amount: Optional[int] = Field(default=None, sa_column=Column("amount", Integer))
-    description: Optional[str] = Field(default=None, sa_column=Column("description", Text))
+    description: Optional[str] = Field(default=None, sa_column=Column("description", Text, ForeignKey("payees.id")))
     notes: Optional[str] = Field(default=None, sa_column=Column("notes", Text))
     date: Optional[int] = Field(default=None, sa_column=Column("date", Integer))
     financial_id: Optional[str] = Field(default=None, sa_column=Column("financial_id", Text))
@@ -261,7 +314,32 @@ class Transactions(SQLModel, table=True):
     reconciled: Optional[int] = Field(default=None, sa_column=Column("reconciled", Integer, server_default=text("0")))
 
     account: Optional["Accounts"] = Relationship(back_populates="transactions")
-    category_: Optional["Categories"] = Relationship(back_populates="transactions")
+    category: Optional["Categories"] = Relationship(back_populates="transactions")
+    payee: Optional["Payees"] = Relationship(back_populates="transactions")
+
+    @classmethod
+    def new(
+        cls,
+        account_id: str,
+        amount: decimal.Decimal,
+        date: datetime.date,
+        notes: Optional[str] = None,
+        category: Optional[Categories] = None,
+        payee: Optional[Payees] = None,
+    ):
+        date_int = int(datetime.date.strftime(date, "%Y%m%d"))
+        return cls(
+            id=str(uuid.uuid4()),
+            acct=account_id,
+            date=date_int,
+            amount=int(amount * 100),
+            category=category,
+            payee=payee,
+            notes=notes,
+            reconciled=0,
+            cleared=0,
+            sort_order=datetime.datetime.utcnow().timestamp(),
+        )
 
 
 class ZeroBudgetMonths(SQLModel, table=True):
@@ -292,3 +370,14 @@ class PendingTransactions(SQLModel, table=True):
     date: Optional[str] = Field(default=None, sa_column=Column("date", Text))
 
     account: Optional["Accounts"] = Relationship(back_populates="pending_transactions")
+
+
+for entry in SQLModel._sa_registry.mappers:
+    t_name = entry.entity.__tablename__
+    if t_name not in __TABLE_COLUMNS_MAP__:
+        __TABLE_COLUMNS_MAP__[t_name] = {"entity": entry.entity, "columns": {}}
+    table_columns = list(c.name for c in entry.columns)
+    # the name and property name of the pydantic property and database column can be different
+    for key, column in dict(entry.entity.__dict__).items():
+        if hasattr(column, "name") and getattr(column, "name") in table_columns:
+            __TABLE_COLUMNS_MAP__[t_name]["columns"][column.name] = key
