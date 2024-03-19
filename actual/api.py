@@ -15,6 +15,7 @@ class Endpoints(enum.Enum):
     INFO = "info"
     ACCOUNT_VALIDATE = "account/validate"
     NEEDS_BOOTSTRAP = "account/needs-bootstrap"
+    BOOTSTRAP = "account/bootstrap"
     SYNC = "sync/sync"
     LIST_USER_FILES = "sync/list-user-files"
     GET_USER_FILE_INFO = "sync/get-user-file-info"
@@ -122,14 +123,19 @@ class ActualServer:
         base_url: str = "http://localhost:5006",
         token: str = None,
         password: str = None,
+        bootstrap: bool = False,
     ):
         self.api_url = base_url
         self._token = token
         if token is None and password is None:
             raise ValueError("Either provide a valid token or a password.")
         # already try to login if password was provided
-        if password:
+        if password and bootstrap and not self.needs_bootstrap().data.bootstrapped:
+            self.bootstrap(password)
+        elif password:
             self.login(password)
+        # finally call validate
+        self.validate()
 
     def login(self, password: str) -> LoginDTO:
         """Logs in on the Actual server using the password provided. Raises `AuthorizationError` if it fails to
@@ -172,6 +178,13 @@ class ActualServer:
         response = requests.get(f"{self.api_url}/{Endpoints.NEEDS_BOOTSTRAP}")
         response.raise_for_status()
         return BootstrapInfoDTO.parse_obj(response.json())
+
+    def bootstrap(self, password: str) -> LoginDTO:
+        response = requests.post(f"{self.api_url}/{Endpoints.BOOTSTRAP}", json={"password": password})
+        response.raise_for_status()
+        login_response = LoginDTO.parse_obj(response.json())
+        self._token = login_response.data.token
+        return login_response
 
     def data_file_index(self) -> List[str]:
         """Gets all the migration file references for the actual server."""

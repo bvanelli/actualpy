@@ -16,29 +16,38 @@ https://github.com/actualbudget/actual-server/blob/master/src/app-sync.js#L32
 """
 
 
-def timestamp(client_id: str = None, now: datetime.datetime = None) -> str:
-    """Actual uses Hybrid Unique Logical Clock (HULC) timestamp generator.
+class HULC_Client:
+    def __init__(self, client_id: str = None, initial_count: int = 0):
+        self.client_id = client_id
+        self.initial_count = initial_count
 
-    Timestamps serialize into a 46-character collatable string
-     *    example: 2015-04-24T22:23:42.123Z-1000-0123456789ABCDEF
-     *    example: 2015-04-24T22:23:42.123Z-1000-A219E7A71CC18912
+    @classmethod
+    def from_timestamp(cls, ts: str) -> HULC_Client:
+        segments = ts.split("-")
+        return cls(segments[-1], int(segments[-2]))
 
-    See https://github.com/actualbudget/actual/blob/a9362cc6f9b974140a760ad05816cac51c849769/packages/crdt/src/crdt/timestamp.ts
-    for reference.
-    """
-    if not now:
-        now = datetime.datetime.utcnow()
-    if not client_id:
-        client_id = get_client_id()
-    return f"{now.isoformat(timespec='milliseconds')}Z-0000-{client_id}"
+    def timestamp(self, now: datetime.datetime = None) -> str:
+        """Actual uses Hybrid Unique Logical Clock (HULC) timestamp generator.
 
+        Timestamps serialize into a 46-character collatable string
+         *    example: 2015-04-24T22:23:42.123Z-1000-0123456789ABCDEF
+         *    example: 2015-04-24T22:23:42.123Z-1000-A219E7A71CC18912
 
-def get_client_id():
-    """Creates a client id for the HULC request. Copied implementation from:
+        See https://github.com/actualbudget/actual/blob/a9362cc6f9b974140a760ad05816cac51c849769/packages/crdt/src/crdt/timestamp.ts
+        for reference.
+        """
+        if not now:
+            now = datetime.datetime.utcnow()
+        count = str(self.initial_count).zfill(4)
+        self.initial_count += 1
+        return f"{now.isoformat(timespec='milliseconds')}Z-{count}-{self.client_id}"
 
-    https://github.com/actualbudget/actual/blob/a9362cc6f9b974140a760ad05816cac51c849769/packages/crdt/src/crdt/timestamp.ts#L80
-    """
-    return str(uuid.uuid4()).replace("-", "")[-16:]
+    def get_client_id(self):
+        """Creates a client id for the HULC request. Copied implementation from:
+
+        https://github.com/actualbudget/actual/blob/a9362cc6f9b974140a760ad05816cac51c849769/packages/crdt/src/crdt/timestamp.ts#L80
+        """
+        return self.client_id if self.client_id is not None else str(uuid.uuid4()).replace("-", "")[-16:]
 
 
 class EncryptedData(proto.Message):
@@ -62,7 +71,7 @@ class Message(proto.Message):
         if datatype == "S":
             return value
         elif datatype == "N":
-            return int(value)
+            return float(value)
         elif datatype == "0":
             return None
         else:
@@ -71,7 +80,7 @@ class Message(proto.Message):
     def set_value(self, value: str | int | float | None) -> str:
         if isinstance(value, str):
             datatype = "S"
-        elif isinstance(value, int):
+        elif isinstance(value, int) or isinstance(value, float):
             datatype = "N"
         elif value is None:
             datatype = "0"
@@ -87,7 +96,7 @@ class MessageEnvelope(proto.Message):
     content = proto.Field(proto.BYTES, number=3)
 
     def set_timestamp(self, client_id: str = None, now: datetime.datetime = None) -> str:
-        self.timestamp = timestamp(client_id, now)
+        self.timestamp = HULC_Client(client_id).timestamp(now)
         return self.timestamp
 
 
@@ -99,17 +108,17 @@ class SyncRequest(proto.Message):
     since = proto.Field(proto.STRING, number=6)
 
     def set_timestamp(self, client_id: str = None, now: datetime.datetime = None) -> str:
-        self.since = timestamp(client_id, now)
+        self.since = HULC_Client(client_id).timestamp(now)
         return self.since
 
-    def set_null_timestamp(self) -> str:
-        return self.set_timestamp(None, datetime.datetime(1970, 1, 1, 0, 0, 0, 0))
+    def set_null_timestamp(self, client_id: str = None) -> str:
+        return self.set_timestamp(client_id, datetime.datetime(1970, 1, 1, 0, 0, 0, 0))
 
-    def set_messages(self, messages: list[Message]):
+    def set_messages(self, messages: list[Message], client: HULC_Client):
         _messages = []
         for message in messages:
             m = MessageEnvelope({"content": Message.serialize(message), "isEncrypted": False})
-            m.set_timestamp()
+            m.timestamp = client.timestamp()
             _messages.append(m)
         self.messages = _messages
 
