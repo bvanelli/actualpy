@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import datetime
 import io
 import json
 import pathlib
@@ -19,13 +20,14 @@ from actual.api import ActualServer, RemoteFileListDTO
 from actual.database import (
     Accounts,
     Categories,
+    MessagesClock,
     Payees,
     Transactions,
     get_attribute_by_table_name,
     get_class_by_table_name,
 )
 from actual.exceptions import InvalidZipFile, UnknownFileId
-from actual.protobuf_models import Message, SyncRequest
+from actual.protobuf_models import HULC_Client, Message, SyncRequest
 
 if TYPE_CHECKING:
     from actual.database import BaseModel
@@ -39,6 +41,7 @@ class Actual(ActualServer):
         password: str = None,
         file: str = None,
         data_dir: Union[str, pathlib.Path] = None,
+        bootstrap: bool = False,
     ):
         """
         Implements the Python API for the Actual Server in order to be able to read and modify information on Actual
@@ -53,12 +56,14 @@ class Actual(ActualServer):
         :param file: the name or id of the file to be set
         :param data_dir: where to store the downloaded files from the server. If not specified, a temporary folder will
             be created instead.
+        :param bootstrap: if the server is not bootstrapped, bootstrap it with the password.
         """
-        super().__init__(base_url, token, password)
+        super().__init__(base_url, token, password, bootstrap)
         self._file: RemoteFileListDTO | None = None
         self._data_dir = pathlib.Path(data_dir) if data_dir else None
         self._session_maker = None
         self._session: sqlalchemy.orm.Session | None = None
+        self._client: HULC_Client | None = None
         # set the correct file
         if file:
             self.set_file(file)
@@ -105,7 +110,9 @@ class Actual(ActualServer):
         .data_file_index() method. This first file is the base database, and the following files are migrations.
         Migrations can also be .js files. In this case, we have to extract and execute queries from the standard JS."""
         conn = sqlite3.connect(self._data_dir / "db.sqlite")
-        for file in migration_files[1:]:
+        for file in migration_files:
+            if not file.startswith("migrations"):
+                continue  # in case db.sqlite file gets passed
             file_id = file.split("_")[0].split("/")[1]
             if conn.execute(f"SELECT id FROM __migrations__ WHERE id = '{file_id}';").fetchall():
                 continue  # skip migration as it was already ran
@@ -146,6 +153,11 @@ class Actual(ActualServer):
         self._file = RemoteFileListDTO(name=budget_name, fileId=file_id, groupId=None, deleted=0, encryptKeyId=None)
         # create engine for downloaded database and run migrations
         self.run_migrations(migration_files[1:])
+        # generate a session
+        engine = sqlalchemy.create_engine(f"sqlite:///{self._data_dir}/db.sqlite")
+        self._session_maker = sqlalchemy.orm.sessionmaker(engine)
+        # create a clock
+        self.load_clock()
 
     def upload_budget(self):
         """Uploads the current file to the Actual server."""
@@ -157,6 +169,10 @@ class Actual(ActualServer):
             z.write(self._data_dir / "metadata.json", "metadata.json")
             binary_data.seek(0)
         return self.upload_user_file(binary_data.getvalue(), self._file.file_id, self._file.name)
+
+    def reupload_budget(self):
+        self.reset_user_file(self._file.file_id)
+        self.upload_budget()
 
     def apply_changes(self, messages: list[Message]):
         """Applies a list of sync changes, based on what the sync method returned on the remote."""
@@ -197,17 +213,33 @@ class Actual(ActualServer):
         self._session_maker = sqlalchemy.orm.sessionmaker(engine)
         # actual js always calls validation
         self.validate()
+        # load the client id
+        self.load_clock()
         # after downloading the budget, some pending transactions still need to be retrieved using sync
         request = SyncRequest({"messages": [], "fileId": self._file.file_id, "groupId": self._file.group_id})
-        request.set_null_timestamp()  # using 0 timestamp to retrieve all changes
+        request.set_null_timestamp(client_id=self._client.client_id)  # using 0 timestamp to retrieve all changes
         changes = self.sync(request)
         self.apply_changes(changes.get_messages())
+        if changes.messages:
+            self._client = HULC_Client.from_timestamp(changes.messages[-1].timestamp)
 
-    def load_clock(self):
+    def load_clock(self) -> MessagesClock:
         """See implementation at:
         https://github.com/actualbudget/actual/blob/5bcfc71be67c6e7b7c8b444e4c4f60da9ea9fdaa/packages/loot-core/src/server/db/index.ts#L81-L98
         """
-        pass
+        with self.with_session() as session:
+            clock = session.query(MessagesClock).first()
+            if not clock:
+                clock_message = {
+                    "timestamp": HULC_Client().timestamp(now=datetime.datetime(1970, 1, 1, 0, 0, 0, 0)),
+                    "merkle": {},
+                }
+                clock = MessagesClock(id=0, clock=json.dumps(clock_message))
+                session.add(clock)
+            session.commit()
+            # add clock id to client id
+            self._client = HULC_Client.from_timestamp(json.loads(clock.clock)["timestamp"])
+        return clock
 
     def get_transactions(self) -> List[Transactions]:
         with self._session_maker() as s:
@@ -243,8 +275,8 @@ class Actual(ActualServer):
             s.add(model)
             # generate a sync request and sync it to the server
             req = SyncRequest({"fileId": self._file.file_id, "groupId": self._file.group_id})
-            req.set_timestamp()
-            req.set_messages(model.convert())
+            req.set_null_timestamp(client_id=self._client.client_id)
+            req.set_messages(model.convert(), self._client)
             self.sync(req)
             s.commit()
             if not self._session:
