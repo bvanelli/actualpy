@@ -4,7 +4,7 @@ setup(
     name="actual",
     version="0.0.1",
     packages=find_packages(),
-    description="Implementation of the Actual API to interact with Actual over Python..",
+    description="Implementation of the Actual API to interact with Actual over Python.",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
     author="Brunno Vanelli",
