@@ -24,6 +24,10 @@ class ActualError(Exception):
     pass
 
 
+class ActualInvalidOperationError(ActualError):
+    pass
+
+
 class AuthorizationError(ActualError):
     pass
 

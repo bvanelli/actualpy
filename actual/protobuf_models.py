@@ -115,12 +115,12 @@ class SyncRequest(proto.Message):
         return self.set_timestamp(client_id, datetime.datetime(1970, 1, 1, 0, 0, 0, 0))
 
     def set_messages(self, messages: list[Message], client: HULC_Client):
-        _messages = []
+        if not self.messages:
+            self.messages = []
         for message in messages:
             m = MessageEnvelope({"content": Message.serialize(message), "isEncrypted": False})
             m.timestamp = client.timestamp()
-            _messages.append(m)
-        self.messages = _messages
+            self.messages.append(m)
 
 
 class SyncResponse(proto.Message):

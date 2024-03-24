@@ -12,8 +12,10 @@ from sqlalchemy import (
     Integer,
     LargeBinary,
     Text,
+    inspect,
     text,
 )
+from sqlalchemy.orm import class_mapper
 from sqlmodel import Field, Relationship, SQLModel
 
 from actual.protobuf_models import Message
@@ -43,35 +45,53 @@ def get_class_by_table_name(table_name: str) -> Union[SQLModel, None]:
     return __TABLE_COLUMNS_MAP__.get(table_name, {}).get("entity", None)
 
 
-def get_attribute_by_table_name(table_name: str, column_name: str) -> Union[str, None]:
+def get_attribute_by_table_name(table_name: str, column_name: str, reverse: bool = False) -> Union[str, None]:
     """
-    Returns, based, on the defined tables __tablename__ and the sacolumn name, the correct pydantic attribute.
+    Returns, based, on the defined tables __tablename__ and the SAColumn name, the correct pydantic attribute. Search
+    can be reversed by setting the `reverse` flag to `True`.
     If not found, returns None.
 
     :param table_name: SQL table name.
     :param column_name: SQL column name.
-    :return: Pydantic attribute name.
+    :param reverse: If true, reverses the search and returns the SAColumn from the Pydantic attribute.
+    :return: Pydantic attribute name or SAColumn name.
     """
-    return __TABLE_COLUMNS_MAP__.get(table_name, {}).get("columns", {}).get(column_name, None)
+    return (
+        __TABLE_COLUMNS_MAP__.get(table_name, {})
+        .get("columns" if not reverse else "rev_columns", {})
+        .get(column_name, None)
+    )
 
 
 class BaseModel(SQLModel):
-    def convert(self) -> List[Message]:
+    def convert(self, is_new: bool = True) -> List[Message]:
         """Convert the object into distinct entries for sync method. Based on the original implementation:
 
         https://github.com/actualbudget/actual/blob/98c17bd5e0f13e27a09a7f6ac176510530572be7/packages/loot-core/src/server/aql/schema-helpers.ts#L146
         """
-        dataset = self.__tablename__
-        changes = []
         row = getattr(self, "id", None)  # also helps lazy loading the instance
         if row is None:
-            raise AttributeError(f"Cannot convert model {self.__name__} because it misses the 'id' attribute.")
-        for column, value in self.model_dump().items():
-            if value is None or column == "id":
+            raise AttributeError(
+                f"Cannot convert model {self.__name__} because it misses the 'id' attribute.\n"
+                f"If you see this error, make sure your entry has a unique 'id' as primary key."
+            )
+        # compute changes from a sqlalchemy instance, see https://stackoverflow.com/a/28353846/12681470
+        changes = []
+        inspr = inspect(self)
+        attrs = class_mapper(self.__class__).column_attrs  # exclude relationships
+        for attr in attrs:  # noqa: you can iterate over attrs
+            column = attr.key
+            if column == "id":
                 continue
-            m = Message(dict(dataset=dataset, row=row, column=column))
-            m.set_value(value)
-            changes.append(m)
+            hist = getattr(inspr.attrs, column).history
+            if hist.has_changes():
+                converted_attr_name = get_attribute_by_table_name(self.__tablename__, column, reverse=True)
+                m = Message(dict(dataset=self.__tablename__, row=row, column=converted_attr_name))
+                value = self.__getattribute__(column)
+                # if the entry is new, we can ignore null columns, otherwise consider it an update to None
+                if value is not None or not is_new:
+                    m.set_value(value)
+                    changes.append(m)
         return changes
 
 
@@ -88,7 +108,7 @@ class Migrations(SQLModel, table=True):
     id: Optional[int] = Field(default=None, sa_column=Column("id", Integer, primary_key=True))
 
 
-class Accounts(SQLModel, table=True):
+class Accounts(BaseModel, table=True):
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
     account_id: Optional[str] = Field(default=None, sa_column=Column("account_id", Text))
     name: Optional[str] = Field(default=None, sa_column=Column("name", Text))
@@ -372,12 +392,14 @@ class PendingTransactions(SQLModel, table=True):
     account: Optional["Accounts"] = Relationship(back_populates="pending_transactions")
 
 
-for entry in SQLModel._sa_registry.mappers:
-    t_name = entry.entity.__tablename__
+for t_entry in SQLModel._sa_registry.mappers:
+    t_name = t_entry.entity.__tablename__
     if t_name not in __TABLE_COLUMNS_MAP__:
-        __TABLE_COLUMNS_MAP__[t_name] = {"entity": entry.entity, "columns": {}}
-    table_columns = list(c.name for c in entry.columns)
+        __TABLE_COLUMNS_MAP__[t_name] = {"entity": t_entry.entity, "columns": {}, "rev_columns": {}}
+    table_columns = list(c.name for c in t_entry.columns)
     # the name and property name of the pydantic property and database column can be different
-    for key, column in dict(entry.entity.__dict__).items():
-        if hasattr(column, "name") and getattr(column, "name") in table_columns:
-            __TABLE_COLUMNS_MAP__[t_name]["columns"][column.name] = key
+    for t_key, t_column in dict(t_entry.entity.__dict__).items():
+        if hasattr(t_column, "name") and getattr(t_column, "name") in table_columns:
+            __TABLE_COLUMNS_MAP__[t_name]["columns"][t_column.name] = t_key
+            # add also rever columns mappings for reverse mapping
+            __TABLE_COLUMNS_MAP__[t_name]["rev_columns"][t_key] = t_column.name
