@@ -125,6 +125,7 @@ class Accounts(BaseModel, table=True):
     sort_order: Optional[float] = Field(default=None, sa_column=Column("sort_order", Float))
     type: Optional[str] = Field(default=None, sa_column=Column("type", Text))
 
+    payee: "Payees" = Relationship(back_populates="account", sa_relationship_kwargs={"uselist": False})
     pending_transactions: List["PendingTransactions"] = Relationship(back_populates="account")
     transactions: List["Transactions"] = Relationship(back_populates="account")
 
@@ -141,12 +142,15 @@ class Categories(SQLModel, table=True):
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
     name: Optional[str] = Field(default=None, sa_column=Column("name", Text))
     is_income: Optional[int] = Field(default=None, sa_column=Column("is_income", Integer, server_default=text("0")))
-    cat_group: Optional[str] = Field(default=None, sa_column=Column("cat_group", Text))
+    cat_group: Optional[str] = Field(
+        default=None, sa_column=Column("cat_group", Text, ForeignKey("category_groups.id"))
+    )
     sort_order: Optional[float] = Field(default=None, sa_column=Column("sort_order", Float))
     tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
     goal_def: Optional[str] = Field(default=None, sa_column=Column("goal_def", Text, server_default=text("null")))
 
     transactions: List["Transactions"] = Relationship(back_populates="category")
+    group: "CategoryGroups" = Relationship(back_populates="categories", sa_relationship_kwargs={"uselist": False})
 
 
 class CategoryGroups(SQLModel, table=True):
@@ -158,6 +162,8 @@ class CategoryGroups(SQLModel, table=True):
     is_income: Optional[int] = Field(default=None, sa_column=Column("is_income", Integer, server_default=text("0")))
     sort_order: Optional[float] = Field(default=None, sa_column=Column("sort_order", Float))
     tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
+
+    categories: List["Categories"] = Relationship(back_populates="group")
 
 
 class CategoryMapping(SQLModel, table=True):
@@ -221,8 +227,11 @@ class Payees(SQLModel, table=True):
     name: Optional[str] = Field(default=None, sa_column=Column("name", Text))
     category: Optional[str] = Field(default=None, sa_column=Column("category", Text))
     tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
-    transfer_acct: Optional[str] = Field(default=None, sa_column=Column("transfer_acct", Text))
+    transfer_acct: Optional[str] = Field(
+        default=None, sa_column=Column("transfer_acct", Text, ForeignKey("accounts.id"))
+    )
 
+    account: Optional["Accounts"] = Relationship(back_populates="payee", sa_relationship_kwargs={"uselist": False})
     transactions: List["Transactions"] = Relationship(back_populates="payee")
 
 
@@ -312,7 +321,7 @@ class Transactions(BaseModel, table=True):
     acct: Optional[str] = Field(default=None, sa_column=Column("acct", Text, ForeignKey("accounts.id")))
     category_id: Optional[str] = Field(default=None, sa_column=Column("category", Text, ForeignKey("categories.id")))
     amount: Optional[int] = Field(default=None, sa_column=Column("amount", Integer))
-    description: Optional[str] = Field(default=None, sa_column=Column("description", Text, ForeignKey("payees.id")))
+    payee_id: Optional[str] = Field(default=None, sa_column=Column("description", Text, ForeignKey("payees.id")))
     notes: Optional[str] = Field(default=None, sa_column=Column("notes", Text))
     date: Optional[int] = Field(default=None, sa_column=Column("date", Integer))
     financial_id: Optional[str] = Field(default=None, sa_column=Column("financial_id", Text))
@@ -360,6 +369,9 @@ class Transactions(BaseModel, table=True):
             cleared=0,
             sort_order=datetime.datetime.utcnow().timestamp(),
         )
+
+    def get_date(self) -> datetime.date:
+        return datetime.datetime.strptime(str(self.date), "%Y%m%d").date()
 
 
 class ZeroBudgetMonths(SQLModel, table=True):

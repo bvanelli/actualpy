@@ -66,16 +66,19 @@ class Actual(ActualServer):
         # set the correct file
         if file:
             self.set_file(file)
+        self._in_context = False
 
     def __enter__(self) -> Actual:
         if self._file:
             self.download_budget()
             self._session = self.session_maker()
+        self._in_context = True
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self._session:
             self._session.close()
+        self._in_context = False
 
     @property
     def session(self) -> sqlalchemy.orm.Session:
@@ -151,7 +154,9 @@ class Actual(ActualServer):
         self.run_migrations(migration_files[1:])
         # generate a session
         engine = sqlalchemy.create_engine(f"sqlite:///{self._data_dir}/db.sqlite")
-        self.session_maker = sqlalchemy.orm.sessionmaker(engine)
+        self.session_maker = sqlalchemy.orm.sessionmaker(engine, autoflush=False)
+        if self._in_context:
+            self._session = self.session_maker()
         # create a clock
         self.load_clock()
 
@@ -189,6 +194,8 @@ class Actual(ActualServer):
                     entry = table(id=message.row)
                 setattr(entry, column, message.get_value())
                 s.add(entry)
+                # this seems to be required for sqlmodel, remove if not needed anymore when querying from cache
+                s.flush()
             s.commit()
 
     def download_budget(self):
@@ -206,7 +213,7 @@ class Actual(ActualServer):
         # this should extract 'db.sqlite' and 'metadata.json' to the folder
         zip_file.extractall(self._data_dir)
         engine = sqlalchemy.create_engine(f"sqlite:///{self._data_dir}/db.sqlite")
-        self.session_maker = sqlalchemy.orm.sessionmaker(engine)
+        self.session_maker = sqlalchemy.orm.sessionmaker(engine, autoflush=False)
         # actual js always calls validation
         self.validate()
         # load the client id
