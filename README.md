@@ -24,6 +24,7 @@ every single transaction registered on the Actual budget file:
 
 ```python
 from actual import Actual
+from actual.queries import get_transactions
 
 with Actual(
     base_url="http://localhost:5006",  # Url of the Actual Server
@@ -31,7 +32,7 @@ with Actual(
     file="<file_id_or_name>",  # Set the file to work with. Can be either the file id or file name, if name is unique
     data_dir="<path_to_data_directory>"  # Optional: Directory to store downloaded files. Will use a temporary if not provided
 ) as actual:
-    transactions = actual.get_transactions()
+    transactions = get_transactions(actual.session)
     for t in transactions:
         account_name = t.account.name if t.account else None
         category = t.category.name if t.category else None
@@ -64,7 +65,7 @@ You will then have a freshly created new budget to use:
 # Adding new transactions
 
 After you created your first budget (or when updating an existing budget), you can add new transactions by adding them
-using the `actual.add()` method. You cannot use the SQLAlchemy session directly because that adds the entries to your
+using the `actual.session.add()` method. You cannot use the SQLAlchemy session directly because that adds the entries to your
 local database, but will not sync the results back to the server (that is only possible when reuploading the file).
 
 The method will make sure the local database is updated, but will also send a SYNC request with the added data so that
@@ -74,16 +75,20 @@ it will be immediately available on the frontend:
 import decimal
 import datetime
 from actual import Actual
-from actual.database import Transactions
+from actual.queries import get_accounts, create_transaction_from_ids
 
 with Actual(base_url="http://localhost:5006", password="mypass", file="My budget") as actual:
-    act = actual.get_accounts()[0]  # get first account
-    t = Transactions.new(act.id, decimal.Decimal(10.5), datetime.date.today(), notes="My first transaction")
-    actual.add(t)
+    act = get_accounts(actual.session)[0]  # get first account
+    t = create_transaction_from_ids(
+        actual.session, datetime.date.today(), act.id, None, notes="My first transaction", amount=decimal.Decimal(10.5)
+    )
+    actual.session.add(t)
+    actual.commit()  # use the actual.commit() instead of session.commit()!
 ```
 
 ![added-transaction](./docs/static/added-transaction.png)
 
 # Contributing
 
-The goal is to have more features implemented and tested on the Actual API.
+The goal is to have more features implemented and tested on the Actual API. If you have ideas, comments, bug fixes or
+requests feel free to open an issue or submit a pull request.

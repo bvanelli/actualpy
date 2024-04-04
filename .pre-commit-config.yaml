@@ -13,6 +13,8 @@ repos:
       - id: trailing-whitespace
       - id: end-of-file-fixer
       - id: check-added-large-files
+        args:
+          - '--maxkb=1024'  # allow screenshots
   - repo: 'https://github.com/pycqa/isort'
     rev: 5.13.2
     hooks:

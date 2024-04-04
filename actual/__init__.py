@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import contextlib
 import datetime
 import io
 import json
@@ -10,27 +9,27 @@ import sqlite3
 import tempfile
 import uuid
 import zipfile
-from typing import TYPE_CHECKING, List, Union
+from typing import TYPE_CHECKING, Union
 
 import sqlalchemy
 import sqlalchemy.orm
-from sqlalchemy.orm import joinedload
 
 from actual.api import ActualServer, RemoteFileListDTO
 from actual.database import (
-    Accounts,
-    Categories,
     MessagesClock,
-    Payees,
-    Transactions,
     get_attribute_by_table_name,
     get_class_by_table_name,
 )
-from actual.exceptions import InvalidZipFile, UnknownFileId
+from actual.exceptions import (
+    ActualError,
+    ActualInvalidOperationError,
+    InvalidZipFile,
+    UnknownFileId,
+)
 from actual.protobuf_models import HULC_Client, Message, SyncRequest
 
 if TYPE_CHECKING:
-    from actual.database import BaseModel
+    pass
 
 
 class Actual(ActualServer):
@@ -61,31 +60,31 @@ class Actual(ActualServer):
         super().__init__(base_url, token, password, bootstrap)
         self._file: RemoteFileListDTO | None = None
         self._data_dir = pathlib.Path(data_dir) if data_dir else None
-        self._session_maker = None
+        self.session_maker = None
         self._session: sqlalchemy.orm.Session | None = None
         self._client: HULC_Client | None = None
         # set the correct file
         if file:
             self.set_file(file)
+        self._in_context = False
 
     def __enter__(self) -> Actual:
         if self._file:
             self.download_budget()
-            self._session = self._session_maker()
+            self._session = self.session_maker()
+        self._in_context = True
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self._session:
             self._session.close()
+        self._in_context = False
 
-    @contextlib.contextmanager
-    def with_session(self) -> sqlalchemy.orm.Session:
-        s = self._session if self._session else self._session_maker()
-        try:
-            yield s
-        finally:
-            if not self._session:
-                s.close()
+    @property
+    def session(self) -> sqlalchemy.orm.Session:
+        if not self._session:
+            raise ActualError("No session defined. Use `with Actual() as actual:` construct to generate one.")
+        return self._session
 
     def set_file(self, file_id: Union[str, RemoteFileListDTO]) -> RemoteFileListDTO:
         """Sets the file id for the class for further requests. The file_id argument can be either a name or remote
@@ -155,7 +154,9 @@ class Actual(ActualServer):
         self.run_migrations(migration_files[1:])
         # generate a session
         engine = sqlalchemy.create_engine(f"sqlite:///{self._data_dir}/db.sqlite")
-        self._session_maker = sqlalchemy.orm.sessionmaker(engine)
+        self.session_maker = sqlalchemy.orm.sessionmaker(engine, autoflush=False)
+        if self._in_context:
+            self._session = self.session_maker()
         # create a clock
         self.load_clock()
 
@@ -176,9 +177,9 @@ class Actual(ActualServer):
 
     def apply_changes(self, messages: list[Message]):
         """Applies a list of sync changes, based on what the sync method returned on the remote."""
-        if not self._session_maker:
+        if not self.session_maker:
             raise UnknownFileId("No valid file available, download one with download_budget()")
-        with self.with_session() as s:
+        with self.session_maker() as s:
             for message in messages:
                 if message.dataset == "prefs":
                     # write it to metadata.json instead
@@ -193,6 +194,8 @@ class Actual(ActualServer):
                     entry = table(id=message.row)
                 setattr(entry, column, message.get_value())
                 s.add(entry)
+                # this seems to be required for sqlmodel, remove if not needed anymore when querying from cache
+                s.flush()
             s.commit()
 
     def download_budget(self):
@@ -210,7 +213,7 @@ class Actual(ActualServer):
         # this should extract 'db.sqlite' and 'metadata.json' to the folder
         zip_file.extractall(self._data_dir)
         engine = sqlalchemy.create_engine(f"sqlite:///{self._data_dir}/db.sqlite")
-        self._session_maker = sqlalchemy.orm.sessionmaker(engine)
+        self.session_maker = sqlalchemy.orm.sessionmaker(engine, autoflush=False)
         # actual js always calls validation
         self.validate()
         # load the client id
@@ -227,7 +230,7 @@ class Actual(ActualServer):
         """See implementation at:
         https://github.com/actualbudget/actual/blob/5bcfc71be67c6e7b7c8b444e4c4f60da9ea9fdaa/packages/loot-core/src/server/db/index.ts#L81-L98
         """
-        with self.with_session() as session:
+        with self.session_maker() as session:
             clock = session.query(MessagesClock).first()
             if not clock:
                 clock_message = {
@@ -241,58 +244,28 @@ class Actual(ActualServer):
             self._client = HULC_Client.from_timestamp(json.loads(clock.clock)["timestamp"])
         return clock
 
-    def get_transactions(self) -> List[Transactions]:
-        with self._session_maker() as s:
-            query = (
-                s.query(Transactions)
-                .options(
-                    joinedload(Transactions.account),
-                    joinedload(Transactions.category),
-                    joinedload(Transactions.payee),
-                )
-                .filter(
-                    Transactions.date.isnot(None),
-                    Transactions.acct.isnot(None),
-                    sqlalchemy.or_(Transactions.is_child == 0, Transactions.parent_id.isnot(None)),
-                    sqlalchemy.func.coalesce(Transactions.tombstone, 0) == 0,
-                )
-                .order_by(
-                    Transactions.date.desc(),
-                    Transactions.starting_balance_flag,
-                    Transactions.sort_order.desc(),
-                    Transactions.id,
-                )
+    def commit(self):
+        """Adds all pending entries to the local database, and sends a sync request to the remote server to synchronize
+        the local changes. It's important to note that this process is not atomic, so if the process is interrupted
+        before it completes successfully, the files would end up in a unknown state, leading you to have to redo
+        the budget download."""
+        if not self._session:
+            raise ActualError("No session has been created for the file.")
+        if len(self._session.deleted):
+            raise ActualInvalidOperationError(
+                "Actual does not allow deleting entries, set the `tombstone` to 1 instead"
             )
-            return query.all()
-
-    def add(self, model: BaseModel):
-        """Adds a new entry to the local database, sends a sync request to the remote server to synchronize
-        the local changes, then commits the change on the local database. It's important to note that this process
-        is not atomic, so if the process is interrupted before it completes successfully, the files would end up in
-        a unknown state."""
-        with self.with_session() as s:
-            # add to database and see if all works well
-            s.add(model)
-            # generate a sync request and sync it to the server
-            req = SyncRequest({"fileId": self._file.file_id, "groupId": self._file.group_id})
-            req.set_null_timestamp(client_id=self._client.client_id)
-            req.set_messages(model.convert(), self._client)
-            self.sync(req)
-            s.commit()
-            if not self._session:
-                s.close()
-
-    def get_categories(self) -> List[Categories]:
-        with self.with_session() as s:
-            query = s.query(Categories)
-            return query.all()
-
-    def get_accounts(self) -> List[Accounts]:
-        with self.with_session() as s:
-            query = s.query(Accounts)
-            return query.all()
-
-    def get_payees(self) -> List[Payees]:
-        with self.with_session() as s:
-            query = s.query(Payees)
-            return query.all()
+        # create sync request based on the session reference that is tracked
+        req = SyncRequest({"fileId": self._file.file_id, "groupId": self._file.group_id})
+        req.set_null_timestamp(client_id=self._client.client_id)
+        # first we add all new entries and modify is required
+        for model in self._session.new:
+            req.set_messages(model.convert(is_new=True), self._client)
+        # modify if required
+        for model in self._session.dirty:
+            if self._session.is_modified(model):
+                req.set_messages(model.convert(is_new=False), self._client)
+        # make sure changes are valid before syncing
+        self._session.commit()
+        # sync all changes to the server
+        self.sync(req)
