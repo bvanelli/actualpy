@@ -80,7 +80,7 @@ from actual.queries import get_accounts, create_transaction_from_ids
 with Actual(base_url="http://localhost:5006", password="mypass", file="My budget") as actual:
     act = get_accounts(actual.session)[0]  # get first account
     t = create_transaction_from_ids(
-        actual.session, act.id, datetime.date.today(), None, notes="My first transaction", amount=decimal.Decimal(10.5)
+        actual.session, datetime.date.today(), act.id, None, notes="My first transaction", amount=decimal.Decimal(10.5)
     )
     actual.session.add(t)
     actual.commit()  # use the actual.commit() instead of session.commit()!

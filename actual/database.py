@@ -94,6 +94,11 @@ class BaseModel(SQLModel):
                     changes.append(m)
         return changes
 
+    def delete(self):
+        if not getattr(self, "tombstone", None):
+            raise AttributeError(f"Model {self.__name__} has no tombstone field and cannot be deleted.")
+        setattr(self, "tombstone", 1)
+
 
 class Meta(SQLModel, table=True):
     __tablename__ = "__meta__"
@@ -130,14 +135,14 @@ class Accounts(BaseModel, table=True):
     transactions: List["Transactions"] = Relationship(back_populates="account")
 
 
-class Banks(SQLModel, table=True):
+class Banks(BaseModel, table=True):
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
     bank_id: Optional[str] = Field(default=None, sa_column=Column("bank_id", Text))
     name: Optional[str] = Field(default=None, sa_column=Column("name", Text))
     tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
 
 
-class Categories(SQLModel, table=True):
+class Categories(BaseModel, table=True):
     hidden: bool = Field(sa_column=Column("hidden", Boolean, nullable=False, server_default=text("0")))
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
     name: Optional[str] = Field(default=None, sa_column=Column("name", Text))
@@ -153,7 +158,7 @@ class Categories(SQLModel, table=True):
     group: "CategoryGroups" = Relationship(back_populates="categories", sa_relationship_kwargs={"uselist": False})
 
 
-class CategoryGroups(SQLModel, table=True):
+class CategoryGroups(BaseModel, table=True):
     __tablename__ = "category_groups"
 
     hidden: bool = Field(sa_column=Column("hidden", Boolean, nullable=False, server_default=text("0")))
@@ -166,7 +171,7 @@ class CategoryGroups(SQLModel, table=True):
     categories: List["Categories"] = Relationship(back_populates="group")
 
 
-class CategoryMapping(SQLModel, table=True):
+class CategoryMapping(BaseModel, table=True):
     __tablename__ = "category_mapping"
 
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
@@ -215,14 +220,14 @@ class Notes(SQLModel, table=True):
     note: Optional[str] = Field(default=None, sa_column=Column("note", Text))
 
 
-class PayeeMapping(SQLModel, table=True):
+class PayeeMapping(BaseModel, table=True):
     __tablename__ = "payee_mapping"
 
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
     target_id: Optional[str] = Field(default=None, sa_column=Column("targetId", Text))
 
 
-class Payees(SQLModel, table=True):
+class Payees(BaseModel, table=True):
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
     name: Optional[str] = Field(default=None, sa_column=Column("name", Text))
     category: Optional[str] = Field(default=None, sa_column=Column("category", Text))
@@ -246,7 +251,7 @@ class ReflectBudgets(SQLModel, table=True):
     goal: Optional[int] = Field(default=None, sa_column=Column("goal", Integer, server_default=text("null")))
 
 
-class Rules(SQLModel, table=True):
+class Rules(BaseModel, table=True):
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
     stage: Optional[str] = Field(default=None, sa_column=Column("stage", Text))
     conditions: Optional[str] = Field(default=None, sa_column=Column("conditions", Text))
@@ -293,7 +298,7 @@ class SchedulesNextDate(SQLModel, table=True):
     tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
 
 
-class TransactionFilters(SQLModel, table=True):
+class TransactionFilters(BaseModel, table=True):
     __tablename__ = "transaction_filters"
 
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
