@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import base64
 import datetime
 import uuid
 
 import proto
+
+from actual.crypto import decrypt, encrypt
 
 """
 Protobuf message definitions taken from:
@@ -18,7 +21,7 @@ https://github.com/actualbudget/actual-server/blob/master/src/app-sync.js#L32
 
 class HULC_Client:
     def __init__(self, client_id: str = None, initial_count: int = 0):
-        self.client_id = client_id
+        self.client_id = client_id or self.get_client_id()
         self.initial_count = initial_count
 
     @classmethod
@@ -47,7 +50,9 @@ class HULC_Client:
 
         https://github.com/actualbudget/actual/blob/a9362cc6f9b974140a760ad05816cac51c849769/packages/crdt/src/crdt/timestamp.ts#L80
         """
-        return self.client_id if self.client_id is not None else str(uuid.uuid4()).replace("-", "")[-16:]
+        return (
+            self.client_id if getattr(self, "client_id", None) is not None else str(uuid.uuid4()).replace("-", "")[-16:]
+        )
 
 
 class EncryptedData(proto.Message):
@@ -114,11 +119,24 @@ class SyncRequest(proto.Message):
     def set_null_timestamp(self, client_id: str = None) -> str:
         return self.set_timestamp(client_id, datetime.datetime(1970, 1, 1, 0, 0, 0, 0))
 
-    def set_messages(self, messages: list[Message], client: HULC_Client):
+    def set_messages(self, messages: list[Message], client: HULC_Client, master_key: bytes = None):
         if not self.messages:
             self.messages = []
         for message in messages:
-            m = MessageEnvelope({"content": Message.serialize(message), "isEncrypted": False})
+            content = Message.serialize(message)
+            is_encrypted = False
+            if master_key is not None:
+                encrypted_content = encrypt("", master_key, content)
+                encrypted_data = EncryptedData(
+                    {
+                        "iv": base64.b64decode(encrypted_content["meta"]["iv"]),
+                        "authTag": base64.b64decode(encrypted_content["meta"]["authTag"]),
+                        "data": base64.b64decode(encrypted_content["value"]),
+                    }
+                )
+                content = EncryptedData.serialize(encrypted_data)
+                is_encrypted = True
+            m = MessageEnvelope({"content": content, "isEncrypted": is_encrypted})
             m.timestamp = client.timestamp()
             self.messages.append(m)
 
@@ -128,8 +146,6 @@ class SyncResponse(proto.Message):
     merkle = proto.Field(proto.STRING, number=2)
 
     def get_messages(self, master_key: bytes = None) -> list[Message]:
-        from actual.crypto import decrypt
-
         messages = []
         for message in self.messages:  # noqa
             if message.isEncrypted:

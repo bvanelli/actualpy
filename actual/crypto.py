@@ -3,30 +3,31 @@ import os
 
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-
-from actual.protobuf_models import Message
 
 
 def random_bytes(size: int = 12) -> str:
     return str(os.urandom(size))
 
 
-def create_key_buffer(password: str, key_salt: str = None) -> bytes:
+def make_salt(length: int = 32) -> str:
+    # reference generates 32 bytes of random data
+    # github.com/actualbudget/actual/blob/70e37c0119f4ba95ccf6549f0df4aac770f1bb8f/packages/loot-core/src/server/main.ts#L1489
+    return base64.b64encode(os.urandom(length)).decode()
+
+
+def create_key_buffer(password: str, key_salt: str) -> bytes:
     if key_salt is None:
-        # reference generates 32 bytes of random data
-        # github.com/actualbudget/actual/blob/70e37c0119f4ba95ccf6549f0df4aac770f1bb8f/packages/loot-core/src/server/main.ts#L1489
-        key_salt = base64.b64encode(os.urandom(32)).decode()
+        key_salt = make_salt()
     kdf = PBKDF2HMAC(algorithm=hashes.SHA512(), length=32, salt=key_salt.encode(), iterations=10_000)
     return kdf.derive(password.encode())
 
 
 def encrypt(key_id: str, master_key: bytes, plaintext: bytes) -> dict:
-    cypher = AESGCM(master_key)
     iv = os.urandom(12)
-    auth_tag = os.urandom(12)
-    value = cypher.encrypt(iv, plaintext, auth_tag)
+    encryptor = Cipher(algorithms.AES(master_key), modes.GCM(iv)).encryptor()
+    value = encryptor.update(plaintext) + encryptor.finalize()
+    auth_tag = encryptor.tag
     return {
         "value": base64.b64encode(value).decode(),
         "meta": {
@@ -43,10 +44,18 @@ def decrypt(master_key: bytes, iv: bytes, ciphertext: bytes, auth_tag: bytes = N
     return decryptor.update(ciphertext) + decryptor.finalize()
 
 
+def decrypt_from_meta(master_key: bytes, ciphertext: bytes, encrypt_meta) -> bytes:
+    iv = base64.b64decode(encrypt_meta.iv)
+    auth_tag = base64.b64decode(encrypt_meta.auth_tag)
+    return decrypt(master_key, iv, ciphertext, auth_tag)
+
+
 def make_test_message(key_id: str, key: bytes) -> dict:
     """Reference
     https://github.com/actualbudget/actual/blob/70e37c0119f4ba95ccf6549f0df4aac770f1bb8f/packages/loot-core/src/server/sync/make-test-message.ts#L10
     """
+    from actual.protobuf_models import Message
+
     m = Message(dict(dataset=random_bytes(), row=random_bytes(), column=random_bytes(), value=random_bytes()))
     binary_message = Message.serialize(m)
     # return encrypted binary message

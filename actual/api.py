@@ -231,19 +231,24 @@ class ActualServer:
         db.raise_for_status()
         return db.content
 
-    def upload_user_file(self, binary_data: bytes, file_id: str, file_name: str = "My Finances") -> UploadUserFileDTO:
-        """Uploads the binary data, which is a zip folder containing the `db.sqlite` and the `metadata.json`."""
+    def upload_user_file(
+        self, binary_data: bytes, file_id: str, file_name: str = "My Finances", encryption_meta: dict = None
+    ) -> UploadUserFileDTO:
+        """Uploads the binary data, which is a zip folder containing the `db.sqlite` and the `metadata.json`. If the
+        file is encrypted, the encryption_meta has to be provided with fields `keyId`, `algorithm`, `iv` and `authTag`
+        """
+        base_headers = {
+            "X-ACTUAL-FORMAT": "2",
+            "X-ACTUAL-FILE-ID": file_id,
+            "X-ACTUAL-NAME": file_name,
+            "Content-Type": "application/encrypted-file",
+        }
+        if encryption_meta:
+            base_headers["X-ACTUAL-ENCRYPT-META"] = json.dumps(encryption_meta)
         request = requests.post(
             f"{self.api_url}/{Endpoints.UPLOAD_USER_FILE}",
             data=binary_data,
-            headers=self.headers(
-                extra_headers={
-                    "X-ACTUAL-FORMAT": "2",
-                    "X-ACTUAL-FILE-ID": file_id,
-                    "X-ACTUAL-NAME": file_name,
-                    "Content-Type": "application/encrypted-file",
-                }
-            ),
+            headers=self.headers(extra_headers=base_headers),
         )
         request.raise_for_status()
         return UploadUserFileDTO.parse_obj(request.json())
@@ -284,7 +289,7 @@ class ActualServer:
         response.raise_for_status()
         return UserGetKeyDTO.parse_obj(response.json())
 
-    def user_create_key(self, file_id: str, key_id: str, password: str, key_salt: str = None) -> StatusDTO:
+    def user_create_key(self, file_id: str, key_id: str, password: str, key_salt: str) -> StatusDTO:
         """Creates a new key for the user file. The key has to be used then to encrypt the local file, and this file
         still needs to be uploaded."""
         key = create_key_buffer(password, key_salt)
