@@ -127,8 +127,17 @@ class SyncResponse(proto.Message):
     messages = proto.RepeatedField(MessageEnvelope, number=1)
     merkle = proto.Field(proto.STRING, number=2)
 
-    def get_messages(self) -> list[Message]:
+    def get_messages(self, master_key: bytes = None) -> list[Message]:
+        from actual.crypto import decrypt
+
         messages = []
         for message in self.messages:  # noqa
-            messages.append(Message.deserialize(message.content))
+            if message.isEncrypted:
+                if not master_key:
+                    raise ValueError("Master key not provided and data is encrypted.")
+                encrypted = EncryptedData.deserialize(message.content)
+                content = decrypt(master_key, encrypted.iv, encrypted.data, encrypted.authTag)
+            else:
+                content = message.content
+            messages.append(Message.deserialize(content))
         return messages

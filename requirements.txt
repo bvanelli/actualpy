@@ -4,3 +4,4 @@ pydantic>=2
 sqlalchemy>=1.4
 proto-plus>=1
 protobuf>=4
+cryptography>=42

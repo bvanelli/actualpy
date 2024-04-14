@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import enum
+import json
 from typing import List, Optional
 
 import requests
 from pydantic import BaseModel, Field
 
+from actual.crypto import create_key_buffer, make_test_message
 from actual.exceptions import AuthorizationError, UnknownFileId
 from actual.protobuf_models import SyncRequest, SyncResponse
 
@@ -43,6 +45,47 @@ class StatusDTO(BaseModel):
     status: StatusCode
 
 
+class TokenDTO(BaseModel):
+    token: Optional[str]
+
+
+class LoginDTO(StatusDTO):
+    data: TokenDTO
+
+
+class UploadUserFileDTO(StatusDTO):
+    group_id: str = Field(..., alias="groupId")
+
+
+class IsValidatedDTO(BaseModel):
+    validated: Optional[bool]
+
+
+class ValidateDTO(StatusDTO):
+    data: IsValidatedDTO
+
+
+class EncryptMetaDTO(BaseModel):
+    key_id: Optional[str] = Field(..., alias="keyId")
+    algorithm: Optional[str]
+    iv: Optional[str]
+    auth_tag: Optional[str] = Field(..., alias="authTag")
+
+
+class EncryptionTestDTO(BaseModel):
+    value: str
+    meta: EncryptMetaDTO
+
+
+class EncryptionDTO(BaseModel):
+    id: Optional[str]
+    salt: Optional[str]
+    test: Optional[str]
+
+    def meta(self) -> EncryptionTestDTO:
+        return EncryptionTestDTO.parse_raw(self.test)
+
+
 class FileDTO(BaseModel):
     deleted: Optional[int]
     file_id: Optional[str] = Field(..., alias="fileId")
@@ -58,41 +101,12 @@ class RemoteFileDTO(FileDTO):
     encrypt_meta: Optional[EncryptMetaDTO] = Field(..., alias="encryptMeta")
 
 
-class TokenDTO(BaseModel):
-    token: Optional[str]
-
-
-class LoginDTO(StatusDTO):
-    data: TokenDTO
-
-
-class UploadUserFileDTO(StatusDTO):
-    group_id: str = Field(..., alias="groupId")
+class GetUserFileInfoDTO(StatusDTO):
+    data: RemoteFileDTO
 
 
 class ListUserFilesDTO(StatusDTO):
     data: List[RemoteFileListDTO]
-
-
-class IsValidatedDTO(BaseModel):
-    validated: Optional[bool]
-
-
-class ValidateDTO(StatusDTO):
-    data: IsValidatedDTO
-
-
-class EncryptionDTO(BaseModel):
-    id: Optional[str]
-    salt: Optional[str]
-    test: Optional[str]
-
-
-class EncryptMetaDTO(BaseModel):
-    key_id: Optional[str] = Field(..., alias="keyId")
-    algorithm: Optional[str]
-    iv: Optional[str]
-    auth_tag: Optional[str] = Field(..., alias="authTag")
 
 
 class UserGetKeyDTO(StatusDTO):
@@ -241,11 +255,11 @@ class ActualServer:
         response.raise_for_status()
         return ListUserFilesDTO.parse_obj(response.json())
 
-    def get_user_file_info(self, file_id: str) -> RemoteFileDTO:
+    def get_user_file_info(self, file_id: str) -> GetUserFileInfoDTO:
         """Gets the user file information, including the encryption metadata."""
         response = requests.get(f"{self.api_url}/{Endpoints.GET_USER_FILE_INFO}", headers=self.headers(file_id))
         response.raise_for_status()
-        return RemoteFileDTO.parse_obj(response.json())
+        return GetUserFileInfoDTO.parse_obj(response.json())
 
     def update_user_file_name(self, file_id: str, file_name: str) -> StatusDTO:
         """Updates the file name for the budget on the remote server."""
@@ -259,10 +273,10 @@ class ActualServer:
 
     def user_get_key(self, file_id: str) -> UserGetKeyDTO:
         """Gets the key information associated with a user file, including the algorithm, key, salt and iv."""
-        response = requests.get(
+        response = requests.post(
             f"{self.api_url}/{Endpoints.USER_GET_KEY}",
             json={
-                "file_id": file_id,
+                "fileId": file_id,
                 "token": self._token,
             },
             headers=self.headers(file_id),
@@ -270,10 +284,11 @@ class ActualServer:
         response.raise_for_status()
         return UserGetKeyDTO.parse_obj(response.json())
 
-    def user_create_key(self, file_id: str, key_id: str, key_salt: str) -> StatusDTO:
+    def user_create_key(self, file_id: str, key_id: str, password: str, key_salt: str = None) -> StatusDTO:
         """Creates a new key for the user file. The key has to be used then to encrypt the local file, and this file
         still needs to be uploaded."""
-        test_content = ""  # todo: see how this is generated
+        key = create_key_buffer(password, key_salt)
+        test_content = make_test_message(key_id, key)
         response = requests.post(
             f"{self.api_url}/{Endpoints.USER_CREATE_KEY}",
             headers=self.headers(),
@@ -281,7 +296,7 @@ class ActualServer:
                 "fileId": file_id,
                 "keyId": key_id,
                 "keySalt": key_salt,
-                "testContent": test_content,
+                "testContent": json.dumps(test_content),
                 "token": self._token,
             },
         )
