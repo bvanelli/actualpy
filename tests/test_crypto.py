@@ -1,7 +1,10 @@
 import base64
 
+import pytest
+
 from actual.api import EncryptMetaDTO
 from actual.crypto import create_key_buffer, decrypt_from_meta, encrypt, random_bytes
+from actual.exceptions import ActualDecryptionError
 from actual.protobuf_models import HULC_Client, Message, SyncRequest, SyncResponse
 
 
@@ -21,6 +24,8 @@ def test_encrypt_decrypt():
         key, base64.b64decode(encrypted["value"]), EncryptMetaDTO(**encrypted["meta"])
     )
     assert decrypted_from_meta == string_to_encrypt
+    with pytest.raises(ActualDecryptionError):
+        decrypt_from_meta(key[::-1], base64.b64decode(encrypted["value"]), EncryptMetaDTO(**encrypted["meta"]))
 
 
 def test_encrypt_decrypt_message():

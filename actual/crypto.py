@@ -1,9 +1,12 @@
 import base64
 import os
 
+import cryptography.exceptions
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+from actual.exceptions import ActualDecryptionError
 
 
 def random_bytes(size: int = 12) -> str:
@@ -41,7 +44,10 @@ def encrypt(key_id: str, master_key: bytes, plaintext: bytes) -> dict:
 
 def decrypt(master_key: bytes, iv: bytes, ciphertext: bytes, auth_tag: bytes = None) -> bytes:
     decryptor = Cipher(algorithms.AES(master_key), modes.GCM(iv, auth_tag)).decryptor()
-    return decryptor.update(ciphertext) + decryptor.finalize()
+    try:
+        return decryptor.update(ciphertext) + decryptor.finalize()
+    except cryptography.exceptions.InvalidTag:
+        raise ActualDecryptionError("Error decrypting file. Is the encryption key correct?") from None
 
 
 def decrypt_from_meta(master_key: bytes, ciphertext: bytes, encrypt_meta) -> bytes:
