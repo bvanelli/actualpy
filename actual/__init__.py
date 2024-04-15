@@ -206,6 +206,8 @@ class Actual(ActualServer):
             z.write(self._data_dir / "metadata.json", "metadata.json")
         # we have to first upload the user file so the reference id can be used to generate a new encryption key
         self.upload_user_file(binary_data.getvalue(), self._file.file_id, self._file.name)
+        # reset local file id to retrieve the grouping id
+        self.set_file(self._file.file_id)
         # encrypt the file and re-upload
         if self._encryption_password or self._master_key or self._file.encrypt_key_id:
             self.encrypt(self._encryption_password)
@@ -239,7 +241,7 @@ class Actual(ActualServer):
         """Updates the metadata.json from the Actual file with the patch fields. The patch is a dictionary that will
         then be merged on the metadata and written again to a file."""
         config = json.loads((self._data_dir / "metadata.json").read_text() or "{}") | patch
-        (self._data_dir / "metadata.json").write_text(json.dumps(config))
+        (self._data_dir / "metadata.json").write_text(json.dumps(config, separators=(",", ":")))
 
     def download_budget(self, encryption_password: str = None):
         """Downloads the budget file from the remote. After the file is downloaded, the sync endpoint is queries
@@ -303,7 +305,7 @@ class Actual(ActualServer):
                     "timestamp": HULC_Client().timestamp(now=datetime.datetime(1970, 1, 1, 0, 0, 0, 0)),
                     "merkle": {},
                 }
-                clock = MessagesClock(id=0, clock=json.dumps(clock_message))
+                clock = MessagesClock(id=1, clock=json.dumps(clock_message, separators=(",", ":")))
                 session.add(clock)
             session.commit()
             # add clock id to client id
