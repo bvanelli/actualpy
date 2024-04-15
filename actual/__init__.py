@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import datetime
 import io
 import json
@@ -9,12 +10,13 @@ import sqlite3
 import tempfile
 import uuid
 import zipfile
-from typing import TYPE_CHECKING, Union
+from typing import Union
 
 import sqlalchemy
 import sqlalchemy.orm
 
 from actual.api import ActualServer, RemoteFileListDTO
+from actual.crypto import create_key_buffer, decrypt_from_meta, encrypt, make_salt
 from actual.database import (
     MessagesClock,
     get_attribute_by_table_name,
@@ -28,9 +30,6 @@ from actual.exceptions import (
 )
 from actual.protobuf_models import HULC_Client, Message, SyncRequest
 
-if TYPE_CHECKING:
-    pass
-
 
 class Actual(ActualServer):
     def __init__(
@@ -39,6 +38,7 @@ class Actual(ActualServer):
         token: str = None,
         password: str = None,
         file: str = None,
+        encryption_password: str = None,
         data_dir: Union[str, pathlib.Path] = None,
         bootstrap: bool = False,
     ):
@@ -53,6 +53,7 @@ class Actual(ActualServer):
         :param token: the token for authentication, if this is available (optional)
         :param password: the password for authentication. It will be used on the .login() method to retrieve the token.
         :param file: the name or id of the file to be set
+        :param encryption_password: password used to configure encryption, if existing
         :param data_dir: where to store the downloaded files from the server. If not specified, a temporary folder will
             be created instead.
         :param bootstrap: if the server is not bootstrapped, bootstrap it with the password.
@@ -66,11 +67,13 @@ class Actual(ActualServer):
         # set the correct file
         if file:
             self.set_file(file)
+        self._encryption_password = encryption_password
+        self._master_key = None
         self._in_context = False
 
     def __enter__(self) -> Actual:
         if self._file:
-            self.download_budget()
+            self.download_budget(self._encryption_password)
             self._session = self.session_maker()
         self._in_context = True
         return self
@@ -126,8 +129,9 @@ class Actual(ActualServer):
         conn.commit()
         conn.close()
 
-    def create_budget(self, budget_name: str):
-        """Creates a budget using the remote server default database and migrations."""
+    def create_budget(self, budget_name: str, encryption_password: str = None):
+        """Creates a budget using the remote server default database and migrations. If password is provided, the
+        budget will be encrypted."""
         migration_files = self.data_file_index()
         # create folder for the files
         if not self._data_dir:
@@ -138,16 +142,14 @@ class Actual(ActualServer):
         # also write the metadata file with default fields
         random_id = str(uuid.uuid4()).replace("-", "")[:7]
         file_id = str(uuid.uuid4())
-        (self._data_dir / "metadata.json").write_text(
-            json.dumps(
-                {
-                    "id": f"My-Finances-{random_id}",
-                    "budgetName": budget_name,
-                    "userId": self._token,
-                    "cloudFileId": file_id,
-                    "resetClock": True,
-                }
-            )
+        self.update_metadata(
+            {
+                "id": f"My-Finances-{random_id}",
+                "budgetName": budget_name,
+                "userId": self._token,
+                "cloudFileId": file_id,
+                "resetClock": True,
+            }
         )
         self._file = RemoteFileListDTO(name=budget_name, fileId=file_id, groupId=None, deleted=0, encryptKeyId=None)
         # create engine for downloaded database and run migrations
@@ -160,6 +162,40 @@ class Actual(ActualServer):
         # create a clock
         self.load_clock()
 
+    def _gen_zip(self) -> bytes:
+        binary_data = io.BytesIO()
+        with zipfile.ZipFile(binary_data, "a", zipfile.ZIP_DEFLATED, False) as z:
+            z.write(self._data_dir / "db.sqlite", "db.sqlite")
+            z.write(self._data_dir / "metadata.json", "metadata.json")
+        return binary_data.getvalue()
+
+    def encrypt(self, encryption_password: str):
+        """Encrypts the local database using a new key, and re-uploads to the server.
+
+        WARNING: this resets the file on the server. Make sure you have a copy of the database before attempting this
+        operation.
+        """
+        if encryption_password and not self._file.encrypt_key_id:
+            # password was provided, but encryption key not, create one
+            key_id = str(uuid.uuid4())
+            salt = make_salt()
+            self.user_create_key(self._file.file_id, key_id, encryption_password, salt)
+            self.update_metadata({"encryptKeyId": key_id})
+            self._file.encrypt_key_id = key_id
+        elif self._file.encrypt_key_id:
+            key_info = self.user_get_key(self._file.file_id)
+            salt = key_info.data.salt
+        else:
+            raise ActualError("Budget is encrypted but password was not provided")
+        self._master_key = create_key_buffer(encryption_password, salt)
+        # encrypt binary data with
+        encrypted = encrypt(self._file.encrypt_key_id, self._master_key, self._gen_zip())
+        binary_data = io.BytesIO(base64.b64decode(encrypted["value"]))
+        encryption_meta = encrypted["meta"]
+        self.reset_user_file(self._file.file_id)
+        self.upload_user_file(binary_data.getvalue(), self._file.file_id, self._file.name, encryption_meta)
+        self.set_file(self._file.file_id)
+
     def upload_budget(self):
         """Uploads the current file to the Actual server."""
         if not self._data_dir:
@@ -168,8 +204,11 @@ class Actual(ActualServer):
         with zipfile.ZipFile(binary_data, "a", zipfile.ZIP_DEFLATED, False) as z:
             z.write(self._data_dir / "db.sqlite", "db.sqlite")
             z.write(self._data_dir / "metadata.json", "metadata.json")
-            binary_data.seek(0)
-        return self.upload_user_file(binary_data.getvalue(), self._file.file_id, self._file.name)
+        # we have to first upload the user file so the reference id can be used to generate a new encryption key
+        self.upload_user_file(binary_data.getvalue(), self._file.file_id, self._file.name)
+        # encrypt the file and re-upload
+        if self._encryption_password or self._master_key or self._file.encrypt_key_id:
+            self.encrypt(self._encryption_password)
 
     def reupload_budget(self):
         self.reset_user_file(self._file.file_id)
@@ -183,9 +222,7 @@ class Actual(ActualServer):
             for message in messages:
                 if message.dataset == "prefs":
                     # write it to metadata.json instead
-                    config = json.loads((self._data_dir / "metadata.json").read_text() or "{}")
-                    config[message.row] = message.get_value()
-                    (self._data_dir / "metadata.json").write_text(json.dumps(config))
+                    self.update_metadata({message.row: message.get_value()})
                     continue
                 table = get_class_by_table_name(message.dataset)
                 column = get_attribute_by_table_name(message.dataset, message.column)
@@ -198,16 +235,38 @@ class Actual(ActualServer):
                 s.flush()
             s.commit()
 
-    def download_budget(self):
+    def update_metadata(self, patch: dict):
+        """Updates the metadata.json from the Actual file with the patch fields. The patch is a dictionary that will
+        then be merged on the metadata and written again to a file."""
+        config = json.loads((self._data_dir / "metadata.json").read_text() or "{}") | patch
+        (self._data_dir / "metadata.json").write_text(json.dumps(config))
+
+    def download_budget(self, encryption_password: str = None):
         """Downloads the budget file from the remote. After the file is downloaded, the sync endpoint is queries
         for the list of pending changes. The changes are individual row updates, that are then applied on by one to
-        the downloaded database state."""
+        the downloaded database state.
+
+        If the budget is password protected, the password needs to be present to download the budget, otherwise it will
+        fail.
+        """
         file_bytes = self.download_user_file(self._file.file_id)
+
+        if self._file.encrypt_key_id and encryption_password is None:
+            raise ActualError("File is encrypted but no encryption password provided.")
+        if encryption_password is not None:
+            file_info = self.get_user_file_info(self._file.file_id)
+            key_info = self.user_get_key(self._file.file_id)
+            self._master_key = create_key_buffer(encryption_password, key_info.data.salt)
+            # decrypt file bytes
+            file_bytes = decrypt_from_meta(self._master_key, file_bytes, file_info.data.encrypt_meta)
+        self._load_zip(file_bytes)
+
+    def _load_zip(self, file_bytes: bytes):
         f = io.BytesIO(file_bytes)
         try:
             zip_file = zipfile.ZipFile(f)
         except zipfile.BadZipfile as e:
-            raise InvalidZipFile(f"Invalid zip file: {e}")
+            raise InvalidZipFile(f"Invalid zip file: {e}") from None
         if not self._data_dir:
             self._data_dir = pathlib.Path(tempfile.mkdtemp())
         # this should extract 'db.sqlite' and 'metadata.json' to the folder
@@ -219,10 +278,17 @@ class Actual(ActualServer):
         # load the client id
         self.load_clock()
         # after downloading the budget, some pending transactions still need to be retrieved using sync
-        request = SyncRequest({"messages": [], "fileId": self._file.file_id, "groupId": self._file.group_id})
+        request = SyncRequest(
+            {
+                "messages": [],
+                "fileId": self._file.file_id,
+                "groupId": self._file.group_id,
+                "keyId": self._file.encrypt_key_id,
+            }
+        )
         request.set_null_timestamp(client_id=self._client.client_id)  # using 0 timestamp to retrieve all changes
         changes = self.sync(request)
-        self.apply_changes(changes.get_messages())
+        self.apply_changes(changes.get_messages(self._master_key))
         if changes.messages:
             self._client = HULC_Client.from_timestamp(changes.messages[-1].timestamp)
 
@@ -257,14 +323,16 @@ class Actual(ActualServer):
             )
         # create sync request based on the session reference that is tracked
         req = SyncRequest({"fileId": self._file.file_id, "groupId": self._file.group_id})
+        if self._file.encrypt_key_id:
+            req.keyId = self._file.encrypt_key_id
         req.set_null_timestamp(client_id=self._client.client_id)
         # first we add all new entries and modify is required
         for model in self._session.new:
-            req.set_messages(model.convert(is_new=True), self._client)
+            req.set_messages(model.convert(is_new=True), self._client, master_key=self._master_key)
         # modify if required
         for model in self._session.dirty:
             if self._session.is_modified(model):
-                req.set_messages(model.convert(is_new=False), self._client)
+                req.set_messages(model.convert(is_new=False), self._client, master_key=self._master_key)
         # make sure changes are valid before syncing
         self._session.commit()
         # sync all changes to the server

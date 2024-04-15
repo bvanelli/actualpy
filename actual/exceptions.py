@@ -42,3 +42,7 @@ class InvalidZipFile(ActualError):
 
 class InvalidFile(ActualError):
     pass
+
+
+class ActualDecryptionError(ActualError):
+    pass
