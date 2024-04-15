@@ -162,10 +162,39 @@ class Actual(ActualServer):
         # create a clock
         self.load_clock()
 
+    def _gen_zip(self) -> bytes:
+        binary_data = io.BytesIO()
+        with zipfile.ZipFile(binary_data, "a", zipfile.ZIP_DEFLATED, False) as z:
+            z.write(self._data_dir / "db.sqlite", "db.sqlite")
+            z.write(self._data_dir / "metadata.json", "metadata.json")
+        return binary_data.getvalue()
+
     def encrypt(self, encryption_password: str):
-        key_id = str(uuid.uuid4())
-        salt = ""
-        self.user_create_key(self._file.file_id, key_id, encryption_password, salt)
+        """Encrypts the local database using a new key, and re-uploads to the server.
+
+        WARNING: this resets the file on the server. Make sure you have a copy of the database before attempting this
+        operation.
+        """
+        if encryption_password and not self._file.encrypt_key_id:
+            # password was provided, but encryption key not, create one
+            key_id = str(uuid.uuid4())
+            salt = make_salt()
+            self.user_create_key(self._file.file_id, key_id, encryption_password, salt)
+            self.update_metadata({"encryptKeyId": key_id})
+            self._file.encrypt_key_id = key_id
+        elif self._file.encrypt_key_id:
+            key_info = self.user_get_key(self._file.file_id)
+            salt = key_info.data.salt
+        else:
+            raise ActualError("Budget is encrypted but password was not provided")
+        self._master_key = create_key_buffer(encryption_password, salt)
+        # encrypt binary data with
+        encrypted = encrypt(self._file.encrypt_key_id, self._master_key, self._gen_zip())
+        binary_data = io.BytesIO(base64.b64decode(encrypted["value"]))
+        encryption_meta = encrypted["meta"]
+        self.reset_user_file(self._file.file_id)
+        self.upload_user_file(binary_data.getvalue(), self._file.file_id, self._file.name, encryption_meta)
+        self.set_file(self._file.file_id)
 
     def upload_budget(self):
         """Uploads the current file to the Actual server."""
@@ -179,26 +208,7 @@ class Actual(ActualServer):
         self.upload_user_file(binary_data.getvalue(), self._file.file_id, self._file.name)
         # encrypt the file and re-upload
         if self._encryption_password or self._master_key or self._file.encrypt_key_id:
-            if self._encryption_password and not self._file.encrypt_key_id:
-                # password was provided, but encryption key not, create one
-                key_id = str(uuid.uuid4())
-                salt = make_salt()
-                self.user_create_key(self._file.file_id, key_id, self._encryption_password, salt)
-                self.update_metadata({"encryptKeyId": key_id})
-                self._file.encrypt_key_id = key_id
-            elif self._file.encrypt_key_id:
-                key_info = self.user_get_key(self._file.file_id)
-                salt = key_info.data.salt
-            else:
-                raise ActualError("Budget is encrypted but password was not provided")
-            self._master_key = create_key_buffer(self._encryption_password, salt)
-            # encrypt binary data with
-            encrypted = encrypt(self._file.encrypt_key_id, self._master_key, binary_data.getvalue())
-            binary_data = io.BytesIO(base64.b64decode(encrypted["value"]))
-            encryption_meta = encrypted["meta"]
-            self.reset_user_file(self._file.file_id)
-            self.upload_user_file(binary_data.getvalue(), self._file.file_id, self._file.name, encryption_meta)
-            self.set_file(self._file.file_id)
+            self.encrypt(self._encryption_password)
 
     def reupload_budget(self):
         self.reset_user_file(self._file.file_id)
