@@ -20,8 +20,6 @@ def make_salt(length: int = 32) -> str:
 
 
 def create_key_buffer(password: str, key_salt: str) -> bytes:
-    if key_salt is None:
-        key_salt = make_salt()
     kdf = PBKDF2HMAC(algorithm=hashes.SHA512(), length=32, salt=key_salt.encode(), iterations=10_000)
     return kdf.derive(password.encode())
 

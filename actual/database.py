@@ -1,6 +1,5 @@
 import datetime
 import decimal
-import uuid
 from typing import List, Optional, Union
 
 from sqlalchemy import (
@@ -95,8 +94,8 @@ class BaseModel(SQLModel):
         return changes
 
     def delete(self):
-        if not getattr(self, "tombstone", None):
-            raise AttributeError(f"Model {self.__name__} has no tombstone field and cannot be deleted.")
+        if not hasattr(self, "tombstone"):
+            raise AttributeError(f"Model {self.__class__.__name__} has no tombstone field and cannot be deleted.")
         setattr(self, "tombstone", 1)
 
 
@@ -351,32 +350,17 @@ class Transactions(BaseModel, table=True):
     category: Optional["Categories"] = Relationship(back_populates="transactions")
     payee: Optional["Payees"] = Relationship(back_populates="transactions")
 
-    @classmethod
-    def new(
-        cls,
-        account_id: str,
-        amount: decimal.Decimal,
-        date: datetime.date,
-        notes: Optional[str] = None,
-        category: Optional[Categories] = None,
-        payee: Optional[Payees] = None,
-    ):
-        date_int = int(datetime.date.strftime(date, "%Y%m%d"))
-        return cls(
-            id=str(uuid.uuid4()),
-            acct=account_id,
-            date=date_int,
-            amount=int(amount * 100),
-            category=category,
-            payee=payee,
-            notes=notes,
-            reconciled=0,
-            cleared=0,
-            sort_order=datetime.datetime.utcnow().timestamp(),
-        )
-
     def get_date(self) -> datetime.date:
         return datetime.datetime.strptime(str(self.date), "%Y%m%d").date()
+
+    def set_date(self, date: datetime.date):
+        self.date = int(datetime.date.strftime(date, "%Y%m%d"))
+
+    def set_amount(self, amount: Union[decimal.Decimal, int, float]):
+        self.amount = int(amount * 100)
+
+    def get_amount(self) -> decimal.Decimal:
+        return decimal.Decimal(self.amount) / decimal.Decimal(100)
 
 
 class ZeroBudgetMonths(SQLModel, table=True):

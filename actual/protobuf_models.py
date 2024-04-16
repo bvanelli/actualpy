@@ -7,6 +7,7 @@ import uuid
 import proto
 
 from actual.crypto import decrypt, encrypt
+from actual.exceptions import ActualDecryptionError
 
 """
 Protobuf message definitions taken from:
@@ -150,7 +151,7 @@ class SyncResponse(proto.Message):
         for message in self.messages:  # noqa
             if message.isEncrypted:
                 if not master_key:
-                    raise ValueError("Master key not provided and data is encrypted.")
+                    raise ActualDecryptionError("Master key not provided and data is encrypted.")
                 encrypted = EncryptedData.deserialize(message.content)
                 content = decrypt(master_key, encrypted.iv, encrypted.data, encrypted.authTag)
             else:

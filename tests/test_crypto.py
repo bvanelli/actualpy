@@ -3,7 +3,15 @@ import base64
 import pytest
 
 from actual.api import EncryptMetaDTO
-from actual.crypto import create_key_buffer, decrypt_from_meta, encrypt, random_bytes
+from actual.crypto import (
+    create_key_buffer,
+    decrypt,
+    decrypt_from_meta,
+    encrypt,
+    make_salt,
+    make_test_message,
+    random_bytes,
+)
 from actual.exceptions import ActualDecryptionError
 from actual.protobuf_models import HULC_Client, Message, SyncRequest, SyncResponse
 
@@ -35,6 +43,18 @@ def test_encrypt_decrypt_message():
     req.set_messages([m], HULC_Client(), master_key=key)
     resp = SyncResponse()
     resp.messages = req.messages
+    with pytest.raises(ActualDecryptionError):
+        resp.get_messages()  # should fail to get messages without a key
     decrypted_messages = resp.get_messages(master_key=key)
     assert len(decrypted_messages) == 1
     assert decrypted_messages[0] == m
+
+
+def test_create_test_message():
+    key = create_key_buffer(make_salt(), make_salt())
+    tm = make_test_message("", key)
+    dfm = decrypt(
+        key, base64.b64decode(tm["meta"]["iv"]), base64.b64decode(tm["value"]), base64.b64decode(tm["meta"]["authTag"])
+    )
+    m = Message.deserialize(dfm)
+    assert isinstance(m, Message)
