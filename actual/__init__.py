@@ -260,7 +260,7 @@ class Actual(ActualServer):
 
         if self._file.encrypt_key_id and encryption_password is None:
             raise ActualError("File is encrypted but no encryption password provided.")
-        if encryption_password is not None:
+        if encryption_password is not None and self._file.encrypt_key_id:
             file_info = self.get_user_file_info(self._file.file_id)
             key_info = self.user_get_key(self._file.file_id)
             self._master_key = create_key_buffer(encryption_password, key_info.data.salt)

@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import base64
 import os
+import uuid
 
 import cryptography.exceptions
 from cryptography.hazmat.primitives import hashes
@@ -64,3 +67,32 @@ def make_test_message(key_id: str, key: bytes) -> dict:
     binary_message = Message.serialize(m)
     # return encrypted binary message
     return encrypt(key_id, key, binary_message)
+
+
+def is_uuid(text: str, version: int = 4):
+    """
+    Check if uuid_to_test is a valid UUID.
+
+    Taken from https://stackoverflow.com/a/54254115/12681470
+
+     Parameters
+    ----------
+    uuid_to_test : str
+    version : {1, 2, 3, 4}
+
+     Returns
+    -------
+    `True` if uuid_to_test is a valid UUID, otherwise `False`.
+
+     Examples
+    --------
+    >>> is_uuid('c9bf9e57-1685-4c89-bafb-ff5af830be8a')
+    True
+    >>> is_uuid('c9bf9e58')
+    False
+    """
+    try:
+        uuid.UUID(str(text), version=version)
+        return True
+    except ValueError:
+        return False

@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import datetime
 import decimal
+import json
 import typing
 import uuid
 
+import pydantic
 import sqlalchemy
 from sqlalchemy.orm import Session, joinedload
 
+from actual.crypto import is_uuid
 from actual.database import (
     Accounts,
     Categories,
@@ -15,40 +18,13 @@ from actual.database import (
     CategoryMapping,
     PayeeMapping,
     Payees,
+    Rules,
     Transactions,
 )
 from actual.exceptions import ActualError
+from actual.rules import Action, Condition, Rule, RuleSet
 
 T = typing.TypeVar("T")
-
-
-def is_uuid(text: str, version: int = 4):
-    """
-    Check if uuid_to_test is a valid UUID.
-
-    Taken from https://stackoverflow.com/a/54254115/12681470
-
-     Parameters
-    ----------
-    uuid_to_test : str
-    version : {1, 2, 3, 4}
-
-     Returns
-    -------
-    `True` if uuid_to_test is a valid UUID, otherwise `False`.
-
-     Examples
-    --------
-    >>> is_uuid('c9bf9e57-1685-4c89-bafb-ff5af830be8a')
-    True
-    >>> is_uuid('c9bf9e58')
-    False
-    """
-    try:
-        uuid.UUID(str(text), version=version)
-        return True
-    except ValueError:
-        return False
 
 
 def get_transactions(
@@ -157,7 +133,7 @@ def create_transaction(
     return create_transaction_from_ids(s, date, acct.id, payee.id, notes, category_id, amount)
 
 
-def base_query(s: Session, instance: typing.Type[T], name: str, include_deleted: bool = False) -> typing.List[T]:
+def base_query(s: Session, instance: typing.Type[T], name: str = None, include_deleted: bool = False) -> typing.List[T]:
     """Internal method to reduce querying complexity on sub-functions."""
     query = s.query(instance)
     if not include_deleted:
@@ -382,3 +358,41 @@ def create_transfer(
     s.add(source_transaction)
     s.add(dest_transaction)
     return source_transaction, dest_transaction
+
+
+def get_rules(s: Session, include_deleted: bool = False) -> list[Rules]:
+    """
+    Returns a list of all available rules.
+
+    :param s: session from Actual local database.
+    :param include_deleted: includes all payees which were deleted via frontend. They would not show normally.
+    :return: list of rules.
+    """
+    return base_query(s, Rules, None, include_deleted).all()  # noqa
+
+
+def get_ruleset(s: Session) -> RuleSet:
+    """
+    Returns a list of all available rules, but as a rule set that can be used to be applied to existing transactions.
+
+    :param s: session from Actual local database.
+    :return: RuleSet object that contains all rules and can be either.
+    """
+    rule_set = list()
+    for rule in get_rules(s):
+        conditions = pydantic.parse_obj_as(list[Condition], json.loads(rule.conditions))
+        actions = pydantic.parse_obj_as(list[Action], json.loads(rule.actions))
+        rs = Rule(conditions=conditions, operation=rule.conditions_op, actions=actions, stage=rule.stage)
+        rule_set.append(rs)
+    return RuleSet(rules=rule_set)
+
+
+def create_rule(
+    s: Session,
+    conditions: list[dict],
+    actions: list[dict],
+    stage: typing.Literal["pre", "post", None] = None,
+    conditions_operation: typing.Literal["and", "or"] = "and",
+    run_immediately: bool = False,
+) -> Rules:
+    pass
