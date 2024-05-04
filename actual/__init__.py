@@ -48,7 +48,7 @@ class Actual(ActualServer):
         books using Python.
 
         Parts of the implementation are available at the following file:
-        https://github.com/actualbudget/actual/blob/master/packages/loot-core/src/server/cloud-storage.ts
+        https://github.com/actualbudget/actual/blob/2178da0414958064337b2c53efc95ff1d3abf98a/packages/loot-core/src/server/cloud-storage.ts
 
         :param base_url: url of the running Actual server
         :param token: the token for authentication, if this is available (optional)
@@ -232,6 +232,10 @@ class Actual(ActualServer):
                     self.update_metadata({message.row: message.get_value()})
                     continue
                 table = get_class_by_table_name(message.dataset)
+                if table is None:
+                    raise ActualError(
+                        f"Actual is at a version not supported by the library: '{message.dataset}' not found"
+                    )
                 column = get_attribute_by_table_name(message.dataset, message.column)
                 entry = s.query(table).get(message.row)
                 if not entry:

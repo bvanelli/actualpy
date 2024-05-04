@@ -1,3 +1,4 @@
+import datetime
 import enum
 import typing
 
@@ -50,6 +51,42 @@ class ValueType(enum.Enum):
             # must be BOOLEAN
             return operation.value in ("is",)
 
+    def validate(self, value: typing.Union[int, list[str], str, None], as_list: bool = False) -> bool:
+        if isinstance(value, list) and as_list:
+            return all(self.validate(v) for v in value)
+        if value is None:
+            return True
+        if self == ValueType.ID:
+            # make sure it's an uuid
+            return isinstance(value, str) and is_uuid(value)
+        elif self == ValueType.STRING:
+            return isinstance(value, str)
+        elif self == ValueType.DATE:
+            try:
+                res = bool(datetime.datetime.strptime(value, "%Y-%m-%d"))
+            except ValueError:
+                res = False
+            return isinstance(value, str) and res
+        elif self == ValueType.NUMBER:
+            return isinstance(value, int) and value >= 0
+        else:
+            # must be BOOLEAN
+            return isinstance(value, bool)
+
+
+def get_value(
+    value: typing.Union[int, list[str], str, None], value_type: ValueType
+) -> typing.Union[int, datetime.date, list[str], str, None]:
+    """Converts the value to an actual value according to the type."""
+    if value_type is ValueType.DATE:
+        if isinstance(value, str):
+            return datetime.datetime.strptime(value, "%Y-%m-%d").date()
+        else:
+            return datetime.datetime.strptime(str(value), "%Y%m%d").date()
+    elif value_type is ValueType.BOOLEAN:
+        return int(value)  # database accepts 0 or 1
+    return value
+
 
 class Condition(pydantic.BaseModel):
     """
@@ -79,63 +116,69 @@ class Condition(pydantic.BaseModel):
         value = f"'{self.value}'" if isinstance(self.value, str) else str(self.value)
         return f"'{self.field}' {self.op.value} {value}"
 
-    @pydantic.model_validator(mode="after")
-    @classmethod
-    def convert_value(cls, values):
-        if isinstance(values.value, int) and values.options is None:
-            values.options = {"inflow": True} if values.value > 0 else {"outflow": True}
-            values.value = abs(values.value)
-        return values
+    def get_value(self) -> typing.Union[int, datetime.date, list[str], str, None]:
+        return get_value(self.value, self.type)
 
     @pydantic.model_validator(mode="after")
-    @classmethod
-    def check_operation_type(cls, values):
-        if not values.type:
-            if values.field in ("acct", "category", "description"):
-                values.type = ValueType.ID
-            elif values.field in ("imported_description", "notes"):
-                values.type = ValueType.STRING
-            elif values.field in ("date",):
-                values.type = ValueType.DATE
+    def convert_value(self):
+        if isinstance(self.value, int) and self.options is None:
+            self.options = {"inflow": True} if self.value > 0 else {"outflow": True}
+            self.value = abs(self.value)
+        return self
+
+    @pydantic.model_validator(mode="after")
+    def check_operation_type(self):
+        if not self.type:
+            if self.field in ("acct", "category", "description"):
+                self.type = ValueType.ID
+            elif self.field in ("imported_description", "notes"):
+                self.type = ValueType.STRING
+            elif self.field in ("date",):
+                self.type = ValueType.DATE
             else:
-                values.type = ValueType.NUMBER
+                self.type = ValueType.NUMBER
         # check if types are fine
-        if not values.type.is_valid(values.op):
-            raise pydantic.ValidationError(f"Operation {values.op} not supported for type {values.type}")
+        if not self.type.is_valid(self.op):
+            raise ValueError(f"Operation {self.op} not supported for type {self.type}")
         # if a pydantic object is provided and id is expected, extract the id
-        if (
-            isinstance(values.value, pydantic.BaseModel)
-            and hasattr(values.value, "id")
-            and values.field in ("acct", "category", "description")
-        ):
-            values.value = values.value.id
-        # make sure it's an uuid
-        if values.type == ValueType.ID:
-            assert values.value is None or is_uuid(values.value), "Value must be an uuid"
-        return values
+        if isinstance(self.value, pydantic.BaseModel) and hasattr(self.value, "id"):
+            self.value = str(self.value.id)
+        # make sure the data matches the value type
+        as_list = self.op in (ConditionType.IS_BETWEEN, ConditionType.ONE_OF, ConditionType.NOT_ONE_OF)
+        if not self.type.validate(self.value, as_list=as_list):
+            raise ValueError(f"Value {self.value} is not valid for type {self.type.name} and operation {self.op.name}")
+        return self
 
     def run(self, transaction: Transactions) -> bool:
-        attr = get_attribute_by_table_name(Transactions.__tablename__, self.field, reverse=True)
-        true_value = getattr(transaction, attr)
+        attr = get_attribute_by_table_name(Transactions.__tablename__, self.field)
+        true_value = get_value(getattr(transaction, attr), self.type)
+        self_value = self.get_value()
         if true_value is None:
             # short circuit as comparisons with NoneType are useless
             return False
+        if self.options and self.options.get("outflow"):
+            self_value = -self_value
         if self.op == ConditionType.IS:
-            ret = self.value == true_value
+            ret = self_value == true_value
         elif self.op == ConditionType.IS_NOT:
-            ret = self.value != true_value
+            ret = self_value != true_value
+        elif self.op == ConditionType.IS_APPROX:
+            # Actual uses two days as reference
+            # https://github.com/actualbudget/actual/blob/98a7aac73667241da350169e55edd2fc16a6687f/packages/loot-core/src/server/accounts/rules.ts#L302-L304
+            interval = datetime.timedelta(days=2)
+            ret = self_value - interval <= true_value <= self_value + interval
         elif self.op in (ConditionType.ONE_OF, ConditionType.CONTAINS):
-            ret = self.value in true_value
+            ret = true_value in self_value
         elif self.op in (ConditionType.NOT_ONE_OF, ConditionType.DOES_NOT_CONTAIN):
-            ret = self.value not in true_value
+            ret = true_value not in self_value
         elif self.op == ConditionType.GT:
-            ret = true_value > self.value
+            ret = true_value > self_value
         elif self.op == ConditionType.GTE:
-            ret = true_value >= self.value
+            ret = true_value >= self_value
         elif self.op == ConditionType.LT:
-            ret = self.value > true_value
+            ret = self_value > true_value
         elif self.op == ConditionType.LTE:
-            ret = self.value >= true_value
+            ret = self_value >= true_value
         else:
             raise ActualError(f"Operation {self.op} not supported")
         return ret
@@ -163,6 +206,27 @@ class Action(pydantic.BaseModel):
 
     def __str__(self):
         return f"{self.op.value} '{self.field}' to '{self.value}'"
+
+    @pydantic.model_validator(mode="after")
+    def check_operation_type(self):
+        if not self.type:
+            if self.field in ("acct", "category", "description"):
+                self.type = ValueType.ID
+            elif self.field in ("notes",):
+                self.type = ValueType.STRING
+            elif self.field in ("date",):
+                self.type = ValueType.DATE
+            elif self.field in ("cleared",):
+                self.type = ValueType.BOOLEAN
+            else:
+                self.type = ValueType.NUMBER
+        # if a pydantic object is provided and id is expected, extract the id
+        if isinstance(self.value, pydantic.BaseModel) and hasattr(self.value, "id"):
+            self.value = str(self.value.id)
+        # make sure the data matches the value type
+        if not self.type.validate(self.value):
+            raise pydantic.ValidationError(f"Value {self.value} is not valid for type {self.type.name}")
+        return self
 
     def run(self, transaction: Transactions):
         if self.op == ActionType.SET:
@@ -242,3 +306,7 @@ class RuleSet(pydantic.BaseModel):
             self._run(transaction, "post")
         else:
             self._run(transaction, stage)  # noqa
+
+    def add(self, rule: Rule):
+        """Adds a new rule to the ruleset."""
+        self.rules.append(rule)

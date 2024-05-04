@@ -1,3 +1,12 @@
+"""
+This file was partially generated using sqlacodegen using the downloaded version of the db.sqlite file export
+in order to update this file, you can generate the code with:
+
+> sqlacodegen --generator sqlmodels sqlite:///db.sqlite
+
+and patch the necessary models by merging the results.
+"""
+
 import datetime
 import decimal
 from typing import List, Optional, Union
@@ -181,6 +190,42 @@ class CreatedBudgets(SQLModel, table=True):
     __tablename__ = "created_budgets"
 
     month: Optional[str] = Field(default=None, sa_column=Column("month", Text, primary_key=True))
+
+
+class CustomReports(BaseModel, table=True):
+    __tablename__ = "custom_reports"
+
+    id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    name: Optional[str] = Field(default=None, sa_column=Column("name", Text))
+    start_date: Optional[str] = Field(default=None, sa_column=Column("start_date", Text))
+    end_date: Optional[str] = Field(default=None, sa_column=Column("end_date", Text))
+    date_static: Optional[int] = Field(default=None, sa_column=Column("date_static", Integer, server_default=text("0")))
+    date_range: Optional[str] = Field(default=None, sa_column=Column("date_range", Text))
+    mode: Optional[str] = Field(default=None, sa_column=Column("mode", Text, server_default=text("'total'")))
+    group_by: Optional[str] = Field(default=None, sa_column=Column("group_by", Text, server_default=text("'Category'")))
+    balance_type: Optional[str] = Field(
+        default=None, sa_column=Column("balance_type", Text, server_default=text("'Expense'"))
+    )
+    show_empty: Optional[int] = Field(default=None, sa_column=Column("show_empty", Integer, server_default=text("0")))
+    show_offbudget: Optional[int] = Field(
+        default=None, sa_column=Column("show_offbudget", Integer, server_default=text("0"))
+    )
+    show_hidden: Optional[int] = Field(default=None, sa_column=Column("show_hidden", Integer, server_default=text("0")))
+    show_uncategorized: Optional[int] = Field(
+        default=None, sa_column=Column("show_uncategorized", Integer, server_default=text("0"))
+    )
+    selected_categories: Optional[str] = Field(default=None, sa_column=Column("selected_categories", Text))
+    graph_type: Optional[str] = Field(
+        default=None, sa_column=Column("graph_type", Text, server_default=text("'BarGraph'"))
+    )
+    conditions: Optional[str] = Field(default=None, sa_column=Column("conditions", Text))
+    conditions_op: Optional[str] = Field(
+        default=None, sa_column=Column("conditions_op", Text, server_default=text("'and'"))
+    )
+    metadata_: Optional[str] = Field(default=None, sa_column=Column("metadata", Text))
+    interval: Optional[str] = Field(default=None, sa_column=Column("interval", Text, server_default=text("'Monthly'")))
+    color_scheme: Optional[str] = Field(default=None, sa_column=Column("color_scheme", Text))
+    tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
 
 
 class Kvcache(SQLModel, table=True):
