@@ -10,7 +10,8 @@ import sqlite3
 import tempfile
 import uuid
 import zipfile
-from typing import Union
+from os import PathLike
+from typing import IO, Union
 
 import sqlalchemy
 import sqlalchemy.orm
@@ -47,7 +48,7 @@ class Actual(ActualServer):
         books using Python.
 
         Parts of the implementation are available at the following file:
-        https://github.com/actualbudget/actual/blob/master/packages/loot-core/src/server/cloud-storage.ts
+        https://github.com/actualbudget/actual/blob/2178da0414958064337b2c53efc95ff1d3abf98a/packages/loot-core/src/server/cloud-storage.ts
 
         :param base_url: url of the running Actual server
         :param token: the token for authentication, if this is available (optional)
@@ -129,7 +130,7 @@ class Actual(ActualServer):
         conn.commit()
         conn.close()
 
-    def create_budget(self, budget_name: str, encryption_password: str = None):
+    def create_budget(self, budget_name: str):
         """Creates a budget using the remote server default database and migrations. If password is provided, the
         budget will be encrypted."""
         migration_files = self.data_file_index()
@@ -162,12 +163,16 @@ class Actual(ActualServer):
         # create a clock
         self.load_clock()
 
-    def _gen_zip(self) -> bytes:
-        binary_data = io.BytesIO()
-        with zipfile.ZipFile(binary_data, "a", zipfile.ZIP_DEFLATED, False) as z:
+    def export_data(self, output_file: str | PathLike[str] | IO[bytes] = None) -> bytes:
+        """Export your data as a zip file containing db.sqlite and metadata.json files. It can be imported into another
+        Actual instance by closing an open file (if any), then clicking the “Import file” button, then choosing
+        “Actual.” Even though encryption is enabled, the exported zip file will not have any encryption."""
+        if not output_file:
+            output_file = io.BytesIO()
+        with zipfile.ZipFile(output_file, "a", zipfile.ZIP_DEFLATED, False) as z:
             z.write(self._data_dir / "db.sqlite", "db.sqlite")
             z.write(self._data_dir / "metadata.json", "metadata.json")
-        return binary_data.getvalue()
+        return output_file.getvalue()
 
     def encrypt(self, encryption_password: str):
         """Encrypts the local database using a new key, and re-uploads to the server.
@@ -189,7 +194,7 @@ class Actual(ActualServer):
             raise ActualError("Budget is encrypted but password was not provided")
         self._master_key = create_key_buffer(encryption_password, salt)
         # encrypt binary data with
-        encrypted = encrypt(self._file.encrypt_key_id, self._master_key, self._gen_zip())
+        encrypted = encrypt(self._file.encrypt_key_id, self._master_key, self.export_data())
         binary_data = io.BytesIO(base64.b64decode(encrypted["value"]))
         encryption_meta = encrypted["meta"]
         self.reset_user_file(self._file.file_id)
@@ -227,6 +232,10 @@ class Actual(ActualServer):
                     self.update_metadata({message.row: message.get_value()})
                     continue
                 table = get_class_by_table_name(message.dataset)
+                if table is None:
+                    raise ActualError(
+                        f"Actual is at a version not supported by the library: '{message.dataset}' not found"
+                    )
                 column = get_attribute_by_table_name(message.dataset, message.column)
                 entry = s.query(table).get(message.row)
                 if not entry:
@@ -255,18 +264,20 @@ class Actual(ActualServer):
 
         if self._file.encrypt_key_id and encryption_password is None:
             raise ActualError("File is encrypted but no encryption password provided.")
-        if encryption_password is not None:
+        if encryption_password is not None and self._file.encrypt_key_id:
             file_info = self.get_user_file_info(self._file.file_id)
             key_info = self.user_get_key(self._file.file_id)
             self._master_key = create_key_buffer(encryption_password, key_info.data.salt)
             # decrypt file bytes
             file_bytes = decrypt_from_meta(self._master_key, file_bytes, file_info.data.encrypt_meta)
-        self._load_zip(file_bytes)
+        self.import_zip(io.BytesIO(file_bytes))
+        # actual js always calls validation
+        self.validate()
+        self.sync()
 
-    def _load_zip(self, file_bytes: bytes):
-        f = io.BytesIO(file_bytes)
+    def import_zip(self, file_bytes: str | PathLike[str] | IO[bytes]):
         try:
-            zip_file = zipfile.ZipFile(f)
+            zip_file = zipfile.ZipFile(file_bytes)
         except zipfile.BadZipfile as e:
             raise InvalidZipFile(f"Invalid zip file: {e}") from None
         if not self._data_dir:
@@ -275,10 +286,10 @@ class Actual(ActualServer):
         zip_file.extractall(self._data_dir)
         engine = sqlalchemy.create_engine(f"sqlite:///{self._data_dir}/db.sqlite")
         self.session_maker = sqlalchemy.orm.sessionmaker(engine, autoflush=False)
-        # actual js always calls validation
-        self.validate()
         # load the client id
         self.load_clock()
+
+    def sync(self):
         # after downloading the budget, some pending transactions still need to be retrieved using sync
         request = SyncRequest(
             {
@@ -289,7 +300,7 @@ class Actual(ActualServer):
             }
         )
         request.set_null_timestamp(client_id=self._client.client_id)  # using 0 timestamp to retrieve all changes
-        changes = self.sync(request)
+        changes = self.sync_sync(request)
         self.apply_changes(changes.get_messages(self._master_key))
         if changes.messages:
             self._client = HULC_Client.from_timestamp(changes.messages[-1].timestamp)
@@ -338,4 +349,4 @@ class Actual(ActualServer):
         # make sure changes are valid before syncing
         self._session.commit()
         # sync all changes to the server
-        self.sync(req)
+        self.sync_sync(req)

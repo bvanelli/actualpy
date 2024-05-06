@@ -15,6 +15,7 @@ def test_timestamp():
     now = datetime.datetime(2020, 10, 11, 12, 13, 14, 15 * 1000)
     ts = HULC_Client("foo").timestamp(now)
     assert ts == "2020-10-11T12:13:14.015Z-0000-foo"
+    assert "foo" == HULC_Client.from_timestamp(ts).client_id
 
 
 def test_message_envelope():

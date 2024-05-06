@@ -1,6 +1,14 @@
+"""
+This file was partially generated using sqlacodegen using the downloaded version of the db.sqlite file export
+in order to update this file, you can generate the code with:
+
+> sqlacodegen --generator sqlmodels sqlite:///db.sqlite
+
+and patch the necessary models by merging the results.
+"""
+
 import datetime
 import decimal
-import uuid
 from typing import List, Optional, Union
 
 from sqlalchemy import (
@@ -95,8 +103,8 @@ class BaseModel(SQLModel):
         return changes
 
     def delete(self):
-        if not getattr(self, "tombstone", None):
-            raise AttributeError(f"Model {self.__name__} has no tombstone field and cannot be deleted.")
+        if not hasattr(self, "tombstone"):
+            raise AttributeError(f"Model {self.__class__.__name__} has no tombstone field and cannot be deleted.")
         setattr(self, "tombstone", 1)
 
 
@@ -182,6 +190,42 @@ class CreatedBudgets(SQLModel, table=True):
     __tablename__ = "created_budgets"
 
     month: Optional[str] = Field(default=None, sa_column=Column("month", Text, primary_key=True))
+
+
+class CustomReports(BaseModel, table=True):
+    __tablename__ = "custom_reports"
+
+    id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    name: Optional[str] = Field(default=None, sa_column=Column("name", Text))
+    start_date: Optional[str] = Field(default=None, sa_column=Column("start_date", Text))
+    end_date: Optional[str] = Field(default=None, sa_column=Column("end_date", Text))
+    date_static: Optional[int] = Field(default=None, sa_column=Column("date_static", Integer, server_default=text("0")))
+    date_range: Optional[str] = Field(default=None, sa_column=Column("date_range", Text))
+    mode: Optional[str] = Field(default=None, sa_column=Column("mode", Text, server_default=text("'total'")))
+    group_by: Optional[str] = Field(default=None, sa_column=Column("group_by", Text, server_default=text("'Category'")))
+    balance_type: Optional[str] = Field(
+        default=None, sa_column=Column("balance_type", Text, server_default=text("'Expense'"))
+    )
+    show_empty: Optional[int] = Field(default=None, sa_column=Column("show_empty", Integer, server_default=text("0")))
+    show_offbudget: Optional[int] = Field(
+        default=None, sa_column=Column("show_offbudget", Integer, server_default=text("0"))
+    )
+    show_hidden: Optional[int] = Field(default=None, sa_column=Column("show_hidden", Integer, server_default=text("0")))
+    show_uncategorized: Optional[int] = Field(
+        default=None, sa_column=Column("show_uncategorized", Integer, server_default=text("0"))
+    )
+    selected_categories: Optional[str] = Field(default=None, sa_column=Column("selected_categories", Text))
+    graph_type: Optional[str] = Field(
+        default=None, sa_column=Column("graph_type", Text, server_default=text("'BarGraph'"))
+    )
+    conditions: Optional[str] = Field(default=None, sa_column=Column("conditions", Text))
+    conditions_op: Optional[str] = Field(
+        default=None, sa_column=Column("conditions_op", Text, server_default=text("'and'"))
+    )
+    metadata_: Optional[str] = Field(default=None, sa_column=Column("metadata", Text))
+    interval: Optional[str] = Field(default=None, sa_column=Column("interval", Text, server_default=text("'Monthly'")))
+    color_scheme: Optional[str] = Field(default=None, sa_column=Column("color_scheme", Text))
+    tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
 
 
 class Kvcache(SQLModel, table=True):
@@ -351,32 +395,17 @@ class Transactions(BaseModel, table=True):
     category: Optional["Categories"] = Relationship(back_populates="transactions")
     payee: Optional["Payees"] = Relationship(back_populates="transactions")
 
-    @classmethod
-    def new(
-        cls,
-        account_id: str,
-        amount: decimal.Decimal,
-        date: datetime.date,
-        notes: Optional[str] = None,
-        category: Optional[Categories] = None,
-        payee: Optional[Payees] = None,
-    ):
-        date_int = int(datetime.date.strftime(date, "%Y%m%d"))
-        return cls(
-            id=str(uuid.uuid4()),
-            acct=account_id,
-            date=date_int,
-            amount=int(amount * 100),
-            category=category,
-            payee=payee,
-            notes=notes,
-            reconciled=0,
-            cleared=0,
-            sort_order=datetime.datetime.utcnow().timestamp(),
-        )
-
     def get_date(self) -> datetime.date:
         return datetime.datetime.strptime(str(self.date), "%Y%m%d").date()
+
+    def set_date(self, date: datetime.date):
+        self.date = int(datetime.date.strftime(date, "%Y%m%d"))
+
+    def set_amount(self, amount: Union[decimal.Decimal, int, float]):
+        self.amount = int(amount * 100)
+
+    def get_amount(self) -> decimal.Decimal:
+        return decimal.Decimal(self.amount) / decimal.Decimal(100)
 
 
 class ZeroBudgetMonths(SQLModel, table=True):

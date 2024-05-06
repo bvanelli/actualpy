@@ -307,7 +307,7 @@ class ActualServer:
         )
         return StatusDTO.parse_obj(response.json())
 
-    def sync(self, request: SyncRequest) -> SyncResponse:
+    def sync_sync(self, request: SyncRequest) -> SyncResponse:
         """Calls the sync endpoint with a request and returns the response. Both the request and response are
         protobuf models. The request and response are not standard REST, but rather protobuf binary serialized data.
         The server stores this serialized data to allow the user to replay all changes to the database and construct
