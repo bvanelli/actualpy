@@ -389,10 +389,28 @@ def get_ruleset(s: Session) -> RuleSet:
 
 def create_rule(
     s: Session,
-    conditions: list[dict],
-    actions: list[dict],
-    stage: typing.Literal["pre", "post", None] = None,
-    conditions_operation: typing.Literal["and", "or"] = "and",
+    rule: Rule,
     run_immediately: bool = False,
 ) -> Rules:
-    pass
+    """
+    Creates a rule based on the conditions and actions defined on the input rule. The rule can be ordered to run
+    immediately, running the action for all entries that match the conditions on insertion.
+
+    :param s: session from Actual local database.
+    :param rule: a constructed rule object from `actual.rules`. The rule format and data types are validated on the
+        constructor, **but the data itself is not. Make sure that, if you reference uuids, that they exist.
+    :param run_immediately: if the run should run for all transactions on insert, defaults to `False`.
+    :return: Rule database object created.
+    """
+    rule.dict()
+    conditions = json.dumps([c.as_dict() for c in rule.conditions])
+    actions = json.dumps([a.as_dict() for a in rule.actions])
+    database_rule = Rules(
+        id=str(uuid.uuid4()), stage=rule.stage, conditions_op=rule.operation, conditions=conditions, actions=actions
+    )
+    s.add(database_rule)
+    if run_immediately:
+        for t in get_transactions(s):
+            if rule.run(t):
+                s.add(t)
+    return database_rule

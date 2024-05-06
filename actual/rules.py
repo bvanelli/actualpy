@@ -166,9 +166,16 @@ class Condition(pydantic.BaseModel):
     type: ValueType = None
     options: dict = None
 
-    def __str__(self):
+    def __str__(self) -> str:
         value = f"'{self.value}'" if isinstance(self.value, str) else str(self.value)
         return f"'{self.field}' {self.op.value} {value}"
+
+    def as_dict(self):
+        """Returns valid dict for database insertion."""
+        ret = self.model_dump(mode="json")
+        if not self.options:
+            ret.pop("options", None)
+        return ret
 
     def get_value(self) -> typing.Union[int, datetime.date, list[str], str, None]:
         return get_value(self.value, self.type)
@@ -224,9 +231,17 @@ class Action(pydantic.BaseModel):
     op: ActionType = pydantic.Field(ActionType.SET, description="Action type to apply (default changes a column).")
     value: typing.Union[str, bool, pydantic.BaseModel, None]
     type: ValueType = None
+    options: dict = None
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.op.value} '{self.field}' to '{self.value}'"
+
+    def as_dict(self):
+        """Returns valid dict for database insertion."""
+        ret = self.model_dump(mode="json")
+        if not self.options:
+            ret.pop("options", None)
+        return ret
 
     @pydantic.model_validator(mode="after")
     def check_operation_type(self):
@@ -240,7 +255,7 @@ class Action(pydantic.BaseModel):
             raise ValueError(f"Value {self.value} is not valid for type {self.type.name}")
         return self
 
-    def run(self, transaction: Transactions):
+    def run(self, transaction: Transactions) -> None:
         if self.op == ActionType.SET:
             attr = get_attribute_by_table_name(Transactions.__tablename__, self.field)
             value = get_value(self.value, self.type)
