@@ -19,6 +19,7 @@ from actual.database import (
     PayeeMapping,
     Payees,
     Rules,
+    Schedules,
     Transactions,
 )
 from actual.exceptions import ActualError
@@ -414,3 +415,7 @@ def create_rule(
             if rule.run(t):
                 s.add(t)
     return database_rule
+
+
+def get_schedules(s: Session) -> typing.List[Schedules]:
+    return s.query(Schedules).all()

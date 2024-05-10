@@ -8,7 +8,8 @@ import pydantic
 
 from actual import ActualError
 from actual.crypto import is_uuid
-from actual.database import Transactions, get_attribute_by_table_name
+from actual.database import BaseModel, Transactions, get_attribute_by_table_name
+from actual.schedules import Schedule
 
 
 class ConditionType(enum.Enum):
@@ -78,17 +79,19 @@ class ValueType(enum.Enum):
             return isinstance(value, bool)
 
     @classmethod
-    def from_field(cls, field: str) -> ValueType:
+    def from_field(cls, field: str | None) -> ValueType:
         if field in ("acct", "category", "description"):
             return ValueType.ID
         elif field in ("notes", "imported_description"):
             return ValueType.STRING
         elif field in ("date",):
             return ValueType.DATE
-        elif field in ("cleared",):
+        elif field in ("cleared", "reconciled"):
             return ValueType.BOOLEAN
         elif field in ("amount",):
             return ValueType.NUMBER
+        elif field is None:
+            return ValueType.ID  # link-schedule
         else:
             raise ValueError(f"Field '{field}' does not have a matching ValueType.")
 
@@ -122,9 +125,14 @@ def condition_evaluation(
     elif op == ConditionType.IS_NOT:
         return self_value != true_value
     elif op == ConditionType.IS_APPROX:
-        # Actual uses two days as reference
-        # https://github.com/actualbudget/actual/blob/98a7aac73667241da350169e55edd2fc16a6687f/packages/loot-core/src/server/accounts/rules.ts#L302-L304
-        interval = datetime.timedelta(days=2)
+        if isinstance(true_value, datetime.date):
+            # Actual uses two days as reference
+            # https://github.com/actualbudget/actual/blob/98a7aac73667241da350169e55edd2fc16a6687f/packages/loot-core/src/server/accounts/rules.ts#L302-L304
+            interval = datetime.timedelta(days=2)
+        else:
+            # Actual uses 7.5% of the value as threshold
+            # https://github.com/actualbudget/actual/blob/243703b2f70532ec1acbd3088dda879b5d07a5b3/packages/loot-core/src/shared/rules.ts#L261-L263
+            interval = round(abs(self_value) * 0.075, 2)
         return self_value - interval <= true_value <= self_value + interval
     elif op in (ConditionType.ONE_OF, ConditionType.CONTAINS):
         return true_value in self_value
@@ -162,9 +170,9 @@ class Condition(pydantic.BaseModel):
 
     field: typing.Literal["imported_description", "acct", "category", "date", "description", "notes", "amount"]
     op: ConditionType
-    value: typing.Union[int, list[str], list[pydantic.BaseModel], str, pydantic.BaseModel, datetime.date, None]
-    type: ValueType = None
-    options: dict = None
+    value: typing.Union[int, float, str, list[str], Schedule, list[BaseModel], BaseModel, datetime.date, None]
+    type: typing.Optional[ValueType] = None
+    options: typing.Optional[dict] = None
 
     def __str__(self) -> str:
         value = f"'{self.value}'" if isinstance(self.value, str) else str(self.value)
@@ -182,7 +190,7 @@ class Condition(pydantic.BaseModel):
 
     @pydantic.model_validator(mode="after")
     def convert_value(self):
-        if isinstance(self.value, int) and self.options is None:
+        if (isinstance(self.value, int) or isinstance(self.value, float)) and self.options is None:
             self.options = {"inflow": True} if self.value > 0 else {"outflow": True}
             self.value = int(abs(self.value) * 100)
         return self
@@ -195,8 +203,11 @@ class Condition(pydantic.BaseModel):
         if not self.type.is_valid(self.op):
             raise ValueError(f"Operation {self.op} not supported for type {self.type}")
         # if a pydantic object is provided and id is expected, extract the id
-        if isinstance(self.value, pydantic.BaseModel) and hasattr(self.value, "id"):
-            self.value = str(self.value.id)
+        if isinstance(self.value, BaseModel):
+            if hasattr(self.value, "id"):
+                self.value = str(self.value.id)
+            else:
+                raise ValueError(f"Value {self.value} is not valid pydantic model")
         elif isinstance(self.value, list) and len(self.value) and isinstance(self.value[0], pydantic.BaseModel):
             self.value = [v.id if hasattr(v, "id") else v for v in self.value]
         # make sure the data matches the value type
@@ -227,10 +238,10 @@ class Action(pydantic.BaseModel):
         - date: 'type' must be 'date' and 'value' a string in the date format '2024-04-11'
     """
 
-    field: typing.Literal["category", "description", "notes", "cleared", "acct", "date"]
+    field: typing.Optional[typing.Literal["category", "description", "notes", "cleared", "acct", "date"]] = None
     op: ActionType = pydantic.Field(ActionType.SET, description="Action type to apply (default changes a column).")
     value: typing.Union[str, bool, pydantic.BaseModel, None]
-    type: ValueType = None
+    type: typing.Optional[ValueType] = None
     options: dict = None
 
     def __str__(self) -> str:
@@ -263,6 +274,8 @@ class Action(pydantic.BaseModel):
                 transaction.set_date(value)
             else:
                 setattr(transaction, attr, value)
+        elif self.op == ActionType.LINK_SCHEDULE:
+            transaction.schedule_id = self.value
         else:
             raise ActualError(f"Operation {self.op} not supported")
 

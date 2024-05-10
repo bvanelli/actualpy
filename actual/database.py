@@ -72,6 +72,8 @@ def get_attribute_by_table_name(table_name: str, column_name: str, reverse: bool
 
 
 class BaseModel(SQLModel):
+    id: str = Field(sa_column=Column("id", Text, primary_key=True))
+
     def convert(self, is_new: bool = True) -> List[Message]:
         """Convert the object into distinct entries for sync method. Based on the original implementation:
 
@@ -309,7 +311,7 @@ class Rules(BaseModel, table=True):
 
 class Schedules(SQLModel, table=True):
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
-    rule: Optional[str] = Field(default=None, sa_column=Column("rule", Text))
+    rule: Optional[str] = Field(default=None, sa_column=Column("rule", Text, ForeignKey("rules.id")))
     active: Optional[int] = Field(default=None, sa_column=Column("active", Integer, server_default=text("0")))
     completed: Optional[int] = Field(default=None, sa_column=Column("completed", Integer, server_default=text("0")))
     posts_transaction: Optional[int] = Field(
@@ -318,6 +320,9 @@ class Schedules(SQLModel, table=True):
     )
     tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
     name: Optional[str] = Field(default=None, sa_column=Column("name", Text, server_default=text("NULL")))
+
+    config: "Rules" = Relationship(sa_relationship_kwargs={"uselist": False})
+    transactions: List["Transactions"] = Relationship(back_populates="schedule")
 
 
 class SchedulesJsonPaths(SQLModel, table=True):
@@ -388,12 +393,13 @@ class Transactions(BaseModel, table=True):
     cleared: Optional[int] = Field(default=None, sa_column=Column("cleared", Integer, server_default=text("1")))
     pending: Optional[int] = Field(default=None, sa_column=Column("pending", Integer, server_default=text("0")))
     parent_id: Optional[str] = Field(default=None, sa_column=Column("parent_id", Text))
-    schedule: Optional[str] = Field(default=None, sa_column=Column("schedule", Text))
+    schedule_id: Optional[str] = Field(default=None, sa_column=Column("schedule", Text, ForeignKey("schedules.id")))
     reconciled: Optional[int] = Field(default=None, sa_column=Column("reconciled", Integer, server_default=text("0")))
 
     account: Optional["Accounts"] = Relationship(back_populates="transactions")
     category: Optional["Categories"] = Relationship(back_populates="transactions")
     payee: Optional["Payees"] = Relationship(back_populates="transactions")
+    schedule: Optional["Schedules"] = Relationship(back_populates="transactions")
 
     def get_date(self) -> datetime.date:
         return datetime.datetime.strptime(str(self.date), "%Y%m%d").date()

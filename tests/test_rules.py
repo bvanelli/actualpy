@@ -82,6 +82,11 @@ def test_numeric_condition():
     c2 = Condition(field="amount", op="lt", value=-10)
     assert "outflow" in c2.options
     assert c2.run(t) is True  # outflow, so the comparison should be with the positive value
+    # isapprox condition
+    c2 = Condition(field="amount", op="isapprox", value=5.1)
+    assert c2.run(t) is True
+    c3 = Condition(field="amount", op="isapprox", value=5.5)
+    assert c3.run(t) is False
 
 
 def test_complex_rule():
@@ -130,7 +135,7 @@ def test_invalid_inputs():
     with pytest.raises(ValueError):
         Condition(field="description", op="is", value="foo")  # not an uuid
     with pytest.raises(ActualError):
-        Action(field="notes", op="link-schedule", value="foo").run(None)  # noqa: use None instead of transaction
+        Action(field="notes", op="set-split-amount", value="foo").run(None)  # noqa: use None instead of transaction
     with pytest.raises(ActualError):
         condition_evaluation(None, "foo", "foo")  # noqa: use None instead of transaction
 
