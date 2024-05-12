@@ -1,9 +1,32 @@
-import datetime
+from datetime import date
 
-from actual.schedules import Schedule
+import pytest
+
+from actual.schedules import Schedule, date_to_datetime
 
 
 def test_basic_schedules():
+    s = Schedule.parse_obj(
+        {
+            "start": "2024-05-12",
+            "frequency": "monthly",
+            "skipWeekend": False,
+            "endMode": "after_n_occurrences",
+            "endOccurrences": 3,
+            "interval": 1,
+        }
+    )
+    assert s.before(date(2024, 5, 13)) == date(2024, 5, 12)
+    assert s.xafter(date(2024, 5, 12), 4) == [
+        date(2024, 5, 12),
+        date(2024, 6, 12),
+        date(2024, 7, 12),
+    ]
+
+    assert str(s) == "Every month on the 12th, 3 times"
+
+
+def test_complex_schedules():
     s = Schedule.parse_obj(
         {
             "start": "2024-05-08",
@@ -23,20 +46,92 @@ def test_basic_schedules():
             "interval": 1,
         }
     )
-    assert s.xafter(datetime.date(2024, 5, 10), count=5) == [
-        datetime.date(2024, 5, 10),
-        datetime.date(2024, 5, 13),
-        datetime.date(2024, 5, 27),
-        datetime.date(2024, 5, 31),
-        datetime.date(2024, 6, 5),
+    assert s.xafter(date(2024, 5, 10), count=5) == [
+        date(2024, 5, 10),
+        date(2024, 5, 13),
+        date(2024, 5, 27),
+        date(2024, 5, 31),
+        date(2024, 6, 5),
     ]
     # change the solve mode to before
     s.weekend_solve_mode = "before"
-    assert s.xafter(datetime.date(2024, 5, 10), count=5) == [
-        datetime.date(2024, 5, 10),
+    assert s.xafter(date(2024, 5, 10), count=5) == [
+        date(2024, 5, 10),
         # according to frontend, this entry happens twice
-        datetime.date(2024, 5, 10),
-        datetime.date(2024, 5, 24),
-        datetime.date(2024, 5, 31),
-        datetime.date(2024, 6, 5),
+        date(2024, 5, 10),
+        date(2024, 5, 24),
+        date(2024, 5, 31),
+        date(2024, 6, 5),
     ]
+
+    assert str(s) == "Every month on the last Sunday, 2nd Saturday, 10th, 31st, 5th (before weekend)"
+
+
+def test_is_approx():
+    # create schedule for every 1st and last day of the month (30th or 31st)
+    s = Schedule.parse_obj(
+        {
+            "start": "2024-05-10",
+            "frequency": "monthly",
+            "patterns": [
+                {"value": 1, "type": "day"},
+                {"value": -1, "type": "day"},
+            ],
+            "skipWeekend": True,
+            "weekendSolveMode": "after",
+            "endMode": "on_date",
+            "endOccurrences": 1,
+            "endDate": "2024-07-01",
+            "interval": 1,
+        }
+    )
+    # make sure the xafter is correct
+    assert s.xafter(date(2024, 6, 1), 5) == [
+        date(2024, 6, 3),
+        date(2024, 7, 1),
+        date(2024, 7, 1),
+    ]
+    # compare is_approx
+    assert s.is_approx(date(2024, 5, 1)) is False  # before starting period
+    assert s.is_approx(date(2024, 5, 30)) is True
+    assert s.is_approx(date(2024, 5, 31)) is True
+    assert s.is_approx(date(2024, 6, 1)) is True
+    assert s.is_approx(date(2024, 6, 3)) is True  # because 1st is also included
+
+    # 30th June is a sunday, so the right date would be 1st of June
+    assert s.is_approx(date(2024, 6, 28)) is False
+    assert s.is_approx(date(2024, 6, 30)) is True
+    assert s.is_approx(date(2024, 7, 1)) is True
+
+    # after end date we reject everything
+    assert s.is_approx(date(2024, 7, 2)) is False
+    assert s.is_approx(date(2024, 7, 31)) is False
+
+    assert str(s) == "Every month on the 1st, last day, until 2024-07-01 (after weekend)"
+
+
+def test_date_to_datetime():
+    dt = date(2024, 5, 1)
+    assert date_to_datetime(dt).date() == dt
+    assert date_to_datetime(None) is None
+
+
+def test_exceptions():
+    with pytest.raises(ValueError):
+        # on_date is set but no date is provided
+        Schedule.parse_obj(
+            {
+                "start": "2024-05-12",
+                "frequency": "monthly",
+                "skipWeekend": False,
+                "endMode": "on_date",
+                "endOccurrences": 3,
+                "interval": 1,
+            }
+        )
+
+
+def test_strings():
+    assert str(Schedule(start="2024-05-12", frequency="yearly")) == "Every year on May 12"
+    assert str(Schedule(start="2024-05-12", frequency="weekly")) == "Every week on Sunday"
+    assert str(Schedule(start="2024-05-12", frequency="daily")) == "Every day"

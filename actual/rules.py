@@ -129,6 +129,8 @@ def condition_evaluation(
             # Actual uses two days as reference
             # https://github.com/actualbudget/actual/blob/98a7aac73667241da350169e55edd2fc16a6687f/packages/loot-core/src/server/accounts/rules.ts#L302-L304
             interval = datetime.timedelta(days=2)
+            if isinstance(self_value, Schedule):
+                return self_value.is_approx(true_value, interval)
         else:
             # Actual uses 7.5% of the value as threshold
             # https://github.com/actualbudget/actual/blob/243703b2f70532ec1acbd3088dda879b5d07a5b3/packages/loot-core/src/shared/rules.ts#L261-L263
