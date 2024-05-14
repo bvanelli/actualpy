@@ -5,3 +5,4 @@ sqlalchemy>=1.4
 proto-plus>=1
 protobuf>=4
 cryptography>=42
+python-dateutil>=2.9.0
