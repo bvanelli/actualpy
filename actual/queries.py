@@ -134,7 +134,9 @@ def create_transaction(
     return create_transaction_from_ids(s, date, acct.id, payee.id, notes, category_id, amount)
 
 
-def base_query(s: Session, instance: typing.Type[T], name: str = None, include_deleted: bool = False) -> typing.List[T]:
+def base_query(
+    s: Session, instance: typing.Type[T], name: str = None, include_deleted: bool = False
+) -> sqlalchemy.orm.Query:
     """Internal method to reduce querying complexity on sub-functions."""
     query = s.query(instance)
     if not include_deleted:
@@ -369,7 +371,7 @@ def get_rules(s: Session, include_deleted: bool = False) -> list[Rules]:
     :param include_deleted: includes all payees which were deleted via frontend. They would not show normally.
     :return: list of rules.
     """
-    return base_query(s, Rules, None, include_deleted).all()  # noqa
+    return base_query(s, Rules, None, include_deleted).all()
 
 
 def get_ruleset(s: Session) -> RuleSet:
@@ -417,5 +419,13 @@ def create_rule(
     return database_rule
 
 
-def get_schedules(s: Session) -> typing.List[Schedules]:
-    return s.query(Schedules).all()
+def get_schedules(s: Session, name: str = None, include_deleted: bool = False) -> typing.List[Schedules]:
+    """
+    Returns a list of all available schedules.
+
+    :param s: session from Actual local database.
+    :param name: pattern name of the payee, case-insensitive.
+    :param include_deleted: includes all payees which were deleted via frontend. They would not show normally.
+    :return: list of schedules.
+    """
+    return base_query(s, Schedules, name, include_deleted).all()

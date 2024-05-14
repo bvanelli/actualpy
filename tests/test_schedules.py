@@ -1,7 +1,10 @@
 from datetime import date
+from unittest.mock import MagicMock
 
 import pytest
 
+from actual.queries import create_account, create_transaction
+from actual.rules import Rule
 from actual.schedules import Schedule, date_to_datetime
 
 
@@ -135,3 +138,42 @@ def test_strings():
     assert str(Schedule(start="2024-05-12", frequency="yearly")) == "Every year on May 12"
     assert str(Schedule(start="2024-05-12", frequency="weekly")) == "Every week on Sunday"
     assert str(Schedule(start="2024-05-12", frequency="daily")) == "Every day"
+
+
+def test_scheduled_rule():
+    mock = MagicMock()
+    acct = create_account(mock, "Bank")
+    rule = Rule(
+        id="d84d1400-4245-4bb9-95d0-be4524edafe9",
+        conditions=[
+            {
+                "op": "isapprox",
+                "field": "date",
+                "value": {
+                    "start": "2024-05-01",
+                    "frequency": "monthly",
+                    "patterns": [],
+                    "skipWeekend": False,
+                    "weekendSolveMode": "after",
+                    "endMode": "never",
+                    "endOccurrences": 1,
+                    "endDate": "2024-05-14",
+                    "interval": 1,
+                },
+            },
+            {"op": "isapprox", "field": "amount", "value": -2000},
+            {"op": "is", "field": "acct", "value": acct.id},
+        ],
+        stage=None,
+        actions=[{"op": "link-schedule", "value": "df1e464f-13ae-4a97-a07e-990faeb48b2f"}],
+        conditions_op="and",
+    )
+    assert "'date' isapprox 'Every month on the 1st'" in str(rule)
+
+    transaction_matching = create_transaction(mock, date(2024, 5, 2), acct, None, amount=-19)
+    transaction_not_matching = create_transaction(mock, date(2024, 5, 2), acct, None, amount=-15)
+    rule.run(transaction_matching)
+    rule.run(transaction_not_matching)
+
+    assert transaction_matching.schedule_id == "df1e464f-13ae-4a97-a07e-990faeb48b2f"
+    assert transaction_not_matching.schedule_id is None

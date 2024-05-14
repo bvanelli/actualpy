@@ -311,7 +311,7 @@ class Rules(BaseModel, table=True):
 
 class Schedules(SQLModel, table=True):
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
-    rule: Optional[str] = Field(default=None, sa_column=Column("rule", Text, ForeignKey("rules.id")))
+    rule_id: Optional[str] = Field(default=None, sa_column=Column("rule", Text, ForeignKey("rules.id")))
     active: Optional[int] = Field(default=None, sa_column=Column("active", Integer, server_default=text("0")))
     completed: Optional[int] = Field(default=None, sa_column=Column("completed", Integer, server_default=text("0")))
     posts_transaction: Optional[int] = Field(
@@ -321,7 +321,7 @@ class Schedules(SQLModel, table=True):
     tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
     name: Optional[str] = Field(default=None, sa_column=Column("name", Text, server_default=text("NULL")))
 
-    config: "Rules" = Relationship(sa_relationship_kwargs={"uselist": False})
+    rule: "Rules" = Relationship(sa_relationship_kwargs={"uselist": False})
     transactions: List["Transactions"] = Relationship(back_populates="schedule")
 
 

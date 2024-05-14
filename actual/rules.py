@@ -73,7 +73,7 @@ class ValueType(enum.Enum):
                 res = False
             return res
         elif self == ValueType.NUMBER:
-            return (isinstance(value, int) or isinstance(value, float)) and value >= 0
+            return isinstance(value, int)
         else:
             # must be BOOLEAN
             return isinstance(value, bool)
@@ -114,12 +114,23 @@ def condition_evaluation(
     op: ConditionType,
     true_value: typing.Union[int, list[str], str, datetime.date, None],
     self_value: typing.Union[int, list[str], str, datetime.date, None],
+    options: dict = None,
 ) -> bool:
     """Helper function to evaluate the condition based on the true_value, value found on the transaction, and the
     self_value, value defined on rule condition."""
     if true_value is None:
         # short circuit as comparisons with NoneType are useless
         return False
+    if isinstance(options, dict):
+        # short circuit if the transaction should be and in/outflow but it isn't
+        if options.get("outflow") is True and true_value > 0:
+            return False
+        if options.get("inflow") is True and true_value < 0:
+            return False
+    if isinstance(self_value, int) and isinstance(options, dict) and options.get("outflow") is True:
+        # if it's an outflow we use the negative value of self_value, that is positive
+        self_value = -self_value
+    # do comparison
     if op == ConditionType.IS:
         return self_value == true_value
     elif op == ConditionType.IS_NOT:
@@ -158,6 +169,10 @@ class Condition(pydantic.BaseModel):
     set to IS or CONTAINS, and the operation applied to a 'field' with certain 'value'. If the transaction value matches
     the condition, the `run` method returns `True`, otherwise it returns `False`.
 
+    **Important**: Actual shows the amount on frontend as decimal but handles it internally as cents. Make sure that, if
+    you provide the 'amount' rule manually, you either provide number of cents or a float that get automatically
+    converted to cents.
+
     The 'field' can be one of the following ('type' will be set automatically):
 
         - imported_description: 'type' must be 'string' and 'value' any string
@@ -166,19 +181,30 @@ class Condition(pydantic.BaseModel):
         - date: 'type' must be 'date' and 'value' a string in the date format '2024-04-11'
         - description: 'type' must be 'id' and 'value' a valid uuid (means payee_id)
         - notes: 'type' must be 'string' and 'value' any string
-        - amount: 'type' must be 'number' and format in cents (additional "options":{"inflow":true} or
-            "options":{"outflow":true} for inflow/outflow distinction, set automatically based on the amount sign)
+        - amount: 'type' must be 'number' and format in cents
+        - amount_inflow: 'type' must be 'number' and format in cents, will set "options":{"inflow":true}
+        - amount_outflow: 'type' must be 'number' and format in cents, will set "options":{"outflow":true}
     """
 
-    field: typing.Literal["imported_description", "acct", "category", "date", "description", "notes", "amount"]
+    field: typing.Literal[
+        "imported_description",
+        "acct",
+        "category",
+        "date",
+        "description",
+        "notes",
+        "amount",
+        "amount_inflow",
+        "amount_outflow",
+    ]
     op: ConditionType
     value: typing.Union[int, float, str, list[str], Schedule, list[BaseModel], BaseModel, datetime.date, None]
     type: typing.Optional[ValueType] = None
     options: typing.Optional[dict] = None
 
     def __str__(self) -> str:
-        value = f"'{self.value}'" if isinstance(self.value, str) else str(self.value)
-        return f"'{self.field}' {self.op.value} {value}"
+        v = f"'{self.value}'" if isinstance(self.value, str) or isinstance(self.value, Schedule) else str(self.value)
+        return f"'{self.field}' {self.op.value} {v}"
 
     def as_dict(self):
         """Returns valid dict for database insertion."""
@@ -192,9 +218,13 @@ class Condition(pydantic.BaseModel):
 
     @pydantic.model_validator(mode="after")
     def convert_value(self):
-        if (isinstance(self.value, int) or isinstance(self.value, float)) and self.options is None:
-            self.options = {"inflow": True} if self.value > 0 else {"outflow": True}
-            self.value = int(abs(self.value) * 100)
+        if self.field in ("amount_inflow", "amount_outflow") and self.options is None:
+            self.options = {self.field.split("_")[1]: True}
+            self.value = abs(self.value)
+            self.field = "amount"
+        if isinstance(self.value, float):
+            # convert silently in the background to a valid number
+            self.value = int(self.value * 100)
         return self
 
     @pydantic.model_validator(mode="after")
@@ -206,10 +236,7 @@ class Condition(pydantic.BaseModel):
             raise ValueError(f"Operation {self.op} not supported for type {self.type}")
         # if a pydantic object is provided and id is expected, extract the id
         if isinstance(self.value, BaseModel):
-            if hasattr(self.value, "id"):
-                self.value = str(self.value.id)
-            else:
-                raise ValueError(f"Value {self.value} is not valid pydantic model")
+            self.value = str(self.value.id)
         elif isinstance(self.value, list) and len(self.value) and isinstance(self.value[0], pydantic.BaseModel):
             self.value = [v.id if hasattr(v, "id") else v for v in self.value]
         # make sure the data matches the value type
@@ -222,7 +249,7 @@ class Condition(pydantic.BaseModel):
         attr = get_attribute_by_table_name(Transactions.__tablename__, self.field)
         true_value = get_value(getattr(transaction, attr), self.type)
         self_value = self.get_value()
-        return condition_evaluation(self.op, true_value, self_value)
+        return condition_evaluation(self.op, true_value, self_value, self.options)
 
 
 class Action(pydantic.BaseModel):
@@ -238,16 +265,20 @@ class Action(pydantic.BaseModel):
         - cleared: 'type' must be 'boolean' and value is a literal True/False (additional "options":{"splitIndex":0})
         - acct: 'type' must be 'id' and 'value' an uuid
         - date: 'type' must be 'date' and 'value' a string in the date format '2024-04-11'
+        - amount: 'type' must be 'number' and format in cents
     """
 
-    field: typing.Optional[typing.Literal["category", "description", "notes", "cleared", "acct", "date"]] = None
+    field: typing.Optional[typing.Literal["category", "description", "notes", "cleared", "acct", "date", "amount"]] = (
+        None
+    )
     op: ActionType = pydantic.Field(ActionType.SET, description="Action type to apply (default changes a column).")
-    value: typing.Union[str, bool, pydantic.BaseModel, None]
+    value: typing.Union[str, bool, int, float, pydantic.BaseModel, None]
     type: typing.Optional[ValueType] = None
     options: dict = None
 
     def __str__(self) -> str:
-        return f"{self.op.value} '{self.field}' to '{self.value}'"
+        field_str = f" '{self.field}'" if self.field else ""
+        return f"{self.op.value}{field_str} to '{self.value}'"
 
     def as_dict(self):
         """Returns valid dict for database insertion."""
@@ -255,6 +286,13 @@ class Action(pydantic.BaseModel):
         if not self.options:
             ret.pop("options", None)
         return ret
+
+    @pydantic.model_validator(mode="after")
+    def convert_value(self):
+        if isinstance(self.value, float):
+            # convert silently in the background to a valid number
+            self.value = int(self.value * 100)
+        return self
 
     @pydantic.model_validator(mode="after")
     def check_operation_type(self):

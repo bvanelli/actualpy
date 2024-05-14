@@ -76,12 +76,12 @@ def test_datetime_rule():
 
 def test_numeric_condition():
     t = create_transaction(MagicMock(), datetime.date(2024, 1, 1), "Bank", "", amount=5)
-    c1 = Condition(field="amount", op="gt", value=10)
+    c1 = Condition(field="amount_inflow", op="gt", value=10.0)
     assert "inflow" in c1.options
     assert c1.run(t) is False
-    c2 = Condition(field="amount", op="lt", value=-10)
+    c2 = Condition(field="amount_outflow", op="lt", value=-10.0)
     assert "outflow" in c2.options
-    assert c2.run(t) is True  # outflow, so the comparison should be with the positive value
+    assert c2.run(t) is False  # outflow, so the comparison should be with the positive value
     # isapprox condition
     c2 = Condition(field="amount", op="isapprox", value=5.1)
     assert c2.run(t) is True
@@ -159,7 +159,7 @@ def test_value_type_value_validation():
     assert ValueType.STRING.validate("") is True
     assert ValueType.STRING.validate(123) is False
     assert ValueType.NUMBER.validate(123) is True
-    assert ValueType.NUMBER.validate(1.23) is True  # noqa: test just in case
+    assert ValueType.NUMBER.validate(1.23) is False  # noqa: test just in case
     assert ValueType.NUMBER.validate("123") is False
     assert ValueType.ID.validate("1c1a1707-15ea-4051-b98a-e400ee2900c7") is True
     assert ValueType.ID.validate("foo") is False
