@@ -292,6 +292,8 @@ class Action(pydantic.BaseModel):
         if isinstance(self.value, float):
             # convert silently in the background to a valid number
             self.value = int(self.value * 100)
+        if self.field in ("cleared",) and self.value in (0, 1):
+            self.value = bool(self.value)
         return self
 
     @pydantic.model_validator(mode="after")
