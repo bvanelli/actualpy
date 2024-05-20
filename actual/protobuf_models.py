@@ -28,7 +28,7 @@ class HULC_Client:
     @classmethod
     def from_timestamp(cls, ts: str) -> HULC_Client:
         segments = ts.split("-")
-        return cls(segments[-1], int(segments[-2]))
+        return cls(segments[-1], int(segments[-2], 16))
 
     def timestamp(self, now: datetime.datetime = None) -> str:
         """Actual uses Hybrid Unique Logical Clock (HULC) timestamp generator.
@@ -42,7 +42,7 @@ class HULC_Client:
         """
         if not now:
             now = datetime.datetime.utcnow()
-        count = str(self.initial_count).zfill(4)
+        count = f"{self.initial_count:0>4X}"
         self.initial_count += 1
         return f"{now.isoformat(timespec='milliseconds')}Z-{count}-{self.client_id}"
 

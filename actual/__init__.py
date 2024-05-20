@@ -22,13 +22,9 @@ from actual.database import (
     MessagesClock,
     get_attribute_by_table_name,
     get_class_by_table_name,
+    strong_reference_session,
 )
-from actual.exceptions import (
-    ActualError,
-    ActualInvalidOperationError,
-    InvalidZipFile,
-    UnknownFileId,
-)
+from actual.exceptions import ActualError, InvalidZipFile, UnknownFileId
 from actual.protobuf_models import HULC_Client, Message, SyncRequest
 
 
@@ -75,7 +71,7 @@ class Actual(ActualServer):
     def __enter__(self) -> Actual:
         if self._file:
             self.download_budget(self._encryption_password)
-            self._session = self.session_maker()
+            self._session = strong_reference_session(self.session_maker())
         self._in_context = True
         return self
 
@@ -159,7 +155,7 @@ class Actual(ActualServer):
         engine = sqlalchemy.create_engine(f"sqlite:///{self._data_dir}/db.sqlite")
         self.session_maker = sqlalchemy.orm.sessionmaker(engine, autoflush=False)
         if self._in_context:
-            self._session = self.session_maker()
+            self._session = strong_reference_session(self.session_maker())
         # create a clock
         self.load_clock()
 
@@ -249,8 +245,12 @@ class Actual(ActualServer):
     def update_metadata(self, patch: dict):
         """Updates the metadata.json from the Actual file with the patch fields. The patch is a dictionary that will
         then be merged on the metadata and written again to a file."""
-        config = json.loads((self._data_dir / "metadata.json").read_text() or "{}") | patch
-        (self._data_dir / "metadata.json").write_text(json.dumps(config, separators=(",", ":")))
+        metadata_file = self._data_dir / "metadata.json"
+        if metadata_file.is_file():
+            config = json.loads(metadata_file.read_text()) | patch
+        else:
+            config = patch
+        metadata_file.write_text(json.dumps(config, separators=(",", ":")))
 
     def download_budget(self, encryption_password: str = None):
         """Downloads the budget file from the remote. After the file is downloaded, the sync endpoint is queries
@@ -330,23 +330,17 @@ class Actual(ActualServer):
         the budget download."""
         if not self._session:
             raise ActualError("No session has been created for the file.")
-        if len(self._session.deleted):
-            raise ActualInvalidOperationError(
-                "Actual does not allow deleting entries, set the `tombstone` to 1 instead"
-            )
         # create sync request based on the session reference that is tracked
         req = SyncRequest({"fileId": self._file.file_id, "groupId": self._file.group_id})
         if self._file.encrypt_key_id:
             req.keyId = self._file.encrypt_key_id
         req.set_null_timestamp(client_id=self._client.client_id)
+        # flush to database, so that all data is evaluated on the database for consistency
+        self._session.flush()
         # first we add all new entries and modify is required
-        for model in self._session.new:
-            req.set_messages(model.convert(is_new=True), self._client, master_key=self._master_key)
-        # modify if required
-        for model in self._session.dirty:
-            if self._session.is_modified(model):
-                req.set_messages(model.convert(is_new=False), self._client, master_key=self._master_key)
-        # make sure changes are valid before syncing
+        if "messages" in self._session.info:
+            req.set_messages(self._session.info["messages"], self._client, master_key=self._master_key)
+        # commit to local database to clear the current flush cache
         self._session.commit()
         # sync all changes to the server
         self.sync_sync(req)
