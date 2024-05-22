@@ -157,8 +157,11 @@ class ActualServer:
         if not password:
             raise AuthorizationError("Trying to login but not password was provided.")
         response = requests.post(f"{self.api_url}/{Endpoints.LOGIN}", json={"password": password})
+        if response.status_code == 400 and "invalid-password" in response.text:
+            raise AuthorizationError("Could not validate password on login.")
         response.raise_for_status()
         login_response = LoginDTO.parse_obj(response.json())
+        # older versions do not return 400 but rather return empty tokens
         if login_response.data.token is None:
             raise AuthorizationError("Could not validate password on login.")
         self._token = login_response.data.token

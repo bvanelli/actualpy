@@ -111,7 +111,7 @@ class Actual(ActualServer):
         conn = sqlite3.connect(self._data_dir / "db.sqlite")
         for file in migration_files:
             if not file.startswith("migrations"):
-                continue  # in case db.sqlite file gets passed
+                continue  # in case db.sqlite file gets passed as one of the migrations files
             file_id = file.split("_")[0].split("/")[1]
             if conn.execute(f"SELECT id FROM __migrations__ WHERE id = '{file_id}';").fetchall():
                 continue  # skip migration as it was already ran
@@ -261,6 +261,7 @@ class Actual(ActualServer):
         fail.
         """
         file_bytes = self.download_user_file(self._file.file_id)
+        encryption_password = encryption_password or self._encryption_password
 
         if self._file.encrypt_key_id and encryption_password is None:
             raise ActualError("File is encrypted but no encryption password provided.")

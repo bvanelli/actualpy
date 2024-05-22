@@ -174,7 +174,7 @@ def get_categories(s: Session, name: str = None, include_deleted: bool = False) 
     :param include_deleted: includes all payees which were deleted via frontend. They would not show normally.
     :return: list of categories with `transactions` already loaded.
     """
-    query = base_query(s, Categories, name, include_deleted).options(joinedload(Payees.transactions))
+    query = base_query(s, Categories, name, include_deleted).options(joinedload(Categories.transactions))
     return query.all()
 
 
