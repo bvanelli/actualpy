@@ -1,3 +1,5 @@
+[![codecov](https://codecov.io/github/bvanelli/actualpy/graph/badge.svg?token=N6V05MY70U)](https://codecov.io/github/bvanelli/actualpy)
+
 # actualpy
 
 Python API implementation for Actual server.

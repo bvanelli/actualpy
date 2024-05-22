@@ -9,7 +9,7 @@ from actual.schedules import Schedule, date_to_datetime
 
 
 def test_basic_schedules():
-    s = Schedule.parse_obj(
+    s = Schedule.model_validate(
         {
             "start": "2024-05-12",
             "frequency": "monthly",
@@ -30,7 +30,7 @@ def test_basic_schedules():
 
 
 def test_complex_schedules():
-    s = Schedule.parse_obj(
+    s = Schedule.model_validate(
         {
             "start": "2024-05-08",
             "frequency": "monthly",
@@ -72,7 +72,7 @@ def test_complex_schedules():
 
 def test_is_approx():
     # create schedule for every 1st and last day of the month (30th or 31st)
-    s = Schedule.parse_obj(
+    s = Schedule.model_validate(
         {
             "start": "2024-05-10",
             "frequency": "monthly",
@@ -122,7 +122,7 @@ def test_date_to_datetime():
 def test_exceptions():
     with pytest.raises(ValueError):
         # on_date is set but no date is provided
-        Schedule.parse_obj(
+        Schedule.model_validate(
             {
                 "start": "2024-05-12",
                 "frequency": "monthly",

@@ -174,7 +174,7 @@ def get_categories(s: Session, name: str = None, include_deleted: bool = False) 
     :param include_deleted: includes all payees which were deleted via frontend. They would not show normally.
     :return: list of categories with `transactions` already loaded.
     """
-    query = base_query(s, Categories, name, include_deleted).options(joinedload(Payees.transactions))
+    query = base_query(s, Categories, name, include_deleted).options(joinedload(Categories.transactions))
     return query.all()
 
 
@@ -405,7 +405,6 @@ def create_rule(
     :param run_immediately: if the run should run for all transactions on insert, defaults to `False`.
     :return: Rule database object created.
     """
-    rule.dict()
     conditions = json.dumps([c.as_dict() for c in rule.conditions])
     actions = json.dumps([a.as_dict() for a in rule.actions])
     database_rule = Rules(

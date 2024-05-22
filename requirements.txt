@@ -1,6 +1,6 @@
-requests>=2
-sqlmodel==0.0.16
-pydantic>=2
+requests>=2,<2.32.0
+sqlmodel==0.0.18
+pydantic>=2,<3
 sqlalchemy>=1.4
 proto-plus>=1
 protobuf>=4

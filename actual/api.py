@@ -157,8 +157,11 @@ class ActualServer:
         if not password:
             raise AuthorizationError("Trying to login but not password was provided.")
         response = requests.post(f"{self.api_url}/{Endpoints.LOGIN}", json={"password": password})
+        if response.status_code == 400 and "invalid-password" in response.text:
+            raise AuthorizationError("Could not validate password on login.")
         response.raise_for_status()
-        login_response = LoginDTO.parse_obj(response.json())
+        login_response = LoginDTO.model_validate(response.json())
+        # older versions do not return 400 but rather return empty tokens
         if login_response.data.token is None:
             raise AuthorizationError("Could not validate password on login.")
         self._token = login_response.data.token
@@ -179,24 +182,24 @@ class ActualServer:
         """Gets the information from the Actual server, like the name and version."""
         response = requests.get(f"{self.api_url}/{Endpoints.INFO}")
         response.raise_for_status()
-        return InfoDTO.parse_obj(response.json())
+        return InfoDTO.model_validate(response.json())
 
     def validate(self) -> ValidateDTO:
         """Validates"""
         response = requests.get(f"{self.api_url}/{Endpoints.ACCOUNT_VALIDATE}", headers=self.headers())
         response.raise_for_status()
-        return ValidateDTO.parse_obj(response.json())
+        return ValidateDTO.model_validate(response.json())
 
     def needs_bootstrap(self) -> BootstrapInfoDTO:
         """Checks if the Actual needs bootstrap, in other words, if it needs a master password for the server."""
         response = requests.get(f"{self.api_url}/{Endpoints.NEEDS_BOOTSTRAP}")
         response.raise_for_status()
-        return BootstrapInfoDTO.parse_obj(response.json())
+        return BootstrapInfoDTO.model_validate(response.json())
 
     def bootstrap(self, password: str) -> LoginDTO:
         response = requests.post(f"{self.api_url}/{Endpoints.BOOTSTRAP}", json={"password": password})
         response.raise_for_status()
-        login_response = LoginDTO.parse_obj(response.json())
+        login_response = LoginDTO.model_validate(response.json())
         self._token = login_response.data.token
         return login_response
 
@@ -221,7 +224,7 @@ class ActualServer:
             f"{self.api_url}/{Endpoints.RESET_USER_FILE}", json={"fileId": file_id, "token": self._token}
         )
         request.raise_for_status()
-        return StatusDTO.parse_obj(request.json())
+        return StatusDTO.model_validate(request.json())
 
     def download_user_file(self, file_id: str) -> bytes:
         """Downloads the user file based on the file_id provided. Returns the `bytes` from the response, which is a
@@ -251,20 +254,20 @@ class ActualServer:
             headers=self.headers(extra_headers=base_headers),
         )
         request.raise_for_status()
-        return UploadUserFileDTO.parse_obj(request.json())
+        return UploadUserFileDTO.model_validate(request.json())
 
     def list_user_files(self) -> ListUserFilesDTO:
         """Lists the user files. If the response item contains `encrypt_key_id` different from `None`, then the
         file must be decrypted on retrieval."""
         response = requests.get(f"{self.api_url}/{Endpoints.LIST_USER_FILES}", headers=self.headers())
         response.raise_for_status()
-        return ListUserFilesDTO.parse_obj(response.json())
+        return ListUserFilesDTO.model_validate(response.json())
 
     def get_user_file_info(self, file_id: str) -> GetUserFileInfoDTO:
         """Gets the user file information, including the encryption metadata."""
         response = requests.get(f"{self.api_url}/{Endpoints.GET_USER_FILE_INFO}", headers=self.headers(file_id))
         response.raise_for_status()
-        return GetUserFileInfoDTO.parse_obj(response.json())
+        return GetUserFileInfoDTO.model_validate(response.json())
 
     def update_user_file_name(self, file_id: str, file_name: str) -> StatusDTO:
         """Updates the file name for the budget on the remote server."""
@@ -274,7 +277,7 @@ class ActualServer:
             headers=self.headers(),
         )
         response.raise_for_status()
-        return StatusDTO.parse_obj(response.json())
+        return StatusDTO.model_validate(response.json())
 
     def user_get_key(self, file_id: str) -> UserGetKeyDTO:
         """Gets the key information associated with a user file, including the algorithm, key, salt and iv."""
@@ -287,7 +290,7 @@ class ActualServer:
             headers=self.headers(file_id),
         )
         response.raise_for_status()
-        return UserGetKeyDTO.parse_obj(response.json())
+        return UserGetKeyDTO.model_validate(response.json())
 
     def user_create_key(self, file_id: str, key_id: str, password: str, key_salt: str) -> StatusDTO:
         """Creates a new key for the user file. The key has to be used then to encrypt the local file, and this file
@@ -305,7 +308,7 @@ class ActualServer:
                 "token": self._token,
             },
         )
-        return StatusDTO.parse_obj(response.json())
+        return StatusDTO.model_validate(response.json())
 
     def sync_sync(self, request: SyncRequest) -> SyncResponse:
         """Calls the sync endpoint with a request and returns the response. Both the request and response are
