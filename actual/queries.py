@@ -405,7 +405,6 @@ def create_rule(
     :param run_immediately: if the run should run for all transactions on insert, defaults to `False`.
     :return: Rule database object created.
     """
-    rule.dict()
     conditions = json.dumps([c.as_dict() for c in rule.conditions])
     actions = json.dumps([a.as_dict() for a in rule.actions])
     database_rule = Rules(

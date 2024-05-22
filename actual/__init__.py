@@ -233,7 +233,7 @@ class Actual(ActualServer):
                         f"Actual is at a version not supported by the library: '{message.dataset}' not found"
                     )
                 column = get_attribute_by_table_name(message.dataset, message.column)
-                entry = s.query(table).get(message.row)
+                entry = s.get(table, message.row)
                 if not entry:
                     entry = table(id=message.row)
                 setattr(entry, column, message.get_value())

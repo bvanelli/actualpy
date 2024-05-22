@@ -32,7 +32,7 @@ jobs:
           ruff --target-version=py39 .
       - name: Test with pytest
         run: |
-          pytest --cov=./ --cov-report=xml
+          pytest --cov=./actual --cov-report=xml
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v4
         with:
