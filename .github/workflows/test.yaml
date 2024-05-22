@@ -6,8 +6,7 @@ on:
     branches: [ main ]
 
 jobs:
-  build:
-
+  test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -33,4 +32,9 @@ jobs:
           ruff --target-version=py38 .
       - name: Test with pytest
         run: |
-          pytest
+          pytest --cov=./ --cov-report=xml
+            - name: Upload to Codecov
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
