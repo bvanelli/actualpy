@@ -20,12 +20,14 @@ from sqlalchemy import (
     Integer,
     LargeBinary,
     Text,
+    event,
     inspect,
     text,
 )
 from sqlalchemy.orm import class_mapper
 from sqlmodel import Field, Relationship, SQLModel
 
+from actual.exceptions import ActualInvalidOperationError
 from actual.protobuf_models import Message
 
 """
@@ -69,6 +71,33 @@ def get_attribute_by_table_name(table_name: str, column_name: str, reverse: bool
         .get("columns" if not reverse else "rev_columns", {})
         .get(column_name, None)
     )
+
+
+def strong_reference_session(session):
+    @event.listens_for(session, "before_flush")
+    def before_flush(sess, flush_context, instances):
+        if len(sess.deleted):
+            raise ActualInvalidOperationError(
+                "Actual does not allow deleting entries, set the `tombstone` to 1 instead or call the .delete() method"
+            )
+        if "refs" not in sess.info:
+            sess.info["messages"] = messages = []
+        else:
+            messages = sess.info["messages"]
+        # convert entries from the model
+        for instance in sess.new:
+            # all entries that were added new
+            messages.extend(instance.convert(is_new=True))
+        for instance in sess.dirty:
+            # all entries that were modified
+            messages.extend(instance.convert(is_new=False))
+
+    @event.listens_for(session, "after_commit")
+    @event.listens_for(session, "after_soft_rollback")
+    def after_commit_or_rollback(sess):
+        del sess.info["messages"]
+
+    return session
 
 
 class BaseModel(SQLModel):
