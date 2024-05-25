@@ -230,9 +230,14 @@ class Actual(ActualServer):
                 table = get_class_by_table_name(message.dataset)
                 if table is None:
                     raise ActualError(
-                        f"Actual is at a version not supported by the library: '{message.dataset}' not found"
+                        f"Actual found a table not supported by the library: table '{message.dataset}' not found"
                     )
                 column = get_attribute_by_table_name(message.dataset, message.column)
+                if column is None:
+                    raise ActualError(
+                        f"Actual found a column not supported by the library: "
+                        f"column '{message.column}' at table '{message.dataset}' not found"
+                    )
                 entry = s.get(table, message.row)
                 if not entry:
                     entry = table(id=message.row)
