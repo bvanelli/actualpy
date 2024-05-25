@@ -11,21 +11,24 @@ import datetime
 import decimal
 from typing import List, Optional, Union
 
-from sqlalchemy import (
+from sqlalchemy import event, inspect
+from sqlalchemy.orm import class_mapper, object_session
+from sqlmodel import (
     Boolean,
     Column,
+    Field,
     Float,
     ForeignKey,
     Index,
     Integer,
     LargeBinary,
+    Relationship,
+    SQLModel,
     Text,
-    event,
-    inspect,
+    func,
+    select,
     text,
 )
-from sqlalchemy.orm import class_mapper
-from sqlmodel import Field, Relationship, SQLModel
 
 from actual.exceptions import ActualInvalidOperationError
 from actual.protobuf_models import Message
@@ -174,6 +177,17 @@ class Accounts(BaseModel, table=True):
     payee: "Payees" = Relationship(back_populates="account", sa_relationship_kwargs={"uselist": False})
     pending_transactions: List["PendingTransactions"] = Relationship(back_populates="account")
     transactions: List["Transactions"] = Relationship(back_populates="account")
+
+    @property
+    def balance(self) -> decimal.Decimal:
+        value = object_session(self).scalar(
+            select(func.sum(Transactions.amount)).where(
+                Transactions.acct == self.id,
+                Transactions.is_parent == 0,
+                Transactions.tombstone == 0,
+            )
+        )
+        return decimal.Decimal(value) / 100
 
 
 class Banks(BaseModel, table=True):
