@@ -80,7 +80,7 @@ def strong_reference_session(session):
             raise ActualInvalidOperationError(
                 "Actual does not allow deleting entries, set the `tombstone` to 1 instead or call the .delete() method"
             )
-        if "refs" not in sess.info:
+        if "messages" not in sess.info:
             sess.info["messages"] = messages = []
         else:
             messages = sess.info["messages"]
@@ -95,7 +95,8 @@ def strong_reference_session(session):
     @event.listens_for(session, "after_commit")
     @event.listens_for(session, "after_soft_rollback")
     def after_commit_or_rollback(sess):
-        del sess.info["messages"]
+        if sess.info.get("messages"):
+            del sess.info["messages"]
 
     return session
 
@@ -168,6 +169,7 @@ class Accounts(BaseModel, table=True):
     tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
     sort_order: Optional[float] = Field(default=None, sa_column=Column("sort_order", Float))
     type: Optional[str] = Field(default=None, sa_column=Column("type", Text))
+    account_sync_source: Optional[str] = Field(default=None, sa_column=Column("account_sync_source", Text))
 
     payee: "Payees" = Relationship(back_populates="account", sa_relationship_kwargs={"uselist": False})
     pending_transactions: List["PendingTransactions"] = Relationship(back_populates="account")
