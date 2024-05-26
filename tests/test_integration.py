@@ -36,10 +36,12 @@ def test_create_user_file(actual_server):
         actual.upload_budget()
         # add some entries to the budget
         acct = get_or_create_account(actual.session, "Bank")
+        assert acct.balance == 0
         payee = get_or_create_payee(actual.session, "Landlord")
         category = get_or_create_category(actual.session, "Rent", "Fixed Costs")
         create_transaction(actual.session, datetime.date(2024, 5, 22), acct, payee, "Paying rent", category, -500)
         actual.commit()
+        assert acct.balance == -500
         # list user files
         new_user_files = actual.list_user_files().data
         assert len(new_user_files) == 1

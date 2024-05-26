@@ -181,7 +181,7 @@ class Accounts(BaseModel, table=True):
     @property
     def balance(self) -> decimal.Decimal:
         value = object_session(self).scalar(
-            select(func.sum(Transactions.amount)).where(
+            select(func.coalesce(func.sum(Transactions.amount), 0)).where(
                 Transactions.acct == self.id,
                 Transactions.is_parent == 0,
                 Transactions.tombstone == 0,
