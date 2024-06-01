@@ -5,7 +5,7 @@ from testcontainers.core.container import DockerContainer
 from testcontainers.core.waiting_utils import wait_for_logs
 
 from actual import Actual
-from actual.exceptions import ActualDecryptionError, AuthorizationError
+from actual.exceptions import ActualDecryptionError, ActualError, AuthorizationError
 from actual.queries import (
     create_transaction,
     get_accounts,
@@ -90,3 +90,7 @@ def test_update_file_name(actual_server):
         files = actual.list_user_files().data
         assert len(files) == 1
         assert files[0].name == "Other name"
+    # should raise an error if budget does not exist
+    with Actual(f"http://localhost:{port}", password="mypass") as actual:
+        with pytest.raises(ActualError):
+            actual.rename_budget("Failing name")

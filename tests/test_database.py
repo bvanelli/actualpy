@@ -5,6 +5,7 @@ from datetime import date, timedelta
 import pytest
 from sqlmodel import Session, create_engine
 
+from actual import ActualError
 from actual.database import SQLModel
 from actual.queries import (
     create_account,
@@ -63,3 +64,10 @@ def test_account_relationships(session):
         session, today - timedelta(days=1), today + timedelta(days=1), "Util", bank, True
     )
     assert [utilities_payment] == deleted_transaction
+
+
+def test_create_transaction_without_account_error(session):
+    with pytest.raises(ActualError):
+        create_transaction(session, date.today(), "foo", "")
+    with pytest.raises(ActualError):
+        create_transaction(session, date.today(), None, "")
