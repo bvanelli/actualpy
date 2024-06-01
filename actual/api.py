@@ -21,7 +21,7 @@ class Endpoints(enum.Enum):
     SYNC = "sync/sync"
     LIST_USER_FILES = "sync/list-user-files"
     GET_USER_FILE_INFO = "sync/get-user-file-info"
-    UPDATE_USER_FILE_NAME = "sync/update-user-file-name"
+    UPDATE_USER_FILE_NAME = "sync/update-user-filename"
     DOWNLOAD_USER_FILE = "sync/download-user-file"
     UPLOAD_USER_FILE = "sync/upload-user-file"
     RESET_USER_FILE = "sync/reset-user-file"

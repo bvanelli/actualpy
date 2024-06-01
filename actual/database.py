@@ -175,11 +175,18 @@ class Accounts(BaseModel, table=True):
     account_sync_source: Optional[str] = Field(default=None, sa_column=Column("account_sync_source", Text))
 
     payee: "Payees" = Relationship(back_populates="account", sa_relationship_kwargs={"uselist": False})
-    pending_transactions: List["PendingTransactions"] = Relationship(back_populates="account")
-    transactions: List["Transactions"] = Relationship(back_populates="account")
+    transactions: List["Transactions"] = Relationship(
+        back_populates="account",
+        sa_relationship_kwargs={
+            "primaryjoin": (
+                "and_(Accounts.id == Transactions.acct,Transactions.is_parent == 0, Transactions.tombstone==0)"
+            )
+        },
+    )
 
     @property
     def balance(self) -> decimal.Decimal:
+        """Returns the current balance of the account. Deleted transactions are ignored."""
         value = object_session(self).scalar(
             select(func.coalesce(func.sum(Transactions.amount), 0)).where(
                 Transactions.acct == self.id,
@@ -209,8 +216,33 @@ class Categories(BaseModel, table=True):
     tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
     goal_def: Optional[str] = Field(default=None, sa_column=Column("goal_def", Text, server_default=text("null")))
 
-    transactions: List["Transactions"] = Relationship(back_populates="category")
-    group: "CategoryGroups" = Relationship(back_populates="categories", sa_relationship_kwargs={"uselist": False})
+    transactions: List["Transactions"] = Relationship(
+        back_populates="category",
+        sa_relationship_kwargs={
+            "primaryjoin": (
+                "and_(Categories.id == Transactions.category_id,Transactions.is_parent == 0, Transactions.tombstone==0)"
+            )
+        },
+    )
+    group: "CategoryGroups" = Relationship(
+        back_populates="categories",
+        sa_relationship_kwargs={
+            "primaryjoin": "and_(Categories.cat_group == CategoryGroups.id, CategoryGroups.tombstone == 0)",
+            "uselist": False,
+        },
+    )
+
+    @property
+    def balance(self) -> decimal.Decimal:
+        """Returns the current balance of the category. Deleted transactions are ignored."""
+        value = object_session(self).scalar(
+            select(func.coalesce(func.sum(Transactions.amount), 0)).where(
+                Transactions.category_id == self.id,
+                Transactions.is_parent == 0,
+                Transactions.tombstone == 0,
+            )
+        )
+        return decimal.Decimal(value) / 100
 
 
 class CategoryGroups(BaseModel, table=True):
@@ -223,7 +255,12 @@ class CategoryGroups(BaseModel, table=True):
     sort_order: Optional[float] = Field(default=None, sa_column=Column("sort_order", Float))
     tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
 
-    categories: List["Categories"] = Relationship(back_populates="group")
+    categories: List["Categories"] = Relationship(
+        back_populates="group",
+        sa_relationship_kwargs={
+            "primaryjoin": "and_(CategoryGroups.id == Categories.cat_group, Categories.tombstone == 0)",
+        },
+    )
 
 
 class CategoryMapping(BaseModel, table=True):
@@ -328,7 +365,22 @@ class Payees(BaseModel, table=True):
     )
 
     account: Optional["Accounts"] = Relationship(back_populates="payee", sa_relationship_kwargs={"uselist": False})
-    transactions: List["Transactions"] = Relationship(back_populates="payee")
+    transactions: List["Transactions"] = Relationship(
+        back_populates="payee",
+        sa_relationship_kwargs={"primaryjoin": "and_(Transactions.payee_id == Payees.id, Transactions.tombstone==0)"},
+    )
+
+    @property
+    def balance(self) -> decimal.Decimal:
+        """Returns the current balance of the payee. Deleted transactions are ignored."""
+        value = object_session(self).scalar(
+            select(func.coalesce(func.sum(Transactions.amount), 0)).where(
+                Transactions.payee_id == self.id,
+                Transactions.is_parent == 0,
+                Transactions.tombstone == 0,
+            )
+        )
+        return decimal.Decimal(value) / 100
 
 
 class ReflectBudgets(SQLModel, table=True):
@@ -437,14 +489,36 @@ class Transactions(BaseModel, table=True):
     tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
     cleared: Optional[int] = Field(default=None, sa_column=Column("cleared", Integer, server_default=text("1")))
     pending: Optional[int] = Field(default=None, sa_column=Column("pending", Integer, server_default=text("0")))
-    parent_id: Optional[str] = Field(default=None, sa_column=Column("parent_id", Text))
+    parent_id: Optional[str] = Field(default=None, sa_column=Column("parent_id", Text, ForeignKey("transactions.id")))
     schedule_id: Optional[str] = Field(default=None, sa_column=Column("schedule", Text, ForeignKey("schedules.id")))
     reconciled: Optional[int] = Field(default=None, sa_column=Column("reconciled", Integer, server_default=text("0")))
 
-    account: Optional["Accounts"] = Relationship(back_populates="transactions")
-    category: Optional["Categories"] = Relationship(back_populates="transactions")
-    payee: Optional["Payees"] = Relationship(back_populates="transactions")
-    schedule: Optional["Schedules"] = Relationship(back_populates="transactions")
+    account: "Accounts" = Relationship(back_populates="transactions")
+    category: Optional["Categories"] = Relationship(
+        back_populates="transactions",
+        sa_relationship_kwargs={
+            "primaryjoin": "and_(Transactions.category_id == Categories.id, Categories.tombstone==0)"
+        },
+    )
+    payee: Optional["Payees"] = Relationship(
+        back_populates="transactions",
+        sa_relationship_kwargs={"primaryjoin": "and_(Transactions.payee_id == Payees.id, Payees.tombstone==0)"},
+    )
+    schedule: Optional["Schedules"] = Relationship(
+        back_populates="transactions",
+        sa_relationship_kwargs={
+            "primaryjoin": "and_(Transactions.schedule_id == Schedules.id, Schedules.tombstone==0)"
+        },
+    )
+    parent: Optional["Transactions"] = Relationship(
+        back_populates="splits", sa_relationship_kwargs={"remote_side": "Transactions.id"}
+    )
+    splits: List["Transactions"] = Relationship(
+        back_populates="parent",
+        sa_relationship_kwargs={
+            "primaryjoin": "and_(Transactions.id == remote(Transactions.parent_id), remote(Transactions.tombstone)==0)"
+        },
+    )
 
     def get_date(self) -> datetime.date:
         return datetime.datetime.strptime(str(self.date), "%Y%m%d").date()
@@ -485,8 +559,6 @@ class PendingTransactions(SQLModel, table=True):
     amount: Optional[int] = Field(default=None, sa_column=Column("amount", Integer))
     description: Optional[str] = Field(default=None, sa_column=Column("description", Text))
     date: Optional[str] = Field(default=None, sa_column=Column("date", Text))
-
-    account: Optional["Accounts"] = Relationship(back_populates="pending_transactions")
 
 
 for t_entry in SQLModel._sa_registry.mappers:

@@ -78,3 +78,15 @@ def test_encrypted_file(actual_server):
         Actual(
             f"http://localhost:{port}", password="mypass", encryption_password="mywrongpass", file="My Encrypted Budget"
         ).download_budget()
+
+
+def test_update_file_name(actual_server):
+    port = actual_server.get_exposed_port(5006)
+    with Actual(f"http://localhost:{port}", password="mypass", bootstrap=True) as actual:
+        assert len(actual.list_user_files().data) == 0
+        actual.create_budget("My Budget")
+        actual.upload_budget()
+        actual.rename_budget("Other name")
+        files = actual.list_user_files().data
+        assert len(files) == 1
+        assert files[0].name == "Other name"
