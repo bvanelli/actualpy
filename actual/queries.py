@@ -33,6 +33,7 @@ def get_transactions(
     start_date: datetime.date = None,
     end_date: datetime.date = None,
     notes: str = None,
+    account: Accounts | str | None = None,
     include_deleted: bool = False,
 ) -> typing.List[Transactions]:
     """
@@ -42,7 +43,8 @@ def get_transactions(
     :param start_date: optional start date for the transaction period (inclusive)
     :param end_date: optional end date for the transaction period (exclusive)
     :param notes: optional notes filter for the transactions, case-insensitive.
-    :param include_deleted: includes deleted transactions from the search
+    :param account: optional account (either Account object or Account name) filter for the transactions.
+    :param include_deleted: includes deleted transactions from the search.
     :return: list of transactions with `account`, `category` and `payee` pre-loaded.
     """
     query = (
@@ -70,6 +72,10 @@ def get_transactions(
         query = query.filter(Transactions.date < int(datetime.date.strftime(end_date, "%Y%m%d")))
     if not include_deleted:
         query = query.filter(sqlalchemy.func.coalesce(Transactions.tombstone, 0) == 0)
+    if account:
+        account = get_account(s, account)
+        if account:
+            query = query.filter(Transactions.acct == account.id)
     if notes:
         query = query.filter(Transactions.notes.ilike(f"%{sqlalchemy.text(notes).compile()}%"))
     return query.all()
@@ -126,6 +132,8 @@ def create_transaction(
     :return: the generated transaction object.
     """
     acct = get_account(s, account)
+    if acct is None:
+        raise ActualError(f"Account {account} not found")
     payee = get_or_create_payee(s, payee)
     if category:
         category_id = get_or_create_category(s, category, "").id
@@ -285,7 +293,7 @@ def get_or_create_payee(s: Session, name: str | Payees | None) -> Payees:
 
 
 def create_account(
-    s: Session, name: str, initial_balance: decimal.Decimal = decimal.Decimal(0), off_budget: bool = False
+    s: Session, name: str, initial_balance: decimal.Decimal | float = decimal.Decimal(0), off_budget: bool = False
 ) -> Accounts:
     """Creates a new account with the name and balance. Make sure you avoid creating accounts with duplicate names, as
     it makes it difficult to find them without knowing the unique id beforehand."""
@@ -295,7 +303,7 @@ def create_account(
     payee = create_payee(s, None)
     payee.transfer_acct = acct.id
     s.add(payee)
-    # if there is an no initial balance, create it
+    # if there is no initial balance, create it
     if initial_balance:
         payee_starting = get_or_create_payee(s, "Starting Balance")
         category = get_or_create_category(s, "Starting Balances", "Income")

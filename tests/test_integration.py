@@ -5,7 +5,7 @@ from testcontainers.core.container import DockerContainer
 from testcontainers.core.waiting_utils import wait_for_logs
 
 from actual import Actual
-from actual.exceptions import ActualDecryptionError, AuthorizationError
+from actual.exceptions import ActualDecryptionError, ActualError, AuthorizationError
 from actual.queries import (
     create_transaction,
     get_accounts,
@@ -36,10 +36,12 @@ def test_create_user_file(actual_server):
         actual.upload_budget()
         # add some entries to the budget
         acct = get_or_create_account(actual.session, "Bank")
+        assert acct.balance == 0
         payee = get_or_create_payee(actual.session, "Landlord")
         category = get_or_create_category(actual.session, "Rent", "Fixed Costs")
         create_transaction(actual.session, datetime.date(2024, 5, 22), acct, payee, "Paying rent", category, -500)
         actual.commit()
+        assert acct.balance == -500
         # list user files
         new_user_files = actual.list_user_files().data
         assert len(new_user_files) == 1
@@ -76,3 +78,19 @@ def test_encrypted_file(actual_server):
         Actual(
             f"http://localhost:{port}", password="mypass", encryption_password="mywrongpass", file="My Encrypted Budget"
         ).download_budget()
+
+
+def test_update_file_name(actual_server):
+    port = actual_server.get_exposed_port(5006)
+    with Actual(f"http://localhost:{port}", password="mypass", bootstrap=True) as actual:
+        assert len(actual.list_user_files().data) == 0
+        actual.create_budget("My Budget")
+        actual.upload_budget()
+        actual.rename_budget("Other name")
+        files = actual.list_user_files().data
+        assert len(files) == 1
+        assert files[0].name == "Other name"
+    # should raise an error if budget does not exist
+    with Actual(f"http://localhost:{port}", password="mypass") as actual:
+        with pytest.raises(ActualError):
+            actual.rename_budget("Failing name")

@@ -159,6 +159,11 @@ class Actual(ActualServer):
         # create a clock
         self.load_clock()
 
+    def rename_budget(self, budget_name: str):
+        if not self._file:
+            raise UnknownFileId("No current file loaded.")
+        self.update_user_file_name(self._file.file_id, budget_name)
+
     def export_data(self, output_file: str | PathLike[str] | IO[bytes] = None) -> bytes:
         """Export your data as a zip file containing db.sqlite and metadata.json files. It can be imported into another
         Actual instance by closing an open file (if any), then clicking the “Import file” button, then choosing
