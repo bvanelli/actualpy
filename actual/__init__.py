@@ -13,8 +13,7 @@ import zipfile
 from os import PathLike
 from typing import IO, Union
 
-import sqlalchemy
-import sqlalchemy.orm
+from sqlmodel import Session, create_engine, select
 
 from actual.api import ActualServer, RemoteFileListDTO
 from actual.crypto import create_key_buffer, decrypt_from_meta, encrypt, make_salt
@@ -58,8 +57,8 @@ class Actual(ActualServer):
         super().__init__(base_url, token, password, bootstrap)
         self._file: RemoteFileListDTO | None = None
         self._data_dir = pathlib.Path(data_dir) if data_dir else None
-        self.session_maker = None
-        self._session: sqlalchemy.orm.Session | None = None
+        self.engine = None
+        self._session: Session | None = None
         self._client: HULC_Client | None = None
         # set the correct file
         if file:
@@ -71,7 +70,7 @@ class Actual(ActualServer):
     def __enter__(self) -> Actual:
         if self._file:
             self.download_budget(self._encryption_password)
-            self._session = strong_reference_session(self.session_maker())
+            self._session = strong_reference_session(Session(self.engine))
         self._in_context = True
         return self
 
@@ -81,7 +80,7 @@ class Actual(ActualServer):
         self._in_context = False
 
     @property
-    def session(self) -> sqlalchemy.orm.Session:
+    def session(self) -> Session:
         if not self._session:
             raise ActualError("No session defined. Use `with Actual() as actual:` construct to generate one.")
         return self._session
@@ -152,10 +151,9 @@ class Actual(ActualServer):
         # create engine for downloaded database and run migrations
         self.run_migrations(migration_files[1:])
         # generate a session
-        engine = sqlalchemy.create_engine(f"sqlite:///{self._data_dir}/db.sqlite")
-        self.session_maker = sqlalchemy.orm.sessionmaker(engine, autoflush=False)
+        self.engine = create_engine(f"sqlite:///{self._data_dir}/db.sqlite")
         if self._in_context:
-            self._session = strong_reference_session(self.session_maker())
+            self._session = strong_reference_session(Session(self.engine, autoflush=False))
         # create a clock
         self.load_clock()
 
@@ -224,9 +222,9 @@ class Actual(ActualServer):
 
     def apply_changes(self, messages: list[Message]):
         """Applies a list of sync changes, based on what the sync method returned on the remote."""
-        if not self.session_maker:
+        if not self.engine:
             raise UnknownFileId("No valid file available, download one with download_budget()")
-        with self.session_maker() as s:
+        with Session(self.engine) as s:
             for message in messages:
                 if message.dataset == "prefs":
                     # write it to metadata.json instead
@@ -295,8 +293,7 @@ class Actual(ActualServer):
             self._data_dir = pathlib.Path(tempfile.mkdtemp())
         # this should extract 'db.sqlite' and 'metadata.json' to the folder
         zip_file.extractall(self._data_dir)
-        engine = sqlalchemy.create_engine(f"sqlite:///{self._data_dir}/db.sqlite")
-        self.session_maker = sqlalchemy.orm.sessionmaker(engine, autoflush=False)
+        self.engine = create_engine(f"sqlite:///{self._data_dir}/db.sqlite")
         # load the client id
         self.load_clock()
 
@@ -320,8 +317,8 @@ class Actual(ActualServer):
         """See implementation at:
         https://github.com/actualbudget/actual/blob/5bcfc71be67c6e7b7c8b444e4c4f60da9ea9fdaa/packages/loot-core/src/server/db/index.ts#L81-L98
         """
-        with self.session_maker() as session:
-            clock = session.query(MessagesClock).first()
+        with Session(self.engine) as session:
+            clock = session.exec(select(MessagesClock)).one_or_none()
             if not clock:
                 clock_message = {
                     "timestamp": HULC_Client().timestamp(now=datetime.datetime(1970, 1, 1, 0, 0, 0, 0)),

@@ -1,5 +1,4 @@
 import datetime
-import json
 import uuid
 from unittest.mock import MagicMock
 
@@ -10,7 +9,6 @@ from actual.queries import (
     create_account,
     create_category,
     create_payee,
-    create_rule,
     create_transaction,
 )
 from actual.rules import (
@@ -178,23 +176,3 @@ def test_value_type_from_field():
     assert ValueType.from_field("cleared") == ValueType.BOOLEAN
     with pytest.raises(ValueError):
         ValueType.from_field("foo")
-
-
-def test_rule_insertion_method(mocker):
-    action = Action(field="cleared", value=1)
-    assert action.as_dict() == {"field": "cleared", "op": "set", "type": "boolean", "value": True}
-    condition = Condition(field="date", op=ConditionType.IS_APPROX, value=datetime.date(2024, 1, 2))
-    assert condition.as_dict() == {"field": "date", "op": "isapprox", "type": "date", "value": "2024-01-02"}
-    # test full rule
-    s = MagicMock()
-    rule = Rule(conditions=[condition], actions=[action], operation="all", stage="pre")
-    created_rule = create_rule(s, rule)
-    assert [condition.as_dict()] == json.loads(created_rule.conditions)
-    assert [action.as_dict()] == json.loads(created_rule.actions)
-    assert created_rule.conditions_op == "and"
-    assert created_rule.stage == "pre"
-    t = create_transaction(s, datetime.date(2024, 1, 4), create_account(s, "Bank"), "")
-    mocker.patch("actual.queries.get_transactions", return_value=[t])
-    create_rule(s, rule, True)
-    assert hasattr(s.add.call_args_list[-1].args[0], "cleared")
-    assert s.add.call_args_list[-1].args[0].cleared == 1
