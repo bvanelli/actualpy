@@ -62,7 +62,7 @@ def test_account_relationships(session):
     assert rent_payment.payee is None
     # find the deleted transaction again
     deleted_transaction = get_transactions(
-        session, today - timedelta(days=1), today + timedelta(days=1), "Util", bank, True
+        session, today - timedelta(days=1), today + timedelta(days=1), "Util", bank, include_deleted=True
     )
     assert [utilities_payment] == deleted_transaction
 
