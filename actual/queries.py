@@ -6,9 +6,11 @@ import json
 import typing
 import uuid
 
-import pydantic
 import sqlalchemy
-from sqlalchemy.orm import Session, joinedload
+from pydantic import TypeAdapter
+from sqlalchemy.orm import joinedload
+from sqlalchemy.sql.expression import Select
+from sqlmodel import Session, select
 
 from actual.crypto import is_uuid
 from actual.database import (
@@ -34,21 +36,26 @@ def get_transactions(
     end_date: datetime.date = None,
     notes: str = None,
     account: Accounts | str | None = None,
+    is_parent: bool = False,
     include_deleted: bool = False,
-) -> typing.List[Transactions]:
+) -> typing.Sequence[Transactions]:
     """
     Returns a list of all available transactions.
 
     :param s: session from Actual local database.
     :param start_date: optional start date for the transaction period (inclusive)
     :param end_date: optional end date for the transaction period (exclusive)
-    :param notes: optional notes filter for the transactions, case-insensitive.
+    :param notes: optional notes filter for the transactions. This looks for a case-insensitive pattern rather than for
+    the exact match, i.e. 'foo' would match 'Foo Bar'.
     :param account: optional account (either Account object or Account name) filter for the transactions.
+    :param is_parent: optional boolean flag to indicate if a transaction is a parent. Parent transactions are either
+    single transactions or the main transaction with `Transactions.splits` property. Default is to return all individual
+    splits, and the parent can be retrieved by `Transactions.parent`.
     :param include_deleted: includes deleted transactions from the search.
     :return: list of transactions with `account`, `category` and `payee` pre-loaded.
     """
     query = (
-        s.query(Transactions)
+        select(Transactions)
         .options(
             joinedload(Transactions.account),
             joinedload(Transactions.category),
@@ -57,7 +64,7 @@ def get_transactions(
         .filter(
             Transactions.date.isnot(None),
             Transactions.acct.isnot(None),
-            sqlalchemy.or_(Transactions.is_child == 0, Transactions.parent_id.isnot(None)),
+            Transactions.is_parent == int(is_parent),
         )
         .order_by(
             Transactions.date.desc(),
@@ -78,7 +85,7 @@ def get_transactions(
             query = query.filter(Transactions.acct == account.id)
     if notes:
         query = query.filter(Transactions.notes.ilike(f"%{sqlalchemy.text(notes).compile()}%"))
-    return query.all()
+    return s.exec(query).all()
 
 
 def create_transaction_from_ids(
@@ -112,9 +119,9 @@ def create_transaction(
     s: Session,
     date: datetime.date,
     account: str | Accounts,
-    payee: str | Payees,
+    payee: str | Payees = "",
     notes: str = "",
-    category: str | Categories = None,
+    category: str | Categories | None = None,
     amount: decimal.Decimal | float | int = 0,
 ) -> Transactions:
     """
@@ -136,17 +143,46 @@ def create_transaction(
         raise ActualError(f"Account {account} not found")
     payee = get_or_create_payee(s, payee)
     if category:
-        category_id = get_or_create_category(s, category, "").id
+        category_id = get_or_create_category(s, category).id
     else:
         category_id = None
     return create_transaction_from_ids(s, date, acct.id, payee.id, notes, category_id, amount)
 
 
-def base_query(
-    s: Session, instance: typing.Type[T], name: str = None, include_deleted: bool = False
-) -> sqlalchemy.orm.Query:
+def create_splits(
+    s: Session, transactions: typing.Sequence[Transactions], payee: str | Payees = "", notes: str = ""
+) -> Transactions:
+    """
+    Creates a transaction with splits based on the list of transactions. The total amount will be evaluated as the sum
+    of the individual amounts. All dates must be set to the same value.
+
+    :param s: session from Actual local database.
+    :param transactions: list of transactions that will be added to the splits.
+    :param payee: name or object of the payee from the transaction. Will be created if missing.
+    :param notes: optional description for the transaction.
+    :return: the generated transaction object for the parent transaction.
+    """
+    if not all(transactions[0].date == t.date for t in transactions) or not all(
+        transactions[0].acct == t.acct for t in transactions
+    ):
+        raise ActualError("`date` and `acct` must be the same for all transactions in splits")
+    payee = get_or_create_payee(s, payee)
+    split_amount = decimal.Decimal(sum(t.get_amount() for t in transactions))
+    split_transaction = create_transaction_from_ids(
+        s, transactions[0].get_date(), transactions[0].acct, payee.id, notes, None, split_amount
+    )
+    split_transaction.is_parent = 1
+    split_transaction.is_child = 0
+    for transaction in transactions:
+        transaction.is_parent = 0
+        transaction.is_child = 1
+        transaction.parent_id = split_transaction.id
+    return split_transaction
+
+
+def base_query(instance: typing.Type[T], name: str = None, include_deleted: bool = False) -> Select:
     """Internal method to reduce querying complexity on sub-functions."""
-    query = s.query(instance)
+    query = select(instance)
     if not include_deleted:
         query = query.filter(sqlalchemy.func.coalesce(instance.tombstone, 0) == 0)
     if name:
@@ -157,7 +193,7 @@ def base_query(
 def create_category_group(s: Session, name: str) -> CategoryGroups:
     """Creates a new category with the group name `name`. Make sure you avoid creating payees with duplicate names, as
     it makes it difficult to find them without knowing the unique id beforehand."""
-    category_group = CategoryGroups(id=str(uuid.uuid4()), name=name, is_income=0, is_hidden=0, sort_order=0)
+    category_group = CategoryGroups(id=str(uuid.uuid4()), name=name, is_income=0, sort_order=0)
     s.add(category_group)
     return category_group
 
@@ -165,15 +201,15 @@ def create_category_group(s: Session, name: str) -> CategoryGroups:
 def get_or_create_category_group(s: Session, name: str) -> CategoryGroups:
     """Gets or create the category group, if not found with `name`. Deleted category groups are excluded from the
     search."""
-    category_group = (
-        s.query(CategoryGroups).filter(CategoryGroups.name == name, CategoryGroups.tombstone == 0).one_or_none()
-    )
+    category_group = s.exec(
+        select(CategoryGroups).filter(CategoryGroups.name == name, CategoryGroups.tombstone == 0)
+    ).one_or_none()
     if not category_group:
         category_group = create_category_group(s, name)
     return category_group
 
 
-def get_categories(s: Session, name: str = None, include_deleted: bool = False) -> typing.List[Categories]:
+def get_categories(s: Session, name: str = None, include_deleted: bool = False) -> typing.Sequence[Categories]:
     """
     Returns a list of all available categories.
 
@@ -182,8 +218,8 @@ def get_categories(s: Session, name: str = None, include_deleted: bool = False) 
     :param include_deleted: includes all payees which were deleted via frontend. They would not show normally.
     :return: list of categories with `transactions` already loaded.
     """
-    query = base_query(s, Categories, name, include_deleted).options(joinedload(Categories.transactions))
-    return query.all()
+    query = base_query(Categories, name, include_deleted).options(joinedload(Categories.transactions))
+    return s.exec(query).unique().all()
 
 
 def create_category(
@@ -214,15 +250,14 @@ def get_category(
     """Gets an existing category by name, returns `None` if not found. Deleted payees are excluded from the search."""
     if isinstance(name, Categories):
         return name
-    category = (
-        s.query(Categories)
+    category = s.exec(
+        select(Categories)
         .join(CategoryGroups)
         .filter(Categories.name == name, Categories.tombstone == 0, CategoryGroups.name == group_name)
-        .one_or_none()
-    )
+    ).one_or_none()
     if not category and not strict_group:
         # try to find it without the group name
-        category = s.query(Categories).filter(Categories.name == name).one_or_none()
+        category = s.exec(select(Categories).filter(Categories.name == name, Categories.tombstone == 0)).one_or_none()
     return category
 
 
@@ -236,11 +271,11 @@ def get_or_create_category(
     """
     category = get_category(s, name, group_name, strict_group)
     if not category:
-        category = create_category(s, name, group_name)
+        category = create_category(s, name, group_name or "Usual Expenses")
     return category
 
 
-def get_accounts(s: Session, name: str = None, include_deleted: bool = False) -> typing.List[Accounts]:
+def get_accounts(s: Session, name: str = None, include_deleted: bool = False) -> typing.Sequence[Accounts]:
     """
     Returns a list of all available accounts.
 
@@ -249,11 +284,11 @@ def get_accounts(s: Session, name: str = None, include_deleted: bool = False) ->
     :param include_deleted: includes all payees which were deleted via frontend. They would not show normally.
     :return: list of accounts with `transactions` already loaded.
     """
-    query = base_query(s, Accounts, name, include_deleted).options(joinedload(Accounts.transactions))
-    return query.all()
+    query = base_query(Accounts, name, include_deleted).options(joinedload(Accounts.transactions))
+    return s.exec(query).unique().all()
 
 
-def get_payees(s: Session, name: str = None, include_deleted: bool = False) -> typing.List[Payees]:
+def get_payees(s: Session, name: str = None, include_deleted: bool = False) -> typing.Sequence[Payees]:
     """
     Returns a list of all available payees.
 
@@ -262,15 +297,15 @@ def get_payees(s: Session, name: str = None, include_deleted: bool = False) -> t
     :param include_deleted: includes all payees which were deleted via frontend. They would not show normally.
     :return: list of payees with `transactions` already loaded.
     """
-    query = base_query(s, Payees, name, include_deleted).options(joinedload(Payees.transactions))
-    return query.all()
+    query = base_query(Payees, name, include_deleted).options(joinedload(Payees.transactions))
+    return s.exec(query).unique().all()
 
 
 def get_payee(s: Session, name: str | Payees) -> typing.Optional[Payees]:
     """Gets an existing payee by name, returns `None` if not found. Deleted payees are excluded from the search."""
     if isinstance(name, Payees):
         return name
-    return s.query(Payees).filter(Payees.name == name, Payees.tombstone == 0).one_or_none()
+    return s.exec(select(Payees).filter(Payees.name == name, Payees.tombstone == 0)).one_or_none()
 
 
 def create_payee(s: Session, name: str | None) -> Payees:
@@ -283,7 +318,7 @@ def create_payee(s: Session, name: str | None) -> Payees:
     return payee
 
 
-def get_or_create_payee(s: Session, name: str | Payees | None) -> Payees:
+def get_or_create_payee(s: Session, name: str | Payees) -> Payees:
     """Gets an existing payee by name, and if it does not exist, creates a new one. If the payee is created twice,
     this method will fail with a database error."""
     payee = get_payee(s, name)
@@ -320,10 +355,10 @@ def get_account(s: Session, name: str | Accounts) -> typing.Optional[Accounts]:
     if isinstance(name, Accounts):
         return name
     if is_uuid(name):
-        account = s.query(Accounts).filter(Accounts.id == name, Accounts.tombstone == 0).one_or_none()
+        query = select(Accounts).filter(Accounts.id == name, Accounts.tombstone == 0)
     else:
-        account = s.query(Accounts).filter(Accounts.name == name, Accounts.tombstone == 0).one_or_none()
-    return account
+        query = select(Accounts).filter(Accounts.name == name, Accounts.tombstone == 0)
+    return s.exec(query).one_or_none()
 
 
 def get_or_create_account(s: Session, name: str | Accounts) -> Accounts:
@@ -371,7 +406,7 @@ def create_transfer(
     return source_transaction, dest_transaction
 
 
-def get_rules(s: Session, include_deleted: bool = False) -> list[Rules]:
+def get_rules(s: Session, include_deleted: bool = False) -> typing.Sequence[Rules]:
     """
     Returns a list of all available rules.
 
@@ -379,7 +414,7 @@ def get_rules(s: Session, include_deleted: bool = False) -> list[Rules]:
     :param include_deleted: includes all payees which were deleted via frontend. They would not show normally.
     :return: list of rules.
     """
-    return base_query(s, Rules, None, include_deleted).all()
+    return s.exec(base_query(Rules, None, include_deleted)).all()
 
 
 def get_ruleset(s: Session) -> RuleSet:
@@ -391,8 +426,8 @@ def get_ruleset(s: Session) -> RuleSet:
     """
     rule_set = list()
     for rule in get_rules(s):
-        conditions = pydantic.parse_obj_as(list[Condition], json.loads(rule.conditions))
-        actions = pydantic.parse_obj_as(list[Action], json.loads(rule.actions))
+        conditions = TypeAdapter(list[Condition]).validate_json(rule.conditions)
+        actions = TypeAdapter(list[Action]).validate_json(rule.actions)
         rs = Rule(conditions=conditions, operation=rule.conditions_op, actions=actions, stage=rule.stage)
         rule_set.append(rs)
     return RuleSet(rules=rule_set)
@@ -426,7 +461,7 @@ def create_rule(
     return database_rule
 
 
-def get_schedules(s: Session, name: str = None, include_deleted: bool = False) -> typing.List[Schedules]:
+def get_schedules(s: Session, name: str = None, include_deleted: bool = False) -> typing.Sequence[Schedules]:
     """
     Returns a list of all available schedules.
 
@@ -435,4 +470,5 @@ def get_schedules(s: Session, name: str = None, include_deleted: bool = False) -
     :param include_deleted: includes all payees which were deleted via frontend. They would not show normally.
     :return: list of schedules.
     """
-    return base_query(s, Schedules, name, include_deleted).all()
+    query = base_query(Schedules, name, include_deleted)
+    return s.exec(query).all()

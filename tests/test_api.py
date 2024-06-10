@@ -7,7 +7,7 @@ from actual.protobuf_models import Message
 
 def test_api_apply(mocker):
     actual = Actual.__new__(Actual)
-    actual.session_maker = mocker.MagicMock()
+    actual.engine = mocker.MagicMock()
     # not found table
     m = Message(dict(dataset="foo", row="foobar", column="bar"))
     m.set_value("foobar")
