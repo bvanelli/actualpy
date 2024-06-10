@@ -9,6 +9,7 @@ from actual import ActualError
 from actual.database import SQLModel
 from actual.queries import (
     create_account,
+    create_splits,
     create_transaction,
     create_transfer,
     get_or_create_category,
@@ -64,6 +65,23 @@ def test_account_relationships(session):
         session, today - timedelta(days=1), today + timedelta(days=1), "Util", bank, True
     )
     assert [utilities_payment] == deleted_transaction
+
+
+def test_create_splits(session):
+    bank = create_account(session, "Bank")
+    t = create_transaction(session, date.today(), bank, category="Dining", amount=-10.0)
+    t_taxes = create_transaction(session, date.today(), bank, category="Taxes", amount=-2.5)
+    parent_transaction = create_splits(session, [t, t_taxes], notes="Dining")
+    # find all children
+    trs = get_transactions(session)
+    assert len(trs) == 2
+    assert t in trs
+    assert t_taxes in trs
+    assert all(tr.parent == parent_transaction for tr in trs)
+    # find all parents
+    parents = get_transactions(session, is_parent=True)
+    assert len(parents) == 1
+    assert len(parents[0].splits) == 2
 
 
 def test_create_transaction_without_account_error(session):
