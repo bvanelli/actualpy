@@ -2,7 +2,7 @@ import base64
 
 import pytest
 
-from actual.api import EncryptMetaDTO
+from actual.api.models import EncryptMetaDTO
 from actual.crypto import (
     create_key_buffer,
     decrypt,

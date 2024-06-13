@@ -363,7 +363,7 @@ class Actual(ActualServer):
         self.sync_sync(req)
 
     def run_bank_sync(self, account: str | Accounts | None = None) -> list[Transactions]:
-        """Runs the bank synchronization for the selected account. If missing, all accounts are syncronized."""
+        """Runs the bank synchronization for the selected account. If missing, all accounts are synchronized."""
         # if no account is provided, sync all of them, otherwise just the account provided
         if account is None:
             accounts = get_accounts(self.session)
