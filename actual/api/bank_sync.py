@@ -5,7 +5,7 @@ import decimal
 import enum
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 
 class BankSyncTransactionDTO(BaseModel):
@@ -58,20 +58,20 @@ class Balance(BaseModel):
 
 
 class TransactionItem(BaseModel):
-    booked: bool
-    booking_date: str = Field(..., alias="bookingDate")
-    date: datetime.date
-    debtor_name: str = Field(..., alias="debtorName")
-    remittance_information_unstructured: str = Field(..., alias="remittanceInformationUnstructured")
-    transaction_amount: BankSyncAmount = Field(..., alias="transactionAmount")
     transaction_id: str = Field(..., alias="transactionId")
+    booking_date: str = Field(..., alias="bookingDate")
     value_date: str = Field(..., alias="valueDate")
+    transaction_amount: BankSyncAmount = Field(..., alias="transactionAmount")
+    # this field will come as either debtorName or creditorName, depending on if it's a debt or credit
+    payee: str = Field(None, validation_alias=AliasChoices("debtorName", "creditorName"))
+    date: datetime.date
+    remittance_information_unstructured: str = Field(None, alias="remittanceInformationUnstructured")
 
 
 class Transactions(BaseModel):
     all: List[TransactionItem]
     booked: List[TransactionItem]
-    pending: List
+    pending: List[TransactionItem]
 
 
 class BankSyncAccountData(BaseModel):
@@ -82,3 +82,6 @@ class BankSyncTransactionData(BaseModel):
     balances: List[Balance]
     starting_balance: int = Field(..., alias="startingBalance")
     transactions: Transactions
+    # goCardless specific
+    iban: Optional[str] = None
+    institution_id: Optional[str] = Field(None, alias="institutionId")

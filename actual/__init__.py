@@ -362,8 +362,38 @@ class Actual(ActualServer):
         # sync all changes to the server
         self.sync_sync(req)
 
-    def run_bank_sync(self, account: str | Accounts | None = None) -> list[Transactions]:
-        """Runs the bank synchronization for the selected account. If missing, all accounts are synchronized."""
+    def _run_bank_sync_account(self, acct: Accounts, start_date: datetime.date) -> list[Transactions]:
+        sync_method = acct.account_sync_source
+        account_id = acct.account_id
+        requisition_id = acct.bank.bank_id if sync_method == "goCardless" else None
+        new_transactions_data = self.bank_sync_transactions(
+            sync_method.lower(), account_id, start_date, requisition_id=requisition_id
+        )
+        new_transactions = new_transactions_data.data.transactions.all
+        imported_transactions = []
+        for transaction in new_transactions:
+            note = transaction.remittance_information_unstructured
+            payee = transaction.payee or "" if sync_method == "goCardless" else note
+            reconciled = reconcile_transaction(
+                self.session,
+                transaction.date,
+                acct,
+                payee,
+                note,
+                amount=transaction.transaction_amount.amount,
+                imported_id=transaction.transaction_id,
+            )
+            imported_transactions.append(reconciled)
+        return imported_transactions
+
+    def run_bank_sync(
+        self, account: str | Accounts | None = None, start_date: datetime.date | None = None
+    ) -> list[Transactions]:
+        """
+        Runs the bank synchronization for the selected account. If missing, all accounts are synchronized. If a
+        start_date is provided, is used as a reference, otherwise, the last timestamp of each account will be used. If
+        the account does not have any transaction, the last 90 days are considered instead.
+        """
         # if no account is provided, sync all of them, otherwise just the account provided
         if account is None:
             accounts = get_accounts(self.session)
@@ -374,26 +404,17 @@ class Actual(ActualServer):
         for acct in accounts:
             sync_method = acct.account_sync_source
             account_id = acct.account_id
-            if account_id and sync_method:
-                status = self.bank_sync_status(sync_method.lower())
-                if status.data.configured:
-                    all_transactions = get_transactions(self.session, account=acct)
-                    if all_transactions:
-                        start_date = all_transactions[0].get_date()
-                    else:
-                        start_date = datetime.date.today() - datetime.timedelta(days=90)
-                    new_transactions_data = self.bank_sync_transactions(sync_method.lower(), account_id, start_date)
-                    new_transactions = new_transactions_data.data.transactions.all
-                    for transaction in new_transactions:
-                        note = transaction.remittance_information_unstructured
-                        reconciled = reconcile_transaction(
-                            self.session,
-                            transaction.date,
-                            acct,
-                            note,
-                            note,
-                            amount=transaction.transaction_amount.amount,
-                            imported_id=transaction.transaction_id,
-                        )
-                        imported_transactions.append(reconciled)
+            if not (account_id and sync_method):
+                continue
+            status = self.bank_sync_status(sync_method.lower())
+            if not status.data.configured:
+                continue
+            if start_date is None:
+                all_transactions = get_transactions(self.session, account=acct)
+                if all_transactions:
+                    default_start_date = all_transactions[0].get_date()
+                elif start_date is None:
+                    default_start_date = datetime.date.today() - datetime.timedelta(days=90)
+            transactions = self._run_bank_sync_account(acct, start_date or default_start_date)
+            imported_transactions.extend(transactions)
         return imported_transactions

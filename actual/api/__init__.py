@@ -22,7 +22,11 @@ from actual.api.models import (
     ValidateDTO,
 )
 from actual.crypto import create_key_buffer, make_test_message
-from actual.exceptions import AuthorizationError, UnknownFileId
+from actual.exceptions import (
+    ActualInvalidOperationError,
+    AuthorizationError,
+    UnknownFileId,
+)
 from actual.protobuf_models import SyncRequest, SyncResponse
 
 
@@ -230,12 +234,17 @@ class ActualServer:
         return BankSyncAccountResponseDTO.model_validate(response.json())
 
     def bank_sync_transactions(
-        self, bank_sync: Literal["gocardless", "simplefin"] | str, account_id: str, start_date: datetime.date
+        self,
+        bank_sync: Literal["gocardless", "simplefin"] | str,
+        account_id: str,
+        start_date: datetime.date,
+        requisition_id: str = None,
     ) -> BankSyncTransactionResponseDTO:
+        if bank_sync == "gocardless" and requisition_id is None:
+            raise ActualInvalidOperationError("Retrieving transactions with goCardless requires `requisition_id`")
         endpoint = Endpoints.BANK_SYNC_TRANSACTIONS.value.format(bank_sync=bank_sync)
-        response = requests.post(
-            f"{self.api_url}/{endpoint}",
-            headers=self.headers(),
-            json={"accountId": account_id, "startDate": start_date.strftime("%Y-%m-%d")},
-        )
+        payload = {"accountId": account_id, "startDate": start_date.strftime("%Y-%m-%d")}
+        if requisition_id:
+            payload["requisitionId"] = requisition_id
+        response = requests.post(f"{self.api_url}/{endpoint}", headers=self.headers(), json=payload)
         return BankSyncTransactionResponseDTO.model_validate(response.json())

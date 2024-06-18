@@ -249,9 +249,10 @@ def reconcile_transaction(
         # try to update fields
         match.acct = account.id
         match.notes = notes
-        match.category = get_or_create_category(s, category).id
-        match.date = date
-        return match[0]
+        if category:
+            match.category = get_or_create_category(s, category).id
+        match.set_date(date)
+        return match
     return create_transaction(s, date, account, payee, notes, category, amount, imported_id)
 
 
