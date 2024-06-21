@@ -128,7 +128,7 @@ def match_transaction(
     # if not matched, look 7 days ahead and 7 days back when fuzzy matching
     query = _transactions_base_query(
         s, date - datetime.timedelta(days=7), date + datetime.timedelta(days=8), account=account
-    ).filter(Transactions.amount == amount)
+    ).filter(Transactions.amount == amount * 100)
     results: list[Transactions] = s.exec(query).all()  # noqa
     if not results:
         # nothing to be matched
@@ -141,9 +141,10 @@ def match_transaction(
     # match with low fidelity if a later transaction is going to match
     # the same one with high fidelity.
     payee = get_payee(s, payee)
-    matching_payee = [r for r in results if r.payee_id == payee.id]
-    if matching_payee:
-        return matching_payee[0]
+    if payee:
+        matching_payee = [r for r in results if r.payee_id == payee.id]
+        if matching_payee:
+            return matching_payee[0]
     # The final fuzzy matching pass. This is the lowest fidelity
     # matching: it just find the first transaction that hasn't been
     # matched yet. Remember the dataset only contains transactions
@@ -226,6 +227,7 @@ def reconcile_transaction(
     category: str | Categories | None = None,
     amount: decimal.Decimal | float | int = 0,
     imported_id: str | None = None,
+    update_existing: bool = True,
 ) -> Transactions:
     """Matches the transaction to an existing transaction using fuzzy matching.
 
@@ -240,6 +242,7 @@ def reconcile_transaction(
     negative that the account balance will go down (payment)
     :param imported_id: unique id of the imported transaction. This is often provided if the transaction comes from
     a third-party system that contains unique ids (i.e. via bank sync).
+    :param update_existing: if the transaction should be updated to the provided properties, if a match is found.
     :return: the generated or matched transaction object.
     """
     account = get_account(s, account)
@@ -247,11 +250,12 @@ def reconcile_transaction(
     match = match_transaction(s, date, account, payee, amount, imported_id)
     if match:
         # try to update fields
-        match.acct = account.id
-        match.notes = notes
-        if category:
-            match.category = get_or_create_category(s, category).id
-        match.set_date(date)
+        if update_existing:
+            match.acct = account.id
+            match.notes = notes
+            if category:
+                match.category = get_or_create_category(s, category).id
+            match.set_date(date)
         return match
     return create_transaction(s, date, account, payee, notes, category, amount, imported_id)
 
