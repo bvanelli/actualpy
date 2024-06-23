@@ -1,13 +1,10 @@
 import decimal
 import json
-import tempfile
 from datetime import date, timedelta
 
 import pytest
-from sqlmodel import Session, create_engine
 
 from actual import ActualError
-from actual.database import SQLModel
 from actual.queries import (
     create_account,
     create_rule,
@@ -19,18 +16,10 @@ from actual.queries import (
     get_or_create_payee,
     get_ruleset,
     get_transactions,
+    normalize_payee,
+    reconcile_transaction,
 )
 from actual.rules import Action, Condition, ConditionType, Rule
-
-
-@pytest.fixture
-def session():
-    with tempfile.NamedTemporaryFile() as f:
-        sqlite_url = f"sqlite:///{f.name}"
-        engine = create_engine(sqlite_url, connect_args={"check_same_thread": False})
-        SQLModel.metadata.create_all(engine)
-        with Session(engine) as session:
-            yield session
 
 
 def test_account_relationships(session):
@@ -71,6 +60,47 @@ def test_account_relationships(session):
     )
     assert [utilities_payment] == deleted_transaction
     assert get_accounts(session, "Bank") == [bank]
+
+
+def test_reconcile_transaction(session):
+    today = date.today()
+    create_account(session, "Bank")
+    rent_payment = create_transaction(
+        session, today, "Bank", "Landlord", "Paying rent", "Rent", -1200, imported_id="unique"
+    )
+    unrelated = create_transaction(
+        session, today - timedelta(days=5), "Bank", "Carshop", "Car maintenance", "Car", -1200
+    )
+    session.commit()
+    assert reconcile_transaction(session, today + timedelta(days=1), "Bank", amount=-1200).id == rent_payment.id
+    # check if the property was updated
+    assert rent_payment.get_date() == today + timedelta(days=1)
+    # should still be able to match if the payee is defined, as the match is stronger
+    assert (
+        reconcile_transaction(
+            session, today - timedelta(days=5), payee="Landlord", account="Bank", amount=-1200, update_existing=False
+        ).id
+        == rent_payment.id
+    )
+    # should not be able to match without payee
+    assert reconcile_transaction(session, today - timedelta(days=5), account="Bank", amount=-1200).id == unrelated.id
+    # regardless of date, the match by unique id should work
+    assert (
+        reconcile_transaction(
+            session,
+            today - timedelta(days=30),
+            account="Bank",
+            amount=-1200,
+            imported_id="unique",
+            update_existing=False,
+        ).id
+        == rent_payment.id
+    )
+    # but if it's too far, it will be a new transaction
+    assert reconcile_transaction(session, today - timedelta(days=30), account="Bank", amount=-1200).id not in (
+        rent_payment.id,
+        unrelated.id,
+    )
 
 
 def test_create_splits(session):
@@ -131,3 +161,9 @@ def test_rule_insertion_method(session):
     rs = get_ruleset(session)
     assert len(rs.rules) == 1
     assert str(rs) == "If all of these conditions match 'date' isapprox '2024-01-02' then set 'cleared' to 'True'"
+
+
+def test_normalize_payee():
+    assert normalize_payee("   mY paYeE ") == "My Payee"
+    assert normalize_payee("  ", raw_payee_name=True) == ""
+    assert normalize_payee(" My PayeE ", raw_payee_name=True) == "My PayeE"

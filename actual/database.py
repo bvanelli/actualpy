@@ -120,6 +120,19 @@ class BaseModel(SQLModel):
             )
         # compute changes from a sqlalchemy instance, see https://stackoverflow.com/a/28353846/12681470
         changes = []
+        for column in self.changed():
+            converted_attr_name = get_attribute_by_table_name(self.__tablename__, column, reverse=True)
+            m = Message(dict(dataset=self.__tablename__, row=row, column=converted_attr_name))
+            value = self.__getattribute__(column)
+            # if the entry is new, we can ignore null columns, otherwise consider it an update to None
+            if value is not None or not is_new:
+                m.set_value(value)
+                changes.append(m)
+        return changes
+
+    def changed(self) -> list[str]:
+        """Returns list of model changed attributes."""
+        changed_attributes = []
         inspr = inspect(self)
         attrs = class_mapper(self.__class__).column_attrs  # exclude relationships
         for attr in attrs:  # noqa: you can iterate over attrs
@@ -128,16 +141,12 @@ class BaseModel(SQLModel):
                 continue
             hist = getattr(inspr.attrs, column).history
             if hist.has_changes():
-                converted_attr_name = get_attribute_by_table_name(self.__tablename__, column, reverse=True)
-                m = Message(dict(dataset=self.__tablename__, row=row, column=converted_attr_name))
-                value = self.__getattribute__(column)
-                # if the entry is new, we can ignore null columns, otherwise consider it an update to None
-                if value is not None or not is_new:
-                    m.set_value(value)
-                    changes.append(m)
-        return changes
+                changed_attributes.append(column)
+        return changed_attributes
 
     def delete(self):
+        """Deletes the model, by setting the `tombstone` attribute to 1. It is only possible to hard delete
+        transactions by updating and re-uploading the downloaded budget."""
         if not hasattr(self, "tombstone"):
             raise AttributeError(f"Model {self.__class__.__name__} has no tombstone field and cannot be deleted.")
         setattr(self, "tombstone", 1)
@@ -166,7 +175,7 @@ class Accounts(BaseModel, table=True):
     mask: Optional[str] = Field(default=None, sa_column=Column("mask", Text))
     official_name: Optional[str] = Field(default=None, sa_column=Column("official_name", Text))
     subtype: Optional[str] = Field(default=None, sa_column=Column("subtype", Text))
-    bank: Optional[str] = Field(default=None, sa_column=Column("bank", Text))
+    bank_id: Optional[str] = Field(default=None, sa_column=Column("bank", Text, ForeignKey("banks.id")))
     offbudget: Optional[int] = Field(default=None, sa_column=Column("offbudget", Integer, server_default=text("0")))
     closed: Optional[int] = Field(default=None, sa_column=Column("closed", Integer, server_default=text("0")))
     tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
@@ -181,6 +190,13 @@ class Accounts(BaseModel, table=True):
             "primaryjoin": (
                 "and_(Accounts.id == Transactions.acct,Transactions.is_parent == 0, Transactions.tombstone==0)"
             )
+        },
+    )
+    bank: "Banks" = Relationship(
+        back_populates="account",
+        sa_relationship_kwargs={
+            "uselist": False,
+            "primaryjoin": "and_(Accounts.bank_id == Banks.id,Banks.tombstone == 0)",
         },
     )
 
@@ -202,6 +218,8 @@ class Banks(BaseModel, table=True):
     bank_id: Optional[str] = Field(default=None, sa_column=Column("bank_id", Text))
     name: Optional[str] = Field(default=None, sa_column=Column("name", Text))
     tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
+
+    account: "Accounts" = Relationship(back_populates="bank")
 
 
 class Categories(BaseModel, table=True):

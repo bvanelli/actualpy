@@ -15,16 +15,25 @@ from typing import IO, Union
 
 from sqlmodel import Session, create_engine, select
 
-from actual.api import ActualServer, RemoteFileListDTO
+from actual.api import ActualServer
+from actual.api.models import RemoteFileListDTO
 from actual.crypto import create_key_buffer, decrypt_from_meta, encrypt, make_salt
 from actual.database import (
+    Accounts,
     MessagesClock,
+    Transactions,
     get_attribute_by_table_name,
     get_class_by_table_name,
     strong_reference_session,
 )
 from actual.exceptions import ActualError, InvalidZipFile, UnknownFileId
 from actual.protobuf_models import HULC_Client, Message, SyncRequest
+from actual.queries import (
+    get_account,
+    get_accounts,
+    get_transactions,
+    reconcile_transaction,
+)
 
 
 class Actual(ActualServer):
@@ -352,3 +361,65 @@ class Actual(ActualServer):
         self._session.commit()
         # sync all changes to the server
         self.sync_sync(req)
+
+    def _run_bank_sync_account(self, acct: Accounts, start_date: datetime.date) -> list[Transactions]:
+        sync_method = acct.account_sync_source
+        account_id = acct.account_id
+        requisition_id = acct.bank.bank_id if sync_method == "goCardless" else None
+        new_transactions_data = self.bank_sync_transactions(
+            sync_method.lower(), account_id, start_date, requisition_id=requisition_id
+        )
+        new_transactions = new_transactions_data.data.transactions.all
+        imported_transactions = []
+        for transaction in new_transactions:
+            payee = transaction.imported_payee or "" if sync_method == "goCardless" else transaction.notes
+            reconciled = reconcile_transaction(
+                self.session,
+                transaction.date,
+                acct,
+                payee,
+                transaction.notes,
+                amount=transaction.transaction_amount.amount,
+                imported_id=transaction.transaction_id,
+                cleared=transaction.booked,
+                imported_payee=payee,
+                already_matched=imported_transactions,
+            )
+            if reconciled.changed():
+                imported_transactions.append(reconciled)
+        return imported_transactions
+
+    def run_bank_sync(
+        self, account: str | Accounts | None = None, start_date: datetime.date | None = None
+    ) -> list[Transactions]:
+        """
+        Runs the bank synchronization for the selected account. If missing, all accounts are synchronized. If a
+        start_date is provided, is used as a reference, otherwise, the last timestamp of each account will be used. If
+        the account does not have any transaction, the last 90 days are considered instead.
+        """
+        # if no account is provided, sync all of them, otherwise just the account provided
+        if account is None:
+            accounts = get_accounts(self.session)
+        else:
+            account = get_account(self.session, account)
+            accounts = [account]
+        imported_transactions = []
+
+        default_start_date = start_date
+        for acct in accounts:
+            sync_method = acct.account_sync_source
+            account_id = acct.account_id
+            if not (account_id and sync_method):
+                continue
+            status = self.bank_sync_status(sync_method.lower())
+            if not status.data.configured:
+                continue
+            if start_date is None:
+                all_transactions = get_transactions(self.session, account=acct)
+                if all_transactions:
+                    default_start_date = all_transactions[0].get_date()
+                else:
+                    default_start_date = datetime.date.today() - datetime.timedelta(days=90)
+            transactions = self._run_bank_sync_account(acct, default_start_date)
+            imported_transactions.extend(transactions)
+        return imported_transactions
