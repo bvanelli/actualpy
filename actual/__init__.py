@@ -405,6 +405,7 @@ class Actual(ActualServer):
             accounts = [account]
         imported_transactions = []
 
+        default_start_date = start_date
         for acct in accounts:
             sync_method = acct.account_sync_source
             account_id = acct.account_id
@@ -419,8 +420,6 @@ class Actual(ActualServer):
                     default_start_date = all_transactions[0].get_date()
                 else:
                     default_start_date = datetime.date.today() - datetime.timedelta(days=90)
-            else:
-                default_start_date = start_date
             transactions = self._run_bank_sync_account(acct, default_start_date)
             imported_transactions.extend(transactions)
         return imported_transactions
