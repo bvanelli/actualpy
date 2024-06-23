@@ -372,18 +372,21 @@ class Actual(ActualServer):
         new_transactions = new_transactions_data.data.transactions.all
         imported_transactions = []
         for transaction in new_transactions:
-            note = transaction.remittance_information_unstructured
-            payee = transaction.payee or "" if sync_method == "goCardless" else note
+            payee = transaction.imported_payee or "" if sync_method == "goCardless" else transaction.notes
             reconciled = reconcile_transaction(
                 self.session,
                 transaction.date,
                 acct,
                 payee,
-                note,
+                transaction.notes,
                 amount=transaction.transaction_amount.amount,
                 imported_id=transaction.transaction_id,
+                cleared=transaction.booked,
+                imported_payee=payee,
+                already_matched=imported_transactions,
             )
-            imported_transactions.append(reconciled)
+            if reconciled.changed():
+                imported_transactions.append(reconciled)
         return imported_transactions
 
     def run_bank_sync(
@@ -401,6 +404,7 @@ class Actual(ActualServer):
             account = get_account(self.session, account)
             accounts = [account]
         imported_transactions = []
+
         for acct in accounts:
             sync_method = acct.account_sync_source
             account_id = acct.account_id
@@ -413,8 +417,10 @@ class Actual(ActualServer):
                 all_transactions = get_transactions(self.session, account=acct)
                 if all_transactions:
                     default_start_date = all_transactions[0].get_date()
-                elif start_date is None:
+                else:
                     default_start_date = datetime.date.today() - datetime.timedelta(days=90)
-            transactions = self._run_bank_sync_account(acct, start_date or default_start_date)
+            else:
+                default_start_date = start_date
+            transactions = self._run_bank_sync_account(acct, default_start_date)
             imported_transactions.extend(transactions)
         return imported_transactions

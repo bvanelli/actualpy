@@ -16,6 +16,7 @@ from actual.queries import (
     get_or_create_payee,
     get_ruleset,
     get_transactions,
+    normalize_payee,
     reconcile_transaction,
 )
 from actual.rules import Action, Condition, ConditionType, Rule
@@ -68,12 +69,17 @@ def test_reconcile_transaction(session):
         session, today, "Bank", "Landlord", "Paying rent", "Rent", -1200, imported_id="unique"
     )
     unrelated = create_transaction(
-        session, today - timedelta(days=5), "Bank", "Carshop", "Car maintanance", "Rent", -1200
+        session, today - timedelta(days=5), "Bank", "Carshop", "Car maintenance", "Car", -1200
     )
     session.commit()
     assert reconcile_transaction(session, today + timedelta(days=1), "Bank", amount=-1200).id == rent_payment.id
+    # check if the property was updated
+    assert rent_payment.get_date() == today + timedelta(days=1)
+    # should still be able to match if the payee is defined, as the match is stronger
     assert (
-        reconcile_transaction(session, today - timedelta(days=5), payee="Landlord", account="Bank", amount=-1200).id
+        reconcile_transaction(
+            session, today - timedelta(days=5), payee="Landlord", account="Bank", amount=-1200, update_existing=False
+        ).id
         == rent_payment.id
     )
     # should not be able to match without payee
@@ -86,7 +92,7 @@ def test_reconcile_transaction(session):
             account="Bank",
             amount=-1200,
             imported_id="unique",
-            update_existing=False,  # do not update the transaction
+            update_existing=False,
         ).id
         == rent_payment.id
     )
@@ -155,3 +161,9 @@ def test_rule_insertion_method(session):
     rs = get_ruleset(session)
     assert len(rs.rules) == 1
     assert str(rs) == "If all of these conditions match 'date' isapprox '2024-01-02' then set 'cleared' to 'True'"
+
+
+def test_normalize_payee():
+    assert normalize_payee("   mY paYeE ") == "My Payee"
+    assert normalize_payee("  ", raw_payee_name=True) == ""
+    assert normalize_payee(" My PayeE ", raw_payee_name=True) == "My PayeE"

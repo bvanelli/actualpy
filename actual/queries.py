@@ -26,6 +26,7 @@ from actual.database import (
 )
 from actual.exceptions import ActualError
 from actual.rules import Action, Condition, Rule, RuleSet
+from actual.utils.title import title
 
 T = typing.TypeVar("T")
 
@@ -90,8 +91,7 @@ def get_transactions(
     single transactions or the main transaction with `Transactions.splits` property. Default is to return all individual
     splits, and the parent can be retrieved by `Transactions.parent`.
     :param include_deleted: includes deleted transactions from the search.
-    :param imported_id: searches for entries with the matching imported id (exact).
-    :return: list of transactions with `account`, `category` and `payee` pre-loaded.
+    :return: list of transactions with `account`, `category` and `payee` preloaded.
     """
     query = _transactions_base_query(s, start_date, end_date, account, include_deleted)
     query = query.filter(Transactions.is_parent == int(is_parent))
@@ -107,6 +107,7 @@ def match_transaction(
     payee: str | Payees = "",
     amount: decimal.Decimal | float | int = 0,
     imported_id: str | None = None,
+    already_matched: list[Transactions] = None,
 ) -> typing.Optional[Transactions]:
     """Matches a transaction with another transaction based on the fuzzy matching described at `reconcileTransactions`:
 
@@ -130,6 +131,10 @@ def match_transaction(
         s, date - datetime.timedelta(days=7), date + datetime.timedelta(days=8), account=account
     ).filter(Transactions.amount == amount * 100)
     results: list[Transactions] = s.exec(query).all()  # noqa
+    # filter out the ones that were already matched
+    if already_matched:
+        matched = {t.id for t in already_matched}
+        results = [r for r in results if r.id not in matched]
     if not results:
         # nothing to be matched
         return None
@@ -161,6 +166,8 @@ def create_transaction_from_ids(
     category_id: str = None,
     amount: decimal.Decimal = 0,
     imported_id: str = None,
+    cleared: bool = False,
+    imported_payee: str = None,
 ) -> Transactions:
     """Internal method to generate a transaction from ids instead of objects."""
     date_int = int(datetime.date.strftime(date, "%Y%m%d"))
@@ -173,9 +180,10 @@ def create_transaction_from_ids(
         payee_id=payee_id,
         notes=notes,
         reconciled=0,
-        cleared=0,
-        sort_order=datetime.datetime.utcnow().timestamp(),
+        cleared=int(cleared),
+        sort_order=int(datetime.datetime.utcnow().timestamp()),
         financial_id=imported_id,
+        imported_description=imported_payee,
     )
     s.add(t)
     return t
@@ -190,6 +198,8 @@ def create_transaction(
     category: str | Categories | None = None,
     amount: decimal.Decimal | float | int = 0,
     imported_id: str | None = None,
+    cleared: bool = False,
+    imported_payee: str = None,
 ) -> Transactions:
     """
     Creates a transaction from the provided input.
@@ -205,6 +215,10 @@ def create_transaction(
     negative that the account balance will go down (payment)
     :param imported_id: unique id of the imported transaction. This is often provided if the transaction comes from
     a third-party system that contains unique ids (i.e. via bank sync).
+    :param cleared: visual indication that the transaction is in both your budget and in your account statement,
+    and they match.
+    :param imported_payee: known internally as imported_description, this is the original name of the payee, when
+    importing data and before running rules.
     :return: the generated transaction object.
     """
     acct = get_account(s, account)
@@ -215,7 +229,32 @@ def create_transaction(
         category_id = get_or_create_category(s, category).id
     else:
         category_id = None
-    return create_transaction_from_ids(s, date, acct.id, payee.id, notes, category_id, amount, imported_id)
+    return create_transaction_from_ids(
+        s, date, acct.id, payee.id, notes, category_id, amount, imported_id, cleared, imported_payee
+    )
+
+
+def normalize_payee(payee_name: str | None, raw_payee_name: bool = False) -> str:
+    """
+    Normalizes the payees according to the source code found at:
+
+    https://github.com/actualbudget/actual/blob/f02ca4e3d26f5b91f4234317e024022fcae2c13c/packages/loot-core/src/server/accounts/sync.ts#L206-L214
+
+    This make sures that the payees are consistent across the imports, i.e. 'MY PAYEE ' turns into 'My Payee', but so
+    does 'My PaYeE'.
+
+    :param payee_name: the original payee name to be normalized.
+    :param raw_payee_name: if the original payee name should be used instead. If the payee provided consists of spaces
+    or an empty string, it will still be assigned to `None`.
+    :return:
+    """
+    if payee_name:
+        trimmed = payee_name.strip()
+        if raw_payee_name:
+            return trimmed
+        else:
+            return title(trimmed)
+    return ""
 
 
 def reconcile_transaction(
@@ -227,7 +266,10 @@ def reconcile_transaction(
     category: str | Categories | None = None,
     amount: decimal.Decimal | float | int = 0,
     imported_id: str | None = None,
+    cleared: bool = False,
+    imported_payee: str = None,
     update_existing: bool = True,
+    already_matched: list[Transactions] = None,
 ) -> Transactions:
     """Matches the transaction to an existing transaction using fuzzy matching.
 
@@ -242,22 +284,26 @@ def reconcile_transaction(
     negative that the account balance will go down (payment)
     :param imported_id: unique id of the imported transaction. This is often provided if the transaction comes from
     a third-party system that contains unique ids (i.e. via bank sync).
+    :param cleared: This is a visual indication that the transaction is in both your budget and in your account
+    statement, and they match.
+    :param imported_payee: known internally as imported_description, this is the original name of the payee, when
+    importing data and before running rules.
     :param update_existing: if the transaction should be updated to the provided properties, if a match is found.
+    :param already_matched: list of the transactions that were already matched. When importing a list of transactions,
+    this would prevent transactions with the exact same (date, amount) to be assigned as duplicates.
     :return: the generated or matched transaction object.
     """
     account = get_account(s, account)
-    # First, match with an existing transaction's imported_id
-    match = match_transaction(s, date, account, payee, amount, imported_id)
+    match = match_transaction(s, date, account, payee, amount, imported_id, already_matched)
     if match:
         # try to update fields
         if update_existing:
-            match.acct = account.id
             match.notes = notes
             if category:
                 match.category = get_or_create_category(s, category).id
             match.set_date(date)
         return match
-    return create_transaction(s, date, account, payee, notes, category, amount, imported_id)
+    return create_transaction(s, date, account, payee, notes, category, amount, imported_id, cleared, imported_payee)
 
 
 def create_splits(

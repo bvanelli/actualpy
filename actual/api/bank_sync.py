@@ -7,6 +7,8 @@ from typing import List, Optional
 
 from pydantic import AliasChoices, BaseModel, Field
 
+from actual.utils.title import title
+
 
 class BankSyncTransactionDTO(BaseModel):
     id: str
@@ -39,6 +41,10 @@ class BankSyncAmount(BaseModel):
     currency: str
 
 
+class DebtorAccount(BaseModel):
+    iban: str
+
+
 class BalanceType(enum.Enum):
     CLOSING_BOOKED = "closingBooked"
     EXPECTED = "expected"
@@ -60,12 +66,38 @@ class Balance(BaseModel):
 class TransactionItem(BaseModel):
     transaction_id: str = Field(..., alias="transactionId")
     booking_date: str = Field(..., alias="bookingDate")
+    booked: bool = True
     value_date: str = Field(..., alias="valueDate")
     transaction_amount: BankSyncAmount = Field(..., alias="transactionAmount")
     # this field will come as either debtorName or creditorName, depending on if it's a debt or credit
     payee: str = Field(None, validation_alias=AliasChoices("debtorName", "creditorName"))
+    payee_account: Optional[DebtorAccount] = Field(
+        None, validation_alias=AliasChoices("debtorAccount", "creditorAccount")
+    )
     date: datetime.date
     remittance_information_unstructured: str = Field(None, alias="remittanceInformationUnstructured")
+    remittance_information_unstructured_array: list[str] = Field(
+        default_factory=list, alias="remittanceInformationUnstructuredArray"
+    )
+    additional_information: Optional[str] = Field(None, alias="additionalInformation")
+
+    @property
+    def imported_payee(self):
+        name_parts = []
+        name = self.payee or self.notes or self.additional_information
+        if name:
+            name_parts.append(title(name))
+        if self.payee_account and self.payee_account.iban:
+            iban = self.payee_account.iban
+            name_parts.append(f"({iban[:4]} XXX {iban[-4:]})")
+        return " ".join(name_parts).strip()
+
+    @property
+    def notes(self):
+        notes = self.remittance_information_unstructured or ", ".join(
+            self.remittance_information_unstructured_array or []
+        )
+        return notes.strip()
 
 
 class Transactions(BaseModel):

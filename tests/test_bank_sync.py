@@ -99,7 +99,8 @@ def test_full_bank_sync_go_cardless(session, set_mocks):
         assert imported_transactions[1].financial_id == "a2c2fafe-334a-46a6-8d05-200c2e41397b"
         assert imported_transactions[1].get_date() == datetime.date(2024, 6, 13)
         assert imported_transactions[1].get_amount() == decimal.Decimal("-7.77")
-        assert imported_transactions[1].payee.name == "Institution GmbH"
+        # the name of the payee was normalized (from GmbH to Gmbh) and the masked iban is included
+        assert imported_transactions[1].payee.name == "Institution Gmbh (DE12 XXX 6789)"
         assert imported_transactions[1].notes == "Payment"
 
         # the next call should do nothing
