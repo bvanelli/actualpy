@@ -14,4 +14,11 @@ setup(
     project_urls={
         "Issues": "https://github.com/bvanelli/actualpy/issues",
     },
+    install_requires=[
+        "cryptography",
+        "proto-plus",
+        "python-dateutil",
+        "requests",
+        "sqlmodel"
+    ],
 )
