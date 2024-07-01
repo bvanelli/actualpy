@@ -66,15 +66,20 @@ def test_reconcile_transaction(session):
     today = date.today()
     create_account(session, "Bank")
     rent_payment = create_transaction(
-        session, today, "Bank", "Landlord", "Paying rent", "Rent", -1200, imported_id="unique"
+        session, today, "Bank", "Landlord", "Paying rent", "Expenses", -1200, imported_id="unique"
     )
     unrelated = create_transaction(
         session, today - timedelta(days=5), "Bank", "Carshop", "Car maintenance", "Car", -1200
     )
     session.commit()
-    assert reconcile_transaction(session, today + timedelta(days=1), "Bank", amount=-1200).id == rent_payment.id
+    assert (
+        reconcile_transaction(session, today + timedelta(days=1), "Bank", category="Rent", amount=-1200).id
+        == rent_payment.id
+    )
+    session.commit()
     # check if the property was updated
     assert rent_payment.get_date() == today + timedelta(days=1)
+    assert rent_payment.category.name == "Rent"
     # should still be able to match if the payee is defined, as the match is stronger
     assert (
         reconcile_transaction(
