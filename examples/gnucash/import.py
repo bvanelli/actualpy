@@ -6,7 +6,7 @@ import piecash
 
 from actual import Actual
 from actual.queries import (
-    create_transaction_from_ids,
+    create_transaction,
     create_transfer,
     get_or_create_account,
     get_or_create_category,
@@ -23,12 +23,12 @@ def insert_transaction(
         account = get_or_create_account(session, account_source.replace("Assets:", ""))
         group_name, _, category_name = expense_source.partition(":")
         category = get_or_create_category(session, category_name, group_name)
-        create_transaction_from_ids(session, date, account.id, payee.id, notes, category.id, -value)
+        create_transaction(session, date, account, payee, notes, category, -value)
     elif account_source.startswith("Income:") and expense_source.startswith("Assets:"):
         expense = get_or_create_account(session, expense_source.replace("Assets:", ""))
         group_name, _, category_name = account_source.partition(":")
         category = get_or_create_category(session, category_name, group_name)
-        create_transaction_from_ids(session, date, expense.id, payee.id, notes, category.id, value)
+        create_transaction(session, date, expense, payee, notes, category, value)
     elif account_source.startswith("Assets:") and expense_source.startswith("Assets:"):
         account = get_or_create_account(session, account_source.replace("Assets:", ""))
         expense = get_or_create_account(session, expense_source.replace("Assets:", ""))

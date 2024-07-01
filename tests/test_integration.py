@@ -47,6 +47,10 @@ def test_create_user_file(actual_server):
         assert len(new_user_files) == 1
         assert new_user_files[-1].name == "My Budget"
         assert actual.info().build is not None
+        # run rules
+        actual.run_rules()
+        # run bank sync
+        actual.run_bank_sync()
 
     # make sure a new instance can now retrieve the budget info
     with Actual(f"http://localhost:{port}", password="mypass", file="My Budget"):

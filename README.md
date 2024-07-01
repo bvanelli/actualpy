@@ -15,7 +15,7 @@ Python API implementation for Actual server.
 Install it via Pip using the repository url:
 
 ```bash
-pip install https://github.com/bvanelli/actualpy
+pip install git+https://github.com/bvanelli/actualpy.git
 ```
 
 # Basic usage
@@ -42,6 +42,38 @@ with Actual(
         print(t.date, account_name, t.notes, t.amount, category)
 ```
 
+## Adding new transactions
+
+After you created your first budget (or when updating an existing budget), you can add new transactions by adding them
+using the `actual.session.add()` method. You cannot use the SQLAlchemy session directly because that adds the entries to your
+local database, but will not sync the results back to the server (that is only possible when re-uploading the file).
+
+The method will make sure the local database is updated, but will also send a SYNC request with the added data so that
+it will be immediately available on the frontend:
+
+```python
+import decimal
+import datetime
+from actual import Actual
+from actual.queries import create_transaction, create_account
+
+with Actual(base_url="http://localhost:5006", password="mypass", file="My budget") as actual:
+    act = create_account(actual.session, "My account")
+    t = create_transaction(
+        actual.session,
+        datetime.date.today(),
+        act,
+        "My payee",
+        notes="My first transaction",
+        amount=decimal.Decimal(-10.5),
+    )
+    actual.commit()  # use the actual.commit() instead of session.commit()!
+```
+
+Will produce:
+
+![added-transaction](./docs/static/added-transaction.png)
+
 # Experimental features
 
 > **WARNING:** Experimental features do not have all the testing necessary to ensure correctness in comparison to the
@@ -67,36 +99,51 @@ You will then have a freshly created new budget to use:
 
 If the `encryption_password` is set, the budget will additionally also be encrypted on the upload step to the server.
 
-# Adding new transactions
+## Updating transactions using Bank Sync
 
-After you created your first budget (or when updating an existing budget), you can add new transactions by adding them
-using the `actual.session.add()` method. You cannot use the SQLAlchemy session directly because that adds the entries to your
-local database, but will not sync the results back to the server (that is only possible when re-uploading the file).
+If you have either [goCardless](https://actualbudget.org/docs/advanced/bank-sync/#gocardless-setup) or
+[simplefin](https://actualbudget.org/docs/experimental/simplefin-sync/) integration configured, it is possible to
+update the transactions using just the Python API alone. This is because the actual queries to the third-party service
+are handled on the server, so the client does not have to do any custom API queries.
 
-The method will make sure the local database is updated, but will also send a SYNC request with the added data so that
-it will be immediately available on the frontend:
+To sync your account, simply call the `run_bank_sync` method:
 
 ```python
-import decimal
-import datetime
 from actual import Actual
-from actual.queries import create_transaction, create_account
 
-with Actual(base_url="http://localhost:5006", password="mypass", file="My budget") as actual:
-    act = create_account(actual.session, "My account")
-    t = create_transaction(
-        actual.session,
-        datetime.date.today(),
-        act,
-        "My payee",
-        notes="My first transaction",
-        amount=decimal.Decimal(-10.5),
-    )
-    actual.session.add(t)
-    actual.commit()  # use the actual.commit() instead of session.commit()!
+with Actual(base_url="http://localhost:5006", password="mypass") as actual:
+    synchronized_transactions = actual.run_bank_sync()
+    for transaction in synchronized_transactions:
+        print(f"Added of modified {transaction}")
+    # sync changes back to the server
+    actual.commit()
 ```
 
-![added-transaction](./docs/static/added-transaction.png)
+## Running rules
+
+You can also automatically run rules using the library:
+
+```python
+from actual import Actual
+
+with Actual(base_url="http://localhost:5006", password="mypass", file="My budget") as actual:
+    actual.run_rules()
+```
+
+You can also manipulate the rules individually:
+
+```python
+from actual import Actual
+from actual.queries import get_ruleset, get_transactions
+
+with Actual(base_url="http://localhost:5006", password="mypass", file="My budget") as actual:
+    rs = get_ruleset(actual.session)
+    transactions = get_transactions(actual.session)
+    for rule in rs:
+        for t in transactions:
+            if rule.evaluate(t):
+                print(f"Rule {rule} matches for {t}")
+```
 
 # Understanding how Actual handles changes
 

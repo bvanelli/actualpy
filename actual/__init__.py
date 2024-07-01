@@ -31,6 +31,7 @@ from actual.protobuf_models import HULC_Client, Message, SyncRequest
 from actual.queries import (
     get_account,
     get_accounts,
+    get_ruleset,
     get_transactions,
     reconcile_transaction,
 )
@@ -46,6 +47,7 @@ class Actual(ActualServer):
         encryption_password: str = None,
         data_dir: Union[str, pathlib.Path] = None,
         bootstrap: bool = False,
+        sa_kwargs: dict = None,
     ):
         """
         Implements the Python API for the Actual Server in order to be able to read and modify information on Actual
@@ -60,8 +62,11 @@ class Actual(ActualServer):
         :param file: the name or id of the file to be set
         :param encryption_password: password used to configure encryption, if existing
         :param data_dir: where to store the downloaded files from the server. If not specified, a temporary folder will
-            be created instead.
+        be created instead.
         :param bootstrap: if the server is not bootstrapped, bootstrap it with the password.
+        :param sa_kwargs: additional kwargs passed to the SQLAlchemy session maker. Examples are `autoflush` (enabled
+        by default), `autocommit` (disabled by default). For a list of all parameters, check the SQLAlchemy
+        documentation: https://docs.sqlalchemy.org/en/20/orm/session_api.html#sqlalchemy.orm.Session.__init__
         """
         super().__init__(base_url, token, password, bootstrap)
         self._file: RemoteFileListDTO | None = None
@@ -75,12 +80,14 @@ class Actual(ActualServer):
         self._encryption_password = encryption_password
         self._master_key = None
         self._in_context = False
+        self._sa_kwargs = sa_kwargs or {}
+        if "autoflush" not in self._sa_kwargs:
+            self._sa_kwargs["autoflush"] = True
 
     def __enter__(self) -> Actual:
+        self._in_context = True
         if self._file:
             self.download_budget(self._encryption_password)
-            self._session = strong_reference_session(Session(self.engine))
-        self._in_context = True
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -162,7 +169,7 @@ class Actual(ActualServer):
         # generate a session
         self.engine = create_engine(f"sqlite:///{self._data_dir}/db.sqlite")
         if self._in_context:
-            self._session = strong_reference_session(Session(self.engine, autoflush=False))
+            self._session = strong_reference_session(Session(self.engine, **self._sa_kwargs))
         # create a clock
         self.load_clock()
 
@@ -292,6 +299,9 @@ class Actual(ActualServer):
         # actual js always calls validation
         self.validate()
         self.sync()
+        # create session if not existing
+        if self._in_context and not self._session:
+            self._session = strong_reference_session(Session(self.engine, **self._sa_kwargs))
 
     def import_zip(self, file_bytes: str | PathLike[str] | IO[bytes]):
         try:
@@ -361,6 +371,11 @@ class Actual(ActualServer):
         self._session.commit()
         # sync all changes to the server
         self.sync_sync(req)
+
+    def run_rules(self):
+        ruleset = get_ruleset(self.session)
+        transactions = get_transactions(self.session)
+        ruleset.run(transactions)
 
     def _run_bank_sync_account(self, acct: Accounts, start_date: datetime.date) -> list[Transactions]:
         sync_method = acct.account_sync_source
