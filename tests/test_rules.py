@@ -33,6 +33,7 @@ def test_category_rule():
     action = Action(field="description", value=payee)
     rule = Rule(conditions=[condition], actions=[action], operation="all")
     rs = RuleSet(rules=[])
+    assert list(rs) == []
     rs.add(rule)
     # run for one transaction
     t = create_transaction(mock, datetime.date(2024, 1, 1), acct, "", category=cat)
