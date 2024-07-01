@@ -400,6 +400,9 @@ class RuleSet(pydantic.BaseModel):
     def __str__(self):
         return "\n".join([str(r) for r in self.rules])
 
+    def __iter__(self) -> typing.Iterator[Rule]:
+        return self.rules.__iter__()
+
     def _run(
         self, transaction: typing.Union[Transactions, list[Transactions]], stage: typing.Literal["pre", "post", None]
     ):
@@ -412,7 +415,7 @@ class RuleSet(pydantic.BaseModel):
 
     def run(
         self,
-        transaction: typing.Union[Transactions, list[Transactions]],
+        transaction: typing.Union[Transactions, typing.Sequence[Transactions]],
         stage: typing.Literal["all", "pre", "post", None] = "all",
     ):
         """Runs the rules for each and every transaction on the list. If stage is 'all' (default), all rules are run in

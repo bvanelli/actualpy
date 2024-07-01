@@ -300,7 +300,7 @@ def reconcile_transaction(
         if update_existing:
             match.notes = notes
             if category:
-                match.category = get_or_create_category(s, category).id
+                match.category_id = get_or_create_category(s, category).id
             match.set_date(date)
         return match
     return create_transaction(s, date, account, payee, notes, category, amount, imported_id, cleared, imported_payee)

@@ -1,0 +1,69 @@
+name: '🐛 Bug report'
+description: Report an issue with Actual.
+labels: [bug]
+
+body:
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I have checked that this issue has not already been reported.
+          required: true
+        - label: I have confirmed this bug exists on the latest version of actualpy.
+          required: true
+
+  - type: textarea
+    id: example
+    attributes:
+      label: Reproducible example
+      description: >
+        Please follow [this guide](https://matthewrocklin.com/blog/work/2018/02/28/minimal-bug-reports) on how to
+        provide a minimal, copy-pastable example. Include the (wrong) output if applicable.
+      value: |
+        ```python
+
+        ```
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log output
+      description: >
+        Include the stack trace, if available, of the problem being reported.
+      render: shell
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Issue description
+      description: >
+        Provide any additional information you think might be relevant. Things like which features are being used
+        (bank syncs, use case, etc).
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected behavior
+      description: >
+        Describe or show a code example of the expected behavior. This might be the relevant UI or code snippet where
+        Actual will handle things correctly, but the library does not.
+    validations:
+      required: true
+
+  - type: textarea
+    id: version
+    attributes:
+      label: Installed versions
+      description: >
+        Describe which version (or if running to git version, which commit) of the Python library and Actual Server
+        are being ran.
+      value: >
+        - actualpy version:
+        - Actual Server version:
+    validations:
+      required: true
