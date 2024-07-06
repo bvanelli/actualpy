@@ -1,0 +1,28 @@
+name: Publish package distributions to PyPI
+on:
+  # see https://github.com/orgs/community/discussions/25029#discussioncomment-3246275
+  release:
+    types: [published]
+jobs:
+  pypi-publish:
+    name: Upload release to PyPI
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/crpy
+    permissions:
+      id-token: write  # IMPORTANT: this permission is mandatory for trusted publishing
+    steps:
+      # taken from https://packaging.python.org/en/latest/guides/publishing-package-distribution-releases-using-github-actions-ci-cd-workflows/
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+            python-version: "3.11"
+      - name: Install pypa/build
+        run: python3 -m pip install build --user
+      - name: Build a binary wheel and a source tarball
+        run: python3 -m build --sdist --wheel --outdir dist/ .
+      # retrieve your distributions here
+      - name: Publish Python 🐍 distribution 📦 to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
