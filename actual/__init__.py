@@ -14,7 +14,6 @@ from os import PathLike
 from typing import IO, Union
 
 from sqlmodel import Session, create_engine, select
-from version import __version__  # noqa: F401
 
 from actual.api import ActualServer
 from actual.api.models import RemoteFileListDTO
@@ -36,6 +35,7 @@ from actual.queries import (
     get_transactions,
     reconcile_transaction,
 )
+from actual.version import __version__  # noqa: F401
 
 
 class Actual(ActualServer):
