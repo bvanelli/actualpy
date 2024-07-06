@@ -14,6 +14,7 @@ from os import PathLike
 from typing import IO, Union
 
 from sqlmodel import Session, create_engine, select
+from version import __version__  # noqa: F401
 
 from actual.api import ActualServer
 from actual.api.models import RemoteFileListDTO
