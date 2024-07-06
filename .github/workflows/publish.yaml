@@ -3,6 +3,7 @@ on:
   # see https://github.com/orgs/community/discussions/25029#discussioncomment-3246275
   release:
     types: [published]
+  workflow_dispatch:
 jobs:
   pypi-publish:
     name: Upload release to PyPI
