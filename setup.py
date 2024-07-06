@@ -3,7 +3,7 @@ from setuptools import find_packages, setup
 __version__ = ""  # avoid linting issues on the file, but the line below will fill in the version
 exec(open("actual/version.py").read())
 setup(
-    name="actual",
+    name="actualpy",
     version=__version__,
     packages=find_packages(),
     description="Implementation of the Actual API to interact with Actual over Python.",
