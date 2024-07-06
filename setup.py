@@ -1,8 +1,10 @@
 from setuptools import find_packages, setup
 
+__version__ = ""  # avoid linting issues on the file, but the line below will fill in the version
+exec(open("actual/version.py").read())
 setup(
     name="actual",
-    version="0.0.1",
+    version=__version__,
     packages=find_packages(),
     description="Implementation of the Actual API to interact with Actual over Python.",
     long_description=open("README.md").read(),
