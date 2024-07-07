@@ -178,6 +178,15 @@ class ActualServer:
         response.raise_for_status()
         return StatusDTO.model_validate(response.json())
 
+    def delete_user_file(self, file_id: str):
+        """Deletes the user file that is loaded from the remote server."""
+        response = requests.post(
+            f"{self.api_url}/{Endpoints.DELETE_USER_FILE}",
+            json={"fileId": file_id, "token": self._token},
+            headers=self.headers(),
+        )
+        return StatusDTO.model_validate(response.json())
+
     def user_get_key(self, file_id: str) -> UserGetKeyDTO:
         """Gets the key information associated with a user file, including the algorithm, key, salt and iv."""
         response = requests.post(

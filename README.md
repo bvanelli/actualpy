@@ -12,7 +12,13 @@ Python API implementation for Actual server.
 
 # Installation
 
-Install it via Pip using the repository url:
+Install it via Pip:
+
+```bash
+pip install actualpy
+```
+
+If you want to have the latest git version, you can also install using the repository url:
 
 ```bash
 pip install git+https://github.com/bvanelli/actualpy.git
@@ -72,7 +78,21 @@ with Actual(base_url="http://localhost:5006", password="mypass", file="My budget
 
 Will produce:
 
-![added-transaction](./docs/static/added-transaction.png)
+![added-transaction](https://github.com/bvanelli/actualpy/blob/main/docs/static/added-transaction.png?raw=true)
+
+## Generating backups
+
+You can use actualpy to generate regular backups of your server files. Here is a script that will backup your server
+file on the current folder:
+
+```python
+from actual import Actual
+from datetime import datetime
+
+with Actual(base_url="http://localhost:5006", password="mypass", file="My budget") as actual:
+    current_date = datetime.now().strftime("%Y%m%d-%H%M")
+    actual.export_data(f"actual_backup_{current_date}.zip")
+```
 
 # Experimental features
 
@@ -95,7 +115,7 @@ with Actual(base_url="http://localhost:5006", password="mypass", bootstrap=True)
 
 You will then have a freshly created new budget to use:
 
-![created-budget](./docs/static/new-budget.png)
+![created-budget](https://github.com/bvanelli/actualpy/blob/main/docs/static/new-budget.png?raw=true)
 
 If the `encryption_password` is set, the budget will additionally also be encrypted on the upload step to the server.
 
@@ -152,9 +172,8 @@ and can be encrypted with a local key, so that not even the server can read your
 
 The Actual Server is a way of only hosting files and changes. Since re-uploading the full database on every single
 change is too heavy, Actual only stores one state of the database and everything added by the user via frontend
-or via the APIs are individual changes above the base stored database on the server, stored via separate endpoint.
-This means that on every change, done locally, a SYNC request is sent to the server with a list of the following string
-parameters:
+or via the APIs are individual changes on top of the "base database" stored on the server. This means that on every
+change, done locally, a SYNC request is sent to the server with a list of the following string parameters:
 
 - `dataset`: the name of the table where the change happened.
 - `row`: the row identifier for the entry that was added/update. This would be the primary key of the row (a uuid value)
@@ -163,13 +182,18 @@ parameters:
 a numeric value and `0:` to denote a null value.
 
 All individual column changes are computed on an insert, serialized with protobuf and sent to the server to be stored.
+Null values and server defaults are not required to be present in the SYNC message, unless a column is changed to null.
+If the file is encrypted, the protobuf content will also be encrypted, so that the server does not know what was changed.
+
 New clients can use this individual changes to then sync their local copies and add the changes executed on other users.
+Whenever a SYNC request is done, the response will also contain changes that might have been done in other browsers, so
+that the user the retrieve the information and update its local copy.
 
 But this also means that new users need to download a long list of changes, possibly making the initialization slow.
-Thankfully, user is also allowed to reset the sync. This would make sure all changes are actually stored in the
+Thankfully, user is also allowed to reset the sync. When doing a reset of the file via frontend, the browser is then
+resetting the file completely and clearing the list of changes. This would make sure all changes are actually stored in the
 database. This is done on the frontend under *Settings > Reset sync*, and causes the current file to be reset (removed
-from the server) and re-uploaded again, with all changes already in place. In this case, the sync list of changes is
-reset because the server already has the latest version of the database.
+from the server) and re-uploaded again, with all changes already in place.
 
 This means that, when using this library to operate changes on the database, you have to make sure that either:
 
