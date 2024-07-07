@@ -21,9 +21,10 @@ from actual.queries import (
 )
 
 
-@pytest.fixture
-def actual_server():
-    with DockerContainer("actualbudget/actual-server:24.5.0").with_exposed_ports(5006) as container:
+@pytest.fixture(params=["24.3.0", "24.4.0", "24.5.0", "24.6.0", "24.7.0"])
+def actual_server(request):
+    # we test integration with the 5 latest versions of actual server
+    with DockerContainer(f"actualbudget/actual-server:{request.param}").with_exposed_ports(5006) as container:
         wait_for_logs(container, "Listening on :::5006...")
         yield container
 
@@ -98,3 +99,26 @@ def test_update_file_name(actual_server):
     with Actual(f"http://localhost:{port}", password="mypass") as actual:
         with pytest.raises(ActualError):
             actual.rename_budget("Failing name")
+
+
+def test_reimport_file_from_zip(actual_server, tmp_path):
+    port = actual_server.get_exposed_port(5006)
+    backup_file = f"{tmp_path}/backup.zip"
+    # create one file
+    with Actual(f"http://localhost:{port}", password="mypass", bootstrap=True) as actual:
+        # add some entries to the budget
+        actual.create_budget("My Budget")
+        get_or_create_account(actual.session, "Bank")
+        actual.commit()
+        actual.upload_budget()
+    # re-download file and save as a backup
+    with Actual(f"http://localhost:{port}", password="mypass", file="My Budget") as actual:
+        actual.export_data(backup_file)
+        actual.delete_budget()
+    # re-upload the file
+    with Actual(f"http://localhost:{port}", password="mypass") as actual:
+        actual.import_zip(backup_file)
+        actual.upload_budget()
+    # check if the account can be retrieved
+    with Actual(f"http://localhost:{port}", password="mypass", file="My Budget") as actual:
+        assert len(get_accounts(actual.session)) == 1

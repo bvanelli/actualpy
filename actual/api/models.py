@@ -21,6 +21,7 @@ class Endpoints(enum.Enum):
     DOWNLOAD_USER_FILE = "sync/download-user-file"
     UPLOAD_USER_FILE = "sync/upload-user-file"
     RESET_USER_FILE = "sync/reset-user-file"
+    DELETE_USER_FILE = "sync/delete-user-file"
     # encryption related
     USER_GET_KEY = "sync/user-get-key"
     USER_CREATE_KEY = "sync/user-create-key"

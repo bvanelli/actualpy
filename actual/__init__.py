@@ -179,16 +179,26 @@ class Actual(ActualServer):
             raise UnknownFileId("No current file loaded.")
         self.update_user_file_name(self._file.file_id, budget_name)
 
+    def delete_budget(self):
+        if not self._file:
+            raise UnknownFileId("No current file loaded.")
+        self.delete_user_file(self._file.file_id)
+        # reset group id, as file cannot be synced anymore
+        self._file.group_id = None
+
     def export_data(self, output_file: str | PathLike[str] | IO[bytes] = None) -> bytes:
         """Export your data as a zip file containing db.sqlite and metadata.json files. It can be imported into another
         Actual instance by closing an open file (if any), then clicking the “Import file” button, then choosing
-        “Actual.” Even though encryption is enabled, the exported zip file will not have any encryption."""
-        if not output_file:
-            output_file = io.BytesIO()
-        with zipfile.ZipFile(output_file, "a", zipfile.ZIP_DEFLATED, False) as z:
+        “Actual.” Even when encryption is enabled, the exported zip file will not have any encryption."""
+        temp_file = io.BytesIO()
+        with zipfile.ZipFile(temp_file, "a", zipfile.ZIP_DEFLATED, False) as z:
             z.write(self._data_dir / "db.sqlite", "db.sqlite")
             z.write(self._data_dir / "metadata.json", "metadata.json")
-        return output_file.getvalue()
+        content = temp_file.getvalue()
+        if output_file:
+            with open(output_file, "wb") as f:
+                f.write(content)
+        return content
 
     def encrypt(self, encryption_password: str):
         """Encrypts the local database using a new key, and re-uploads to the server.
@@ -221,6 +231,11 @@ class Actual(ActualServer):
         """Uploads the current file to the Actual server."""
         if not self._data_dir:
             raise UnknownFileId("No current file loaded.")
+        if not self._file:
+            file_id = str(uuid.uuid4())
+            metadata = self.get_metadata()
+            budget_name = metadata.get("budgetName", "My Finances")
+            self._file = RemoteFileListDTO(name=budget_name, fileId=file_id, groupId=None, deleted=0, encryptKeyId=None)
         binary_data = io.BytesIO()
         with zipfile.ZipFile(binary_data, "a", zipfile.ZIP_DEFLATED, False) as z:
             z.write(self._data_dir / "db.sqlite", "db.sqlite")
@@ -267,12 +282,17 @@ class Actual(ActualServer):
                 s.flush()
             s.commit()
 
+    def get_metadata(self) -> dict:
+        """Gets the content of metadata.json."""
+        metadata_file = self._data_dir / "metadata.json"
+        return json.loads(metadata_file.read_text())
+
     def update_metadata(self, patch: dict):
         """Updates the metadata.json from the Actual file with the patch fields. The patch is a dictionary that will
         then be merged on the metadata and written again to a file."""
         metadata_file = self._data_dir / "metadata.json"
         if metadata_file.is_file():
-            config = json.loads(metadata_file.read_text()) | patch
+            config = self.get_metadata() | patch
         else:
             config = patch
         metadata_file.write_text(json.dumps(config, separators=(",", ":")))
@@ -371,7 +391,8 @@ class Actual(ActualServer):
         # commit to local database to clear the current flush cache
         self._session.commit()
         # sync all changes to the server
-        self.sync_sync(req)
+        if self._file.group_id:  # only files with a group id can be synced
+            self.sync_sync(req)
 
     def run_rules(self):
         ruleset = get_ruleset(self.session)
