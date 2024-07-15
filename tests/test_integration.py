@@ -1,10 +1,12 @@
 import datetime
 
 import pytest
+import sqlalchemy.ext.declarative
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.waiting_utils import wait_for_logs
 
 from actual import Actual
+from actual.database import __TABLE_COLUMNS_MAP__
 from actual.exceptions import ActualDecryptionError, ActualError, AuthorizationError
 from actual.queries import (
     create_transaction,
@@ -122,3 +124,21 @@ def test_reimport_file_from_zip(actual_server, tmp_path):
     # check if the account can be retrieved
     with Actual(f"http://localhost:{port}", password="mypass", file="My Budget") as actual:
         assert len(get_accounts(actual.session)) == 1
+
+
+def test_models(actual_server):
+    port = actual_server.get_exposed_port(5006)
+    with Actual(f"http://localhost:{port}", password="mypass", encryption_password="mypass", bootstrap=True) as actual:
+        actual.create_budget("My Budget")
+        # check if the models are matching
+        base = sqlalchemy.ext.declarative.declarative_base()
+        metadata = base.metadata
+        metadata.reflect(actual.engine)
+        # check first if all tables are present
+        for table_name, table in metadata.tables.items():
+            assert table_name in __TABLE_COLUMNS_MAP__, f"Missing table '{table_name}' on models."
+            # then assert if all columns are matching the model
+            for column_name in table.columns.keys():
+                assert (
+                    column_name in __TABLE_COLUMNS_MAP__[table_name]["columns"]
+                ), f"Missing column '{column_name}' at table '{table_name}'."
