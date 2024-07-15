@@ -319,6 +319,9 @@ class Actual(ActualServer):
         self.import_zip(io.BytesIO(file_bytes))
         # actual js always calls validation
         self.validate()
+        # run migrations if needed
+        migration_files = self.data_file_index()
+        self.run_migrations(migration_files[1:])
         self.sync()
         # create session if not existing
         if self._in_context and not self._session:

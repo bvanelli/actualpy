@@ -1,9 +1,8 @@
 # Use this script to initialize a local actual server. It serves as the target to test basic functionality of the API.
-version: '3'
 services:
   actual:
     container_name: actual
-    image: docker.io/actualbudget/actual-server:24.5.0
+    image: docker.io/actualbudget/actual-server:24.7.0
     ports:
       - '5006:5006'
     volumes:
