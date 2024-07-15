@@ -1,0 +1,18 @@
+name: Test package for import errors and dependency installation
+on:
+  push:
+    branches: [ main ]
+jobs:
+  try-build:
+    name: Tries to build the package and import it
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+            python-version: "3.11"
+      - name: Install locally
+        run: python3 -m pip install .
+      - name: Test library import
+        run: cd / && python3 -c "from actual import Actual"
