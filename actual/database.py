@@ -328,7 +328,9 @@ class CustomReports(BaseModel, table=True):
     interval: Optional[str] = Field(default=None, sa_column=Column("interval", Text, server_default=text("'Monthly'")))
     color_scheme: Optional[str] = Field(default=None, sa_column=Column("color_scheme", Text))
     tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
-    include_current: Optional[int] = Field(default=None, sa_column=Column("include_current", Integer))
+    include_current: Optional[int] = Field(
+        default=None, sa_column=Column("include_current", Integer, server_default=text("0"))
+    )
 
 
 class Kvcache(SQLModel, table=True):
