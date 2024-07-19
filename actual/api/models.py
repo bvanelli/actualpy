@@ -51,15 +51,19 @@ class StatusCode(enum.Enum):
 
 class StatusDTO(BaseModel):
     status: StatusCode
+
+
+class ErrorStatusDTO(BaseModel):
+    status: StatusCode
     reason: Optional[str] = None
 
 
 class TokenDTO(BaseModel):
-    token: Optional[str] = None
+    token: Optional[str]
 
 
 class LoginDTO(StatusDTO):
-    data: Optional[TokenDTO] = None
+    data: TokenDTO
 
 
 class UploadUserFileDTO(StatusDTO):
