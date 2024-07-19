@@ -142,3 +142,18 @@ def test_models(actual_server):
                 assert (
                     column_name in __TABLE_COLUMNS_MAP__[table_name]["columns"]
                 ), f"Missing column '{column_name}' at table '{table_name}'."
+
+
+def test_header_login():
+    with DockerContainer("actualbudget/actual-server:24.7.0").with_env(
+        "ACTUAL_LOGIN_METHOD", "header"
+    ).with_exposed_ports(5006) as container:
+        port = container.get_exposed_port(5006)
+        wait_for_logs(container, "Listening on :::5006...")
+        with Actual(f"http://localhost:{port}", password="mypass", bootstrap=True):
+            pass
+        # make sure we can log in
+        actual = Actual(f"http://localhost:{port}", password="mypass")
+        response_login = actual.login("mypass")
+        response_header_login = actual.login("mypass", "header")
+        assert response_login.data.token == response_header_login.data.token
