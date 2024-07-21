@@ -103,8 +103,11 @@ class Actual(ActualServer):
         return self._session
 
     def set_file(self, file_id: Union[str, RemoteFileListDTO]) -> RemoteFileListDTO:
-        """Sets the file id for the class for further requests. The file_id argument can be either a name or remote
-        id from the file. If the name is provided, only the first match is taken."""
+        """
+        Sets the file id for the class for further requests. The file_id argument can be either the name, the remote
+        id or the group id (also known as sync_id) from the file. If there are duplicates for the name, this method
+        will raise `UnknownFileId`.
+        """
         if isinstance(file_id, RemoteFileListDTO):
             self._file = file_id
             return file_id
@@ -112,7 +115,7 @@ class Actual(ActualServer):
             selected_files = []
             user_files = self.list_user_files()
             for file in user_files.data:
-                if (file.file_id == file_id or file.name == file_id) and file.deleted == 0:
+                if (file.file_id == file_id or file.name == file_id or file.group_id == file_id) and file.deleted == 0:
                     selected_files.append(file)
             if len(selected_files) == 0:
                 raise UnknownFileId(f"Could not find a file id or identifier '{file_id}'")

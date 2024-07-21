@@ -48,6 +48,22 @@ with Actual(
         print(t.date, account_name, t.notes, t.amount, category)
 ```
 
+The `file` will be matched to either one of the following:
+
+- The name of the budget, found top the top left cornet
+- The ID of the budget, a UUID that is only available if you inspect the result of the method `list_user_files`
+- The Sync ID of the budget, a UUID available on the frontend on the "Advanced options"
+- If none of those options work for you, you can search for the file manually with `list_user_files` and provide the
+object directly:
+
+```python
+from actual import Actual
+
+with Actual("http://localhost:5006", password="mypass") as actual:
+    actual.set_file(actual.list_user_files().data[0])
+    actual.download_budget()
+```
+
 ## Adding new transactions
 
 After you created your first budget (or when updating an existing budget), you can add new transactions by adding them
