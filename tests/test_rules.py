@@ -73,6 +73,15 @@ def test_datetime_rule():
     assert Condition(field="date", op="lt", value=target_date + datetime.timedelta(days=1)).run(t) is True
 
 
+def test_string_condition():
+    mock = MagicMock()
+    acct = create_account(mock, "Bank")
+    t = create_transaction(mock, datetime.date(2024, 1, 1), acct, "", "foo")
+    assert Condition(field="notes", op="oneOf", value=["foo", "bar"]).run(t) is True
+    assert Condition(field="notes", op="contains", value="fo").run(t) is True
+    assert Condition(field="notes", op="contains", value="foobar").run(t) is False
+
+
 def test_numeric_condition():
     t = create_transaction(MagicMock(), datetime.date(2024, 1, 1), "Bank", "", amount=5)
     c1 = Condition(field="amount_inflow", op="gt", value=10.0)

@@ -170,10 +170,14 @@ def condition_evaluation(
             # https://github.com/actualbudget/actual/blob/243703b2f70532ec1acbd3088dda879b5d07a5b3/packages/loot-core/src/shared/rules.ts#L261-L263
             interval = round(abs(self_value) * 0.075, 2)
         return self_value - interval <= true_value <= self_value + interval
-    elif op in (ConditionType.ONE_OF, ConditionType.CONTAINS):
+    elif op == ConditionType.ONE_OF:
         return true_value in self_value
-    elif op in (ConditionType.NOT_ONE_OF, ConditionType.DOES_NOT_CONTAIN):
+    elif op == ConditionType.CONTAINS:
+        return self_value in true_value
+    elif op == ConditionType.NOT_ONE_OF:
         return true_value not in self_value
+    elif op == ConditionType.DOES_NOT_CONTAIN:
+        return self_value not in true_value
     elif op == ConditionType.GT:
         return true_value > self_value
     elif op == ConditionType.GTE:
