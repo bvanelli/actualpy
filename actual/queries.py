@@ -585,7 +585,7 @@ def get_ruleset(s: Session) -> RuleSet:
     for rule in get_rules(s):
         conditions = TypeAdapter(list[Condition]).validate_json(rule.conditions)
         actions = TypeAdapter(list[Action]).validate_json(rule.actions)
-        rs = Rule(conditions=conditions, operation=rule.conditions_op, actions=actions, stage=rule.stage)
+        rs = Rule(conditions=conditions, operation=rule.conditions_op, actions=actions, stage=rule.stage)  # noqa
         rule_set.append(rs)
     return RuleSet(rules=rule_set)
 

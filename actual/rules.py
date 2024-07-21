@@ -33,6 +33,26 @@ class ActionType(enum.Enum):
     LINK_SCHEDULE = "link-schedule"
 
 
+class BetweenValue(pydantic.BaseModel):
+    """Used for `isbetween` rules."""
+
+    num_1: typing.Union[int, float] = pydantic.Field(alias="num1")
+    num_2: typing.Union[int, float] = pydantic.Field(alias="num2")
+
+    def __str__(self):
+        return f"({self.num_1}, {self.num_2})"
+
+    @pydantic.model_validator(mode="after")
+    def convert_value(self):
+        if isinstance(self.num_1, float):
+            self.num_1 = int(self.num_1 * 100)
+        if isinstance(self.num_2, float):
+            self.num_2 = int(self.num_2 * 100)
+        # sort the values
+        self.num_1, self.num_2 = sorted((self.num_1, self.num_2))
+        return self
+
+
 class ValueType(enum.Enum):
     DATE = "date"
     ID = "id"
@@ -56,9 +76,9 @@ class ValueType(enum.Enum):
             # must be BOOLEAN
             return operation.value in ("is",)
 
-    def validate(self, value: typing.Union[int, list[str], str, None], as_list: bool = False) -> bool:
-        if isinstance(value, list) and as_list:
-            return all(self.validate(v) for v in value)
+    def validate(self, value: typing.Union[int, list[str], str, None], operation: ConditionType = None) -> bool:
+        if isinstance(value, list) and operation in (ConditionType.ONE_OF, ConditionType.NOT_ONE_OF):
+            return all(self.validate(v, None) for v in value)
         if value is None:
             return True
         if self == ValueType.ID:
@@ -73,7 +93,10 @@ class ValueType(enum.Enum):
                 res = False
             return res
         elif self == ValueType.NUMBER:
-            return isinstance(value, int)
+            if operation == ConditionType.IS_BETWEEN:
+                return isinstance(value, BetweenValue)
+            else:
+                return isinstance(value, int)
         else:
             # must be BOOLEAN
             return isinstance(value, bool)
@@ -113,7 +136,7 @@ def get_value(
 def condition_evaluation(
     op: ConditionType,
     true_value: typing.Union[int, list[str], str, datetime.date, None],
-    self_value: typing.Union[int, list[str], str, datetime.date, None],
+    self_value: typing.Union[int, list[str], str, datetime.date, BetweenValue, None],
     options: dict = None,
 ) -> bool:
     """Helper function to evaluate the condition based on the true_value, value found on the transaction, and the
@@ -147,10 +170,14 @@ def condition_evaluation(
             # https://github.com/actualbudget/actual/blob/243703b2f70532ec1acbd3088dda879b5d07a5b3/packages/loot-core/src/shared/rules.ts#L261-L263
             interval = round(abs(self_value) * 0.075, 2)
         return self_value - interval <= true_value <= self_value + interval
-    elif op in (ConditionType.ONE_OF, ConditionType.CONTAINS):
+    elif op == ConditionType.ONE_OF:
         return true_value in self_value
-    elif op in (ConditionType.NOT_ONE_OF, ConditionType.DOES_NOT_CONTAIN):
+    elif op == ConditionType.CONTAINS:
+        return self_value in true_value
+    elif op == ConditionType.NOT_ONE_OF:
         return true_value not in self_value
+    elif op == ConditionType.DOES_NOT_CONTAIN:
+        return self_value not in true_value
     elif op == ConditionType.GT:
         return true_value > self_value
     elif op == ConditionType.GTE:
@@ -159,6 +186,8 @@ def condition_evaluation(
         return self_value > true_value
     elif op == ConditionType.LTE:
         return self_value >= true_value
+    elif op == ConditionType.IS_BETWEEN:
+        return self_value.num_1 <= true_value <= self_value.num_2
     else:
         raise ActualError(f"Operation {op} not supported")
 
@@ -198,7 +227,9 @@ class Condition(pydantic.BaseModel):
         "amount_outflow",
     ]
     op: ConditionType
-    value: typing.Union[int, float, str, list[str], Schedule, list[BaseModel], BaseModel, datetime.date, None]
+    value: typing.Union[
+        int, float, str, list[str], Schedule, list[BaseModel], BetweenValue, BaseModel, datetime.date, None
+    ]
     type: typing.Optional[ValueType] = None
     options: typing.Optional[dict] = None
 
@@ -240,8 +271,7 @@ class Condition(pydantic.BaseModel):
         elif isinstance(self.value, list) and len(self.value) and isinstance(self.value[0], pydantic.BaseModel):
             self.value = [v.id if hasattr(v, "id") else v for v in self.value]
         # make sure the data matches the value type
-        as_list = self.op in (ConditionType.IS_BETWEEN, ConditionType.ONE_OF, ConditionType.NOT_ONE_OF)
-        if not self.type.validate(self.value, as_list=as_list):
+        if not self.type.validate(self.value, self.op):
             raise ValueError(f"Value {self.value} is not valid for type {self.type.name} and operation {self.op.name}")
         return self
 
