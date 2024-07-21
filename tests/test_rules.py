@@ -86,6 +86,9 @@ def test_numeric_condition():
     assert c2.run(t) is True
     c3 = Condition(field="amount", op="isapprox", value=5.5)
     assert c3.run(t) is False
+    # isbetween condition
+    c4 = Condition(field="amount", op="isbetween", value={"num1": 5.0, "num2": 10.0})
+    assert c4.run(t) is True
 
 
 def test_complex_rule():
@@ -133,6 +136,8 @@ def test_invalid_inputs():
         Action(field="date", value="foo")
     with pytest.raises(ValueError):
         Condition(field="description", op="is", value="foo")  # not an uuid
+    with pytest.raises(ValueError):
+        Condition(field="amount", op="isbetween", value=5)
     with pytest.raises(ActualError):
         Action(field="notes", op="set-split-amount", value="foo").run(None)  # noqa: use None instead of transaction
     with pytest.raises(ActualError):
@@ -166,7 +171,7 @@ def test_value_type_value_validation():
     assert ValueType.BOOLEAN.validate("") is False
     # list and NoneType
     assert ValueType.DATE.validate(None)
-    assert ValueType.DATE.validate(["2024-10-04"], as_list=True) is True
+    assert ValueType.DATE.validate(["2024-10-04"], ConditionType.ONE_OF) is True
 
 
 def test_value_type_from_field():
