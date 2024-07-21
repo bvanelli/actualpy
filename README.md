@@ -80,6 +80,30 @@ Will produce:
 
 ![added-transaction](https://github.com/bvanelli/actualpy/blob/main/docs/static/added-transaction.png?raw=true)
 
+## Updating existing transactions
+
+You may also update transactions using the SQLModel directly, you just need to make sure to commit the results at the
+end:
+
+```python
+from actual import Actual
+from actual.queries import get_transactions
+
+
+with Actual(base_url="http://localhost:5006", password="mypass", file="My budget") as actual:
+    for transaction in get_transactions(actual.session):
+        # change the transactions notes
+        if transaction.notes is not None and "my pattern" in transaction.notes:
+            transaction.notes = transaction.notes + " my suffix!"
+    # commit your changes!
+    actual.commit()
+
+```
+
+> **WARNING:** You can also modify the relationships, for example the `transaction.payee.name`, but you to be aware that
+> this payee might be used for more than one transaction. Whenever the relationship is anything but 1:1, you have to
+> track the changes already done to prevent modifying a field twice.
+
 ## Generating backups
 
 You can use actualpy to generate regular backups of your server files. Here is a script that will backup your server
