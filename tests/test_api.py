@@ -1,8 +1,11 @@
+from unittest.mock import patch
+
 import pytest
 
 from actual import Actual
-from actual.exceptions import ActualError, UnknownFileId
+from actual.exceptions import ActualError, AuthorizationError, UnknownFileId
 from actual.protobuf_models import Message
+from tests.conftest import RequestsMock
 
 
 def test_api_apply(mocker):
@@ -25,3 +28,11 @@ def test_rename_delete_budget_without_file():
         actual.delete_budget()
     with pytest.raises(UnknownFileId, match="No current file loaded"):
         actual.rename_budget("foo")
+
+
+@patch("requests.post", return_value=RequestsMock({"status": "error", "reason": "proxy-not-trusted"}))
+def test_api_login_unknown_error(_post):
+    actual = Actual.__new__(Actual)
+    actual.api_url = "localhost"
+    with pytest.raises(AuthorizationError, match="Something went wrong on login"):
+        actual.login("foo")
