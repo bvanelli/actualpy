@@ -50,15 +50,34 @@ class ActualServer:
         # finally call validate
         self.validate()
 
-    def login(self, password: str) -> LoginDTO:
-        """Logs in on the Actual server using the password provided. Raises `AuthorizationError` if it fails to
-        authenticate the user."""
+    def login(self, password: str, method: Literal["password", "header"] = "password") -> LoginDTO:
+        """
+        Logs in on the Actual server using the password provided. Raises `AuthorizationError` if it fails to
+        authenticate the user.
+
+        :param password: password of the Actual server.
+        :param method: the method used to authenticate with the server. Check
+        https://actualbudget.org/docs/advanced/http-header-auth/ for information.
+        """
         if not password:
             raise AuthorizationError("Trying to login but not password was provided.")
-        response = requests.post(f"{self.api_url}/{Endpoints.LOGIN}", json={"password": password})
+        if method == "password":
+            response = requests.post(f"{self.api_url}/{Endpoints.LOGIN}", json={"password": password})
+        else:
+            response = requests.post(
+                f"{self.api_url}/{Endpoints.LOGIN}",
+                json={"loginMethod": method},
+                headers={"X-ACTUAL-PASSWORD": password},
+            )
+        response_dict = response.json()
         if response.status_code == 400 and "invalid-password" in response.text:
             raise AuthorizationError("Could not validate password on login.")
-        response.raise_for_status()
+        elif response.status_code == 200 and "invalid-header" in response.text:
+            # try the same login with the header
+            return self.login(password, "header")
+        elif response_dict["status"] == "error":
+            # for example, when not trusting the proxy
+            raise AuthorizationError(f"Something went wrong on login: {response_dict['reason']}")
         login_response = LoginDTO.model_validate(response.json())
         # older versions do not return 400 but rather return empty tokens
         if login_response.data.token is None:
@@ -84,7 +103,7 @@ class ActualServer:
         return InfoDTO.model_validate(response.json())
 
     def validate(self) -> ValidateDTO:
-        """Validates"""
+        """Validates if the user is valid and logged in, and if the token is also valid and bound to a session."""
         response = requests.get(f"{self.api_url}/{Endpoints.ACCOUNT_VALIDATE}", headers=self.headers())
         response.raise_for_status()
         return ValidateDTO.model_validate(response.json())

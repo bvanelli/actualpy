@@ -46,10 +46,16 @@ class BankSyncs(enum.Enum):
 
 class StatusCode(enum.Enum):
     OK = "ok"
+    ERROR = "error"
 
 
 class StatusDTO(BaseModel):
     status: StatusCode
+
+
+class ErrorStatusDTO(BaseModel):
+    status: StatusCode
+    reason: Optional[str] = None
 
 
 class TokenDTO(BaseModel):
