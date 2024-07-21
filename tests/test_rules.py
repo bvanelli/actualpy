@@ -89,6 +89,7 @@ def test_numeric_condition():
     # isbetween condition
     c4 = Condition(field="amount", op="isbetween", value={"num1": 5.0, "num2": 10.0})
     assert c4.run(t) is True
+    assert str(c4) == "'amount' isbetween (500, 1000)"  # value gets converted when input as float
 
 
 def test_complex_rule():
