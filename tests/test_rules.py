@@ -78,8 +78,11 @@ def test_string_condition():
     acct = create_account(mock, "Bank")
     t = create_transaction(mock, datetime.date(2024, 1, 1), acct, "", "foo")
     assert Condition(field="notes", op="oneOf", value=["foo", "bar"]).run(t) is True
+    assert Condition(field="notes", op="notOneOf", value=["foo", "bar"]).run(t) is False
     assert Condition(field="notes", op="contains", value="fo").run(t) is True
     assert Condition(field="notes", op="contains", value="foobar").run(t) is False
+    assert Condition(field="notes", op="doesNotContain", value="foo").run(t) is False
+    assert Condition(field="notes", op="doesNotContain", value="foobar").run(t) is True
 
 
 def test_numeric_condition():
