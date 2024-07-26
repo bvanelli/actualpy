@@ -188,6 +188,8 @@ from actual import Actual
 
 with Actual(base_url="http://localhost:5006", password="mypass", file="My budget") as actual:
     actual.run_rules()
+    # sync changes back to the server
+    actual.commit()
 ```
 
 You can also manipulate the rules individually:
