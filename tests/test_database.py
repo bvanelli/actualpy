@@ -172,3 +172,12 @@ def test_normalize_payee():
     assert normalize_payee("   mY paYeE ") == "My Payee"
     assert normalize_payee("  ", raw_payee_name=True) == ""
     assert normalize_payee(" My PayeE ", raw_payee_name=True) == "My PayeE"
+
+
+def test_rollback(session):
+    create_account(session, "Bank", 5000)
+    session.flush()
+    assert "messages" in session.info
+    assert len(session.info["messages"])
+    session.rollback()
+    assert "messages" not in session.info

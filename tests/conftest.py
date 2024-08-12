@@ -6,7 +6,7 @@ import tempfile
 import pytest
 from sqlmodel import Session, create_engine
 
-from actual.database import SQLModel
+from actual.database import SQLModel, strong_reference_session
 
 
 class RequestsMock:
@@ -33,4 +33,4 @@ def session():
         engine = create_engine(sqlite_url, connect_args={"check_same_thread": False})
         SQLModel.metadata.create_all(engine)
         with Session(engine) as session:
-            yield session
+            yield strong_reference_session(session)

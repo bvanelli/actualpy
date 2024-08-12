@@ -97,7 +97,9 @@ def strong_reference_session(session):
 
     @event.listens_for(session, "after_commit")
     @event.listens_for(session, "after_soft_rollback")
-    def after_commit_or_rollback(sess):
+    def after_commit_or_rollback(
+        sess, previous_transaction=None  # noqa: previous_transaction needed for soft rollback
+    ):
         if sess.info.get("messages"):
             del sess.info["messages"]
 
@@ -384,6 +386,7 @@ class Payees(BaseModel, table=True):
     transfer_acct: Optional[str] = Field(
         default=None, sa_column=Column("transfer_acct", Text, ForeignKey("accounts.id"))
     )
+    favorite: Optional[int] = Field(default=None, sa_column=Column("favorite", Integer, server_default=text("0")))
 
     account: Optional["Accounts"] = Relationship(back_populates="payee", sa_relationship_kwargs={"uselist": False})
     transactions: List["Transactions"] = Relationship(
@@ -413,6 +416,7 @@ class ReflectBudgets(SQLModel, table=True):
     amount: Optional[int] = Field(default=None, sa_column=Column("amount", Integer, server_default=text("0")))
     carryover: Optional[int] = Field(default=None, sa_column=Column("carryover", Integer, server_default=text("0")))
     goal: Optional[int] = Field(default=None, sa_column=Column("goal", Integer, server_default=text("null")))
+    long_goal: Optional[int] = Field(default=None, sa_column=Column("long_goal", Integer, server_default=text("null")))
 
 
 class Rules(BaseModel, table=True):
@@ -570,6 +574,7 @@ class ZeroBudgets(SQLModel, table=True):
     amount: Optional[int] = Field(default=None, sa_column=Column("amount", Integer, server_default=text("0")))
     carryover: Optional[int] = Field(default=None, sa_column=Column("carryover", Integer, server_default=text("0")))
     goal: Optional[int] = Field(default=None, sa_column=Column("goal", Integer, server_default=text("null")))
+    long_goal: Optional[int] = Field(default=None, sa_column=Column("long_goal", Integer, server_default=text("null")))
 
 
 class PendingTransactions(SQLModel, table=True):
