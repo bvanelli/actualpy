@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import datetime
 import enum
+import re
 import typing
+import unicodedata
 
 import pydantic
 
@@ -10,6 +12,14 @@ from actual import ActualError
 from actual.crypto import is_uuid
 from actual.database import BaseModel, Transactions, get_attribute_by_table_name
 from actual.schedules import Schedule
+
+
+def get_normalized_string(value: str) -> str:
+    """Normalization of string for comparison. Uses lowercase and Canonical Decomposition.
+
+    See https://github.com/actualbudget/actual/blob/a22160579d6e1f7a17213561cec79c321a14525b/packages/loot-core/src/shared/normalisation.ts
+    """
+    return unicodedata.normalize("NFD", value.lower())
 
 
 class ConditionType(enum.Enum):
@@ -25,6 +35,7 @@ class ConditionType(enum.Enum):
     DOES_NOT_CONTAIN = "doesNotContain"
     NOT_ONE_OF = "notOneOf"
     IS_BETWEEN = "isbetween"
+    MATCHES = "matches"
 
 
 class ActionType(enum.Enum):
@@ -67,7 +78,7 @@ class ValueType(enum.Enum):
         if self == ValueType.DATE:
             return operation.value in ("is", "isapprox", "gt", "gte", "lt", "lte")
         elif self == ValueType.STRING:
-            return operation.value in ("is", "contains", "oneOf", "isNot", "doesNotContain", "notOneOf")
+            return operation.value in ("is", "contains", "oneOf", "isNot", "doesNotContain", "notOneOf", "matches")
         elif self == ValueType.ID:
             return operation.value in ("is", "isNot", "oneOf", "notOneOf")
         elif self == ValueType.NUMBER:
@@ -130,6 +141,11 @@ def get_value(
             return datetime.datetime.strptime(str(value), "%Y%m%d").date()
     elif value_type is ValueType.BOOLEAN:
         return int(value)  # database accepts 0 or 1
+    elif value_type is ValueType.STRING:
+        if isinstance(value, list):
+            return [get_value(v, value_type) for v in value]
+        else:
+            return get_normalized_string(value)
     return value
 
 
@@ -173,7 +189,9 @@ def condition_evaluation(
     elif op == ConditionType.ONE_OF:
         return true_value in self_value
     elif op == ConditionType.CONTAINS:
-        return self_value in true_value
+        return get_normalized_string(self_value) in get_normalized_string(true_value)
+    elif op == ConditionType.MATCHES:
+        return bool(re.match(self_value, true_value, re.IGNORECASE))
     elif op == ConditionType.NOT_ONE_OF:
         return true_value not in self_value
     elif op == ConditionType.DOES_NOT_CONTAIN:

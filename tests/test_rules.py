@@ -81,8 +81,19 @@ def test_string_condition():
     assert Condition(field="notes", op="notOneOf", value=["foo", "bar"]).run(t) is False
     assert Condition(field="notes", op="contains", value="fo").run(t) is True
     assert Condition(field="notes", op="contains", value="foobar").run(t) is False
+    assert Condition(field="notes", op="matches", value="f.*").run(t) is True
+    assert Condition(field="notes", op="matches", value="g.*").run(t) is False
     assert Condition(field="notes", op="doesNotContain", value="foo").run(t) is False
     assert Condition(field="notes", op="doesNotContain", value="foobar").run(t) is True
+    # test the cases where the case do not match
+    assert Condition(field="notes", op="oneOf", value=["FOO", "BAR"]).run(t) is True
+    assert Condition(field="notes", op="notOneOf", value=["FOO", "BAR"]).run(t) is False
+    assert Condition(field="notes", op="contains", value="FO").run(t) is True
+    assert Condition(field="notes", op="contains", value="FOOBAR").run(t) is False
+    assert Condition(field="notes", op="matches", value="F.*").run(t) is True
+    assert Condition(field="notes", op="matches", value="G.*").run(t) is False
+    assert Condition(field="notes", op="doesNotContain", value="FOO").run(t) is False
+    assert Condition(field="notes", op="doesNotContain", value="FOOBAR").run(t) is True
 
 
 def test_numeric_condition():
