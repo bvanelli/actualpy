@@ -537,7 +537,8 @@ class Transactions(BaseModel, table=True):
     splits: List["Transactions"] = Relationship(
         back_populates="parent",
         sa_relationship_kwargs={
-            "primaryjoin": "and_(Transactions.id == remote(Transactions.parent_id), remote(Transactions.tombstone)==0)"
+            "primaryjoin": "and_(Transactions.id == remote(Transactions.parent_id), remote(Transactions.tombstone)==0)",
+            "order_by": "remote(Transactions.sort_order.desc())",
         },
     )
 

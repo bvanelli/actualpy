@@ -13,6 +13,7 @@ from actual.queries import (
 )
 from actual.rules import (
     Action,
+    ActionType,
     Condition,
     ConditionType,
     Rule,
@@ -206,3 +207,50 @@ def test_value_type_from_field():
     assert ValueType.from_field("cleared") == ValueType.BOOLEAN
     with pytest.raises(ValueError):
         ValueType.from_field("foo")
+
+
+@pytest.mark.parametrize(
+    "method,value,expected_splits",
+    [
+        ("remainder", None, [50, 450]),
+        ("fixed-amount", 100, [40, 100, 360]),
+        ("fixed-percent", 20, [50, 100, 350]),
+    ],
+)
+def test_set_split_amount(session, method, value, expected_splits):
+    acct = create_account(session, "Bank")
+    cat = create_category(session, "Food", "Expenses")
+    payee = create_payee(session, "My payee")
+
+    rs = RuleSet(
+        rules=[
+            Rule(
+                conditions=[
+                    Condition(
+                        field="category",
+                        op=ConditionType.ONE_OF,
+                        value=[cat],
+                    )
+                ],
+                actions=[
+                    Action(
+                        field=None,
+                        op=ActionType.SET_SPLIT_AMOUNT,
+                        value=10,
+                        options={"splitIndex": 1, "method": "fixed-percent"},
+                    ),
+                    Action(
+                        field=None,
+                        op=ActionType.SET_SPLIT_AMOUNT,
+                        value=value,
+                        options={"splitIndex": 2, "method": method},
+                    ),
+                ],
+            )
+        ]
+    )
+    t = create_transaction(session, datetime.date(2024, 1, 1), acct, payee, category=cat, amount=5.0)
+    session.flush()
+    rs.run(t)
+    session.refresh(t)
+    assert [s.amount for s in t.splits] == expected_splits

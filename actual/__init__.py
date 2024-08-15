@@ -402,7 +402,7 @@ class Actual(ActualServer):
 
     def run_rules(self):
         ruleset = get_ruleset(self.session)
-        transactions = get_transactions(self.session)
+        transactions = get_transactions(self.session, is_parent=True)
         ruleset.run(transactions)
 
     def _run_bank_sync_account(self, acct: Accounts, start_date: datetime.date) -> list[Transactions]:

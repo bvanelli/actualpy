@@ -194,7 +194,7 @@ def create_transaction(
     date: datetime.date,
     account: str | Accounts,
     payee: str | Payees = "",
-    notes: str = "",
+    notes: str | None = "",
     category: str | Categories | None = None,
     amount: decimal.Decimal | float | int = 0,
     imported_id: str | None = None,
