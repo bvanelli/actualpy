@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from actual import ActualError
+from actual.exceptions import ActualSplitTransactionError
 from actual.queries import (
     create_account,
     create_category,
@@ -167,7 +168,7 @@ def test_invalid_inputs():
         Action(field="notes", op="set-split-amount", value="foo").run(None)  # noqa: use None instead of transaction
     with pytest.raises(ActualError):
         condition_evaluation(None, "foo", "foo")  # noqa: use None instead of transaction
-    assert Condition(field="description", op="is", value=None).get_value() is None  # noqa: handle when value is None
+    assert Condition(field="notes", op="is", value=None).get_value() is None  # noqa: handle when value is None
 
 
 def test_value_type_condition_validation():
@@ -227,13 +228,7 @@ def test_set_split_amount(session, method, value, expected_splits):
     rs = RuleSet(
         rules=[
             Rule(
-                conditions=[
-                    Condition(
-                        field="category",
-                        op=ConditionType.ONE_OF,
-                        value=[cat],
-                    )
-                ],
+                conditions=[Condition(field="category", op=ConditionType.ONE_OF, value=[cat])],
                 actions=[
                     Action(
                         field=None,
@@ -270,3 +265,31 @@ def test_set_split_amount(session, method, value, expected_splits):
         f"allocate a {method} at Split 2: {value}, "
         f"set 'description' at Split 2 to '{alternative_payee.id}'"
     )
+
+
+def test_set_split_amount_exception(session, mocker):
+    mocker.patch("actual.rules.sum", lambda x: 0)
+
+    acct = create_account(session, "Bank")
+    cat = create_category(session, "Food", "Expenses")
+    payee = create_payee(session, "My payee")
+
+    rs = RuleSet(
+        rules=[
+            Rule(
+                conditions=[Condition(field="category", op=ConditionType.ONE_OF, value=[cat])],
+                actions=[
+                    Action(
+                        field=None,
+                        op=ActionType.SET_SPLIT_AMOUNT,
+                        value=10,
+                        options={"splitIndex": 1, "method": "fixed-percent"},
+                    )
+                ],
+            )
+        ]
+    )
+    t = create_transaction(session, datetime.date(2024, 1, 1), acct, payee, category=cat, amount=5.0)
+    session.flush()
+    with pytest.raises(ActualSplitTransactionError):
+        rs.run(t)

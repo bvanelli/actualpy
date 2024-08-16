@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import decimal
 import enum
 import re
 import typing
@@ -435,7 +436,7 @@ class Rule(pydantic.BaseModel):
     def set_split_amount(self, transaction: Transactions) -> typing.List[Transactions]:
         """Run the rules from setting split amounts."""
         from actual.queries import (
-            create_transaction,  # lazy import to prevert circular issues
+            create_split,  # lazy import to prevert circular issues
         )
 
         # get actions that split the transaction
@@ -446,53 +447,30 @@ class Rule(pydantic.BaseModel):
         session = transaction._sa_instance_state.session  # noqa
         # first, do all entries that have fixed values
         split_by_index: typing.List[Transactions] = [None for _ in range(len(split_amount_actions))]  # noqa
-        fixed_split_amount_actions = [
-            action for action in split_amount_actions if action.options.get("method") == "fixed-amount"
-        ]
+        fixed_split_amount_actions = [a for a in split_amount_actions if a.options["method"] == "fixed-amount"]
         remainder = transaction.amount
         for action in fixed_split_amount_actions:
-            split = create_transaction(
-                session, transaction.get_date(), transaction.account, transaction.payee, None, transaction.category
-            )
             remainder -= action.value
-            split.amount, split.parent_id, split.is_parent, split.is_child = action.value, transaction.id, 0, 1
+            split = create_split(session, transaction, decimal.Decimal(action.value) / 100)
             split_by_index[action.options.get("splitIndex") - 1] = split
         # now do the ones with a percentage amount
-        percent_split_amount_actions = [
-            action for action in split_amount_actions if action.options.get("method") == "fixed-percent"
-        ]
+        percent_split_amount_actions = [a for a in split_amount_actions if a.options["method"] == "fixed-percent"]
         amount_to_distribute = remainder
         for action in percent_split_amount_actions:
             value = round(amount_to_distribute * action.value / 100, 0)
-            split = create_transaction(
-                session, transaction.get_date(), transaction.account, transaction.payee, None, transaction.category
-            )
             remainder -= value
-            split.amount, split.parent_id, split.is_parent, split.is_child = value, transaction.id, 0, 1
+            split = create_split(session, transaction, decimal.Decimal(value) / 100)
             split_by_index[action.options.get("splitIndex") - 1] = split
         # now, divide the remainder equally between the entries
-        remainder_split_amount_actions = [
-            action for action in split_amount_actions if action.options.get("method") == "remainder"
-        ]
+        remainder_split_amount_actions = [a for a in split_amount_actions if a.options["method"] == "remainder"]
         if not len(remainder_split_amount_actions) and remainder:
             # create a virtual split that contains the leftover remainders
-            split = create_transaction(
-                session, transaction.get_date(), transaction.account, transaction.payee, None, transaction.category
-            )
-            split.amount, split.parent_id, split.is_parent, split.is_child = remainder, transaction.id, 0, 1
+            split = create_split(session, transaction, decimal.Decimal(remainder) / 100)
             split_by_index.append(split)
         elif len(remainder_split_amount_actions):
             amount_per_remainder_split = round(remainder / len(remainder_split_amount_actions), 0)
             for action in remainder_split_amount_actions:
-                split = create_transaction(
-                    session, transaction.get_date(), transaction.account, transaction.payee, None, transaction.category
-                )
-                split.amount, split.parent_id, split.is_parent, split.is_child = (
-                    amount_per_remainder_split,
-                    transaction.id,
-                    0,
-                    1,
-                )
+                split = create_split(session, transaction, decimal.Decimal(amount_per_remainder_split) / 100)
                 remainder -= amount_per_remainder_split
                 split_by_index[action.options.get("splitIndex") - 1] = split
             # The last non-fixed split will be adjusted for the remainder
