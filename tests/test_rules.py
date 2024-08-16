@@ -167,6 +167,7 @@ def test_invalid_inputs():
         Action(field="notes", op="set-split-amount", value="foo").run(None)  # noqa: use None instead of transaction
     with pytest.raises(ActualError):
         condition_evaluation(None, "foo", "foo")  # noqa: use None instead of transaction
+    assert Condition(field="description", op="is", value=None).get_value() is None  # noqa: handle when value is None
 
 
 def test_value_type_condition_validation():
@@ -221,6 +222,7 @@ def test_set_split_amount(session, method, value, expected_splits):
     acct = create_account(session, "Bank")
     cat = create_category(session, "Food", "Expenses")
     payee = create_payee(session, "My payee")
+    alternative_payee = create_payee(session, "My other payee")
 
     rs = RuleSet(
         rules=[
@@ -245,6 +247,10 @@ def test_set_split_amount(session, method, value, expected_splits):
                         value=value,
                         options={"splitIndex": 2, "method": method},
                     ),
+                    # add one action that changes the second split payee
+                    Action(
+                        field="description", op=ActionType.SET, value=alternative_payee.id, options={"splitIndex": 2}
+                    ),
                 ],
             )
         ]
@@ -254,3 +260,13 @@ def test_set_split_amount(session, method, value, expected_splits):
     rs.run(t)
     session.refresh(t)
     assert [s.amount for s in t.splits] == expected_splits
+    # check the first split has the original payee, and the second split has the payee from the action
+    assert t.splits[0].payee_id == payee.id
+    assert t.splits[1].payee_id == alternative_payee.id
+    # check string comparison
+    assert (
+        str(rs.rules[0]) == f"If all of these conditions match 'category' oneOf ['{cat.id}'] then "
+        f"allocate a fixed-percent at Split 1: 10, "
+        f"allocate a {method} at Split 2: {value}, "
+        f"set 'description' at Split 2 to '{alternative_payee.id}'"
+    )

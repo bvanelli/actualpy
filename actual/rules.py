@@ -190,7 +190,7 @@ def condition_evaluation(
     elif op == ConditionType.ONE_OF:
         return true_value in self_value
     elif op == ConditionType.CONTAINS:
-        return get_normalized_string(self_value) in get_normalized_string(true_value)
+        return self_value in true_value
     elif op == ConditionType.MATCHES:
         return bool(re.match(self_value, true_value, re.IGNORECASE))
     elif op == ConditionType.NOT_ONE_OF:
@@ -333,8 +333,11 @@ class Action(pydantic.BaseModel):
 
     def __str__(self) -> str:
         if self.op in (ActionType.SET, ActionType.LINK_SCHEDULE):
+            split_info = ""
+            if self.options and self.options.get("splitIndex") > 0:
+                split_info = f" at Split {self.options.get('splitIndex')}"
             field_str = f" '{self.field}'" if self.field else ""
-            return f"{self.op.value}{field_str} to '{self.value}'"
+            return f"{self.op.value}{field_str}{split_info} to '{self.value}'"
         elif self.op == ActionType.SET_SPLIT_AMOUNT:
             method = self.options.get("method") or ""
             split_index = self.options.get("splitIndex") or ""
