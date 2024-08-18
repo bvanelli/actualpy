@@ -268,23 +268,32 @@ def test_set_split_amount(session, method, value, expected_splits):
 
 
 @pytest.mark.parametrize(
-    "n,expected_splits",
+    "method,n,expected_splits",
     [
-        (2, [2.50, 2.50]),
-        (3, [1.67, 1.67, 1.66]),
-        (4, [1.25, 1.25, 1.25, 1.25]),
-        (5, [1.00, 1.00, 1.00, 1.00, 1.00]),
-        (6, [0.83, 0.83, 0.83, 0.83, 0.83, 0.85]),
+        # test equal remainders
+        ("remainder", 1, [5.00]),
+        ("remainder", 2, [2.50, 2.50]),
+        ("remainder", 3, [1.67, 1.67, 1.66]),
+        ("remainder", 4, [1.25, 1.25, 1.25, 1.25]),
+        ("remainder", 5, [1.00, 1.00, 1.00, 1.00, 1.00]),
+        ("remainder", 6, [0.83, 0.83, 0.83, 0.83, 0.83, 0.85]),
+        # and fixed amount
+        ("fixed-amount", 1, [1.0, 4.0]),
+        ("fixed-amount", 2, [1.0, 1.0, 3.0]),
+        ("fixed-amount", 3, [1.0, 1.0, 1.0, 2.0]),
+        ("fixed-amount", 4, [1.0, 1.0, 1.0, 1.0, 1.0]),
+        ("fixed-amount", 5, [1.0, 1.0, 1.0, 1.0, 1.0]),
+        ("fixed-amount", 6, [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, -1.0]),
     ],
 )
-def test_split_amount_equal_parts(session, n, expected_splits):
+def test_split_amount_equal_parts(session, method, n, expected_splits):
     acct = create_account(session, "Bank")
     actions = [
         Action(
             field=None,
             op=ActionType.SET_SPLIT_AMOUNT,
-            value=None,
-            options={"splitIndex": i + 1, "method": "remainder"},
+            value=100,  # value is only used for fixed-amount
+            options={"splitIndex": i + 1, "method": method},
         )
         for i in range(n)
     ]
