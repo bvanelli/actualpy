@@ -214,9 +214,9 @@ def test_value_type_from_field():
 @pytest.mark.parametrize(
     "method,value,expected_splits",
     [
-        ("remainder", None, [50, 450]),
-        ("fixed-amount", 100, [40, 100, 360]),
-        ("fixed-percent", 20, [50, 100, 350]),
+        ("remainder", None, [0.50, 4.50]),
+        ("fixed-amount", 100, [0.40, 1.00, 3.60]),
+        ("fixed-percent", 20, [0.50, 1.00, 3.50]),
     ],
 )
 def test_set_split_amount(session, method, value, expected_splits):
@@ -254,7 +254,7 @@ def test_set_split_amount(session, method, value, expected_splits):
     session.flush()
     rs.run(t)
     session.refresh(t)
-    assert [s.amount for s in t.splits] == expected_splits
+    assert [float(s.get_amount()) for s in t.splits] == expected_splits
     # check the first split has the original payee, and the second split has the payee from the action
     assert t.splits[0].payee_id == payee.id
     assert t.splits[1].payee_id == alternative_payee.id
@@ -265,6 +265,35 @@ def test_set_split_amount(session, method, value, expected_splits):
         f"allocate a {method} at Split 2: {value}, "
         f"set 'description' at Split 2 to '{alternative_payee.id}'"
     )
+
+
+@pytest.mark.parametrize(
+    "n,expected_splits",
+    [
+        (2, [2.50, 2.50]),
+        (3, [1.67, 1.67, 1.66]),
+        (4, [1.25, 1.25, 1.25, 1.25]),
+        (5, [1.00, 1.00, 1.00, 1.00, 1.00]),
+        (6, [0.83, 0.83, 0.83, 0.83, 0.83, 0.85]),
+    ],
+)
+def test_split_amount_equal_parts(session, n, expected_splits):
+    acct = create_account(session, "Bank")
+    actions = [
+        Action(
+            field=None,
+            op=ActionType.SET_SPLIT_AMOUNT,
+            value=None,
+            options={"splitIndex": i + 1, "method": "remainder"},
+        )
+        for i in range(n)
+    ]
+    rs = Rule(conditions=[], actions=actions)
+    t = create_transaction(session, datetime.date(2024, 1, 1), acct, "", amount=5.0)
+    session.flush()
+    # test split amounts
+    splits = rs.set_split_amount(t)
+    assert [float(s.get_amount()) for s in splits] == expected_splits
 
 
 def test_set_split_amount_exception(session, mocker):

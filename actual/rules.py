@@ -474,7 +474,7 @@ class Rule(pydantic.BaseModel):
                 remainder -= amount_per_remainder_split
                 split_by_index[action.options.get("splitIndex") - 1] = split
             # The last non-fixed split will be adjusted for the remainder
-            split_by_index[remainder_split_amount_actions[-1].options.get("splitIndex") - 1].amount -= remainder
+            split_by_index[remainder_split_amount_actions[-1].options.get("splitIndex") - 1].amount += remainder
         # make sure the splits are still valid and the sum equals the parent
         if sum(s.amount for s in split_by_index) != transaction.amount:
             raise ActualSplitTransactionError("Splits do not match amount of parent transaction.")
