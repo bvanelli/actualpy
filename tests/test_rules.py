@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from actual import ActualError
+from actual.exceptions import ActualSplitTransactionError
 from actual.queries import (
     create_account,
     create_category,
@@ -13,6 +14,7 @@ from actual.queries import (
 )
 from actual.rules import (
     Action,
+    ActionType,
     Condition,
     ConditionType,
     Rule,
@@ -81,8 +83,19 @@ def test_string_condition():
     assert Condition(field="notes", op="notOneOf", value=["foo", "bar"]).run(t) is False
     assert Condition(field="notes", op="contains", value="fo").run(t) is True
     assert Condition(field="notes", op="contains", value="foobar").run(t) is False
+    assert Condition(field="notes", op="matches", value="f.*").run(t) is True
+    assert Condition(field="notes", op="matches", value="g.*").run(t) is False
     assert Condition(field="notes", op="doesNotContain", value="foo").run(t) is False
     assert Condition(field="notes", op="doesNotContain", value="foobar").run(t) is True
+    # test the cases where the case do not match
+    assert Condition(field="notes", op="oneOf", value=["FOO", "BAR"]).run(t) is True
+    assert Condition(field="notes", op="notOneOf", value=["FOO", "BAR"]).run(t) is False
+    assert Condition(field="notes", op="contains", value="FO").run(t) is True
+    assert Condition(field="notes", op="contains", value="FOOBAR").run(t) is False
+    assert Condition(field="notes", op="matches", value="F.*").run(t) is True
+    assert Condition(field="notes", op="matches", value="G.*").run(t) is False
+    assert Condition(field="notes", op="doesNotContain", value="FOO").run(t) is False
+    assert Condition(field="notes", op="doesNotContain", value="FOOBAR").run(t) is True
 
 
 def test_numeric_condition():
@@ -155,6 +168,7 @@ def test_invalid_inputs():
         Action(field="notes", op="set-split-amount", value="foo").run(None)  # noqa: use None instead of transaction
     with pytest.raises(ActualError):
         condition_evaluation(None, "foo", "foo")  # noqa: use None instead of transaction
+    assert Condition(field="notes", op="is", value=None).get_value() is None  # noqa: handle when value is None
 
 
 def test_value_type_condition_validation():
@@ -195,3 +209,125 @@ def test_value_type_from_field():
     assert ValueType.from_field("cleared") == ValueType.BOOLEAN
     with pytest.raises(ValueError):
         ValueType.from_field("foo")
+
+
+@pytest.mark.parametrize(
+    "method,value,expected_splits",
+    [
+        ("remainder", None, [0.50, 4.50]),
+        ("fixed-amount", 100, [0.40, 1.00, 3.60]),
+        ("fixed-percent", 20, [0.50, 1.00, 3.50]),
+    ],
+)
+def test_set_split_amount(session, method, value, expected_splits):
+    acct = create_account(session, "Bank")
+    cat = create_category(session, "Food", "Expenses")
+    payee = create_payee(session, "My payee")
+    alternative_payee = create_payee(session, "My other payee")
+
+    rs = RuleSet(
+        rules=[
+            Rule(
+                conditions=[Condition(field="category", op=ConditionType.ONE_OF, value=[cat])],
+                actions=[
+                    Action(
+                        field=None,
+                        op=ActionType.SET_SPLIT_AMOUNT,
+                        value=10,
+                        options={"splitIndex": 1, "method": "fixed-percent"},
+                    ),
+                    Action(
+                        field=None,
+                        op=ActionType.SET_SPLIT_AMOUNT,
+                        value=value,
+                        options={"splitIndex": 2, "method": method},
+                    ),
+                    # add one action that changes the second split payee
+                    Action(
+                        field="description", op=ActionType.SET, value=alternative_payee.id, options={"splitIndex": 2}
+                    ),
+                ],
+            )
+        ]
+    )
+    t = create_transaction(session, datetime.date(2024, 1, 1), acct, payee, category=cat, amount=5.0)
+    session.flush()
+    rs.run(t)
+    session.refresh(t)
+    assert [float(s.get_amount()) for s in t.splits] == expected_splits
+    # check the first split has the original payee, and the second split has the payee from the action
+    assert t.splits[0].payee_id == payee.id
+    assert t.splits[1].payee_id == alternative_payee.id
+    # check string comparison
+    assert (
+        str(rs.rules[0]) == f"If all of these conditions match 'category' oneOf ['{cat.id}'] then "
+        f"allocate a fixed-percent at Split 1: 10, "
+        f"allocate a {method} at Split 2: {value}, "
+        f"set 'description' at Split 2 to '{alternative_payee.id}'"
+    )
+
+
+@pytest.mark.parametrize(
+    "method,n,expected_splits",
+    [
+        # test equal remainders
+        ("remainder", 1, [5.00]),
+        ("remainder", 2, [2.50, 2.50]),
+        ("remainder", 3, [1.67, 1.67, 1.66]),
+        ("remainder", 4, [1.25, 1.25, 1.25, 1.25]),
+        ("remainder", 5, [1.00, 1.00, 1.00, 1.00, 1.00]),
+        ("remainder", 6, [0.83, 0.83, 0.83, 0.83, 0.83, 0.85]),
+        # and fixed amount
+        ("fixed-amount", 1, [1.0, 4.0]),
+        ("fixed-amount", 2, [1.0, 1.0, 3.0]),
+        ("fixed-amount", 3, [1.0, 1.0, 1.0, 2.0]),
+        ("fixed-amount", 4, [1.0, 1.0, 1.0, 1.0, 1.0]),
+        ("fixed-amount", 5, [1.0, 1.0, 1.0, 1.0, 1.0]),
+        ("fixed-amount", 6, [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, -1.0]),
+    ],
+)
+def test_split_amount_equal_parts(session, method, n, expected_splits):
+    acct = create_account(session, "Bank")
+    actions = [
+        Action(
+            field=None,
+            op=ActionType.SET_SPLIT_AMOUNT,
+            value=100,  # value is only used for fixed-amount
+            options={"splitIndex": i + 1, "method": method},
+        )
+        for i in range(n)
+    ]
+    rs = Rule(conditions=[], actions=actions)
+    t = create_transaction(session, datetime.date(2024, 1, 1), acct, "", amount=5.0)
+    session.flush()
+    # test split amounts
+    splits = rs.set_split_amount(t)
+    assert [float(s.get_amount()) for s in splits] == expected_splits
+
+
+def test_set_split_amount_exception(session, mocker):
+    mocker.patch("actual.rules.sum", lambda x: 0)
+
+    acct = create_account(session, "Bank")
+    cat = create_category(session, "Food", "Expenses")
+    payee = create_payee(session, "My payee")
+
+    rs = RuleSet(
+        rules=[
+            Rule(
+                conditions=[Condition(field="category", op=ConditionType.ONE_OF, value=[cat])],
+                actions=[
+                    Action(
+                        field=None,
+                        op=ActionType.SET_SPLIT_AMOUNT,
+                        value=10,
+                        options={"splitIndex": 1, "method": "fixed-percent"},
+                    )
+                ],
+            )
+        ]
+    )
+    t = create_transaction(session, datetime.date(2024, 1, 1), acct, payee, category=cat, amount=5.0)
+    session.flush()
+    with pytest.raises(ActualSplitTransactionError):
+        rs.run(t)
