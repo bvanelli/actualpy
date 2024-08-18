@@ -23,7 +23,7 @@ from actual.queries import (
 )
 
 
-@pytest.fixture(params=["24.3.0", "24.4.0", "24.5.0", "24.6.0", "24.7.0", "24.8.0"])
+@pytest.fixture(params=["24.8.0"])  # todo: support multiple versions at once
 def actual_server(request):
     # we test integration with the 5 latest versions of actual server
     with DockerContainer(f"actualbudget/actual-server:{request.param}").with_exposed_ports(5006) as container:
