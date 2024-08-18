@@ -46,3 +46,7 @@ class InvalidFile(ActualError):
 
 class ActualDecryptionError(ActualError):
     pass
+
+
+class ActualSplitTransactionError(ActualError):
+    pass

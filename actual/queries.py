@@ -194,7 +194,7 @@ def create_transaction(
     date: datetime.date,
     account: str | Accounts,
     payee: str | Payees = "",
-    notes: str = "",
+    notes: str | None = "",
     category: str | Categories | None = None,
     amount: decimal.Decimal | float | int = 0,
     imported_id: str | None = None,
@@ -335,6 +335,24 @@ def create_splits(
         transaction.is_child = 1
         transaction.parent_id = split_transaction.id
     return split_transaction
+
+
+def create_split(s: Session, transaction: Transactions, amount: float | decimal.Decimal) -> Transactions:
+    """
+    Creates a transaction split based on the parent transaction. This is the opposite of create_splits, that joins
+    all transactions as one big transaction. When using this method, you need to make sure all splits that you add to
+    a transaction are then valid.
+
+    :param s: session from Actual local database.
+    :param transaction: parent transaction to the split you want to create.
+    :param amount: amount of the split.
+    :return: the generated transaction object for the split transaction.
+    """
+    split = create_transaction(
+        s, transaction.get_date(), transaction.account, transaction.payee, None, transaction.category, amount=amount
+    )
+    split.parent_id, split.is_parent, split.is_child = transaction.id, 0, 1
+    return split
 
 
 def base_query(instance: typing.Type[T], name: str = None, include_deleted: bool = False) -> Select:

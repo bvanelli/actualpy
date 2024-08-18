@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import decimal
 import enum
 import re
 import typing
@@ -11,14 +12,17 @@ import pydantic
 from actual import ActualError
 from actual.crypto import is_uuid
 from actual.database import BaseModel, Transactions, get_attribute_by_table_name
+from actual.exceptions import ActualSplitTransactionError
 from actual.schedules import Schedule
 
 
-def get_normalized_string(value: str) -> str:
+def get_normalized_string(value: str) -> typing.Optional[str]:
     """Normalization of string for comparison. Uses lowercase and Canonical Decomposition.
 
     See https://github.com/actualbudget/actual/blob/a22160579d6e1f7a17213561cec79c321a14525b/packages/loot-core/src/shared/normalisation.ts
     """
+    if value is None:
+        return None
     return unicodedata.normalize("NFD", value.lower())
 
 
@@ -124,8 +128,6 @@ class ValueType(enum.Enum):
             return ValueType.BOOLEAN
         elif field in ("amount",):
             return ValueType.NUMBER
-        elif field is None:
-            return ValueType.ID  # link-schedule
         else:
             raise ValueError(f"Field '{field}' does not have a matching ValueType.")
 
@@ -189,7 +191,7 @@ def condition_evaluation(
     elif op == ConditionType.ONE_OF:
         return true_value in self_value
     elif op == ConditionType.CONTAINS:
-        return get_normalized_string(self_value) in get_normalized_string(true_value)
+        return self_value in true_value
     elif op == ConditionType.MATCHES:
         return bool(re.match(self_value, true_value, re.IGNORECASE))
     elif op == ConditionType.NOT_ONE_OF:
@@ -305,6 +307,12 @@ class Action(pydantic.BaseModel):
     An Action does a single column change for a transaction. The 'op' indicates the action type, usually being to SET
     a 'field' with certain 'value'.
 
+    For the 'op' LINKED_SCHEDULE, the operation will link the transaction to a certain schedule id that generated it.
+
+    For the 'op' SET_SPLIT_AMOUNT, the transaction will be split into multiple different splits depending on the rules
+    defined by the user, being it on 'fixed-amount', 'fixed-percent' or 'remainder'. The options will then be on the
+    format {"method": "remainder", "splitIndex": 1}
+
     The 'field' can be one of the following ('type' will be set automatically):
 
         - category: 'type' must be 'id' and 'value' a valid uuid
@@ -322,11 +330,19 @@ class Action(pydantic.BaseModel):
     op: ActionType = pydantic.Field(ActionType.SET, description="Action type to apply (default changes a column).")
     value: typing.Union[str, bool, int, float, pydantic.BaseModel, None]
     type: typing.Optional[ValueType] = None
-    options: dict = None
+    options: dict[str, typing.Union[str, int]] = None
 
     def __str__(self) -> str:
-        field_str = f" '{self.field}'" if self.field else ""
-        return f"{self.op.value}{field_str} to '{self.value}'"
+        if self.op in (ActionType.SET, ActionType.LINK_SCHEDULE):
+            split_info = ""
+            if self.options and self.options.get("splitIndex") > 0:
+                split_info = f" at Split {self.options.get('splitIndex')}"
+            field_str = f" '{self.field}'" if self.field else ""
+            return f"{self.op.value}{field_str}{split_info} to '{self.value}'"
+        elif self.op == ActionType.SET_SPLIT_AMOUNT:
+            method = self.options.get("method") or ""
+            split_index = self.options.get("splitIndex") or ""
+            return f"allocate a {method} at Split {split_index}: {self.value}"
 
     def as_dict(self):
         """Returns valid dict for database insertion."""
@@ -347,7 +363,12 @@ class Action(pydantic.BaseModel):
     @pydantic.model_validator(mode="after")
     def check_operation_type(self):
         if not self.type:
-            self.type = ValueType.from_field(self.field)
+            if self.field is not None:
+                self.type = ValueType.from_field(self.field)
+            elif self.op == ActionType.LINK_SCHEDULE:
+                self.type = ValueType.ID
+            elif self.op == ActionType.SET_SPLIT_AMOUNT:
+                self.type = ValueType.NUMBER
         # if a pydantic object is provided and id is expected, extract the id
         if isinstance(self.value, pydantic.BaseModel) and hasattr(self.value, "id"):
             self.value = str(self.value.id)
@@ -358,8 +379,13 @@ class Action(pydantic.BaseModel):
 
     def run(self, transaction: Transactions) -> None:
         if self.op == ActionType.SET:
-            attr = get_attribute_by_table_name(Transactions.__tablename__, self.field)
+            attr = get_attribute_by_table_name(Transactions.__tablename__, str(self.field))
             value = get_value(self.value, self.type)
+            # if the split index is existing, modify instead the split transaction
+            split_index = self.options.get("splitIndex", None) if self.options else None
+            if split_index and len(transaction.splits) >= split_index:
+                transaction = transaction.splits[split_index - 1]
+            # set the value
             if self.type == ValueType.DATE:
                 transaction.set_date(value)
             else:
@@ -407,6 +433,57 @@ class Rule(pydantic.BaseModel):
         actions = ", ".join([str(a) for a in self.actions])
         return f"If {operation} of these conditions match {conditions} then {actions}"
 
+    def set_split_amount(self, transaction: Transactions) -> typing.List[Transactions]:
+        """Run the rules from setting split amounts."""
+        from actual.queries import (
+            create_split,  # lazy import to prevert circular issues
+        )
+
+        # get actions that split the transaction
+        split_amount_actions = [action for action in self.actions if action.op == ActionType.SET_SPLIT_AMOUNT]
+        if not split_amount_actions or len(transaction.splits) or transaction.is_child:
+            return []  # nothing to create
+        # get inner session from object
+        session = transaction._sa_instance_state.session  # noqa
+        # first, do all entries that have fixed values
+        split_by_index: typing.List[Transactions] = [None for _ in range(len(split_amount_actions))]  # noqa
+        fixed_split_amount_actions = [a for a in split_amount_actions if a.options["method"] == "fixed-amount"]
+        remainder = transaction.amount
+        for action in fixed_split_amount_actions:
+            remainder -= action.value
+            split = create_split(session, transaction, decimal.Decimal(action.value) / 100)
+            split_by_index[action.options.get("splitIndex") - 1] = split
+        # now do the ones with a percentage amount
+        percent_split_amount_actions = [a for a in split_amount_actions if a.options["method"] == "fixed-percent"]
+        amount_to_distribute = remainder
+        for action in percent_split_amount_actions:
+            value = round(amount_to_distribute * action.value / 100, 0)
+            remainder -= value
+            split = create_split(session, transaction, decimal.Decimal(value) / 100)
+            split_by_index[action.options.get("splitIndex") - 1] = split
+        # now, divide the remainder equally between the entries
+        remainder_split_amount_actions = [a for a in split_amount_actions if a.options["method"] == "remainder"]
+        if not len(remainder_split_amount_actions) and remainder:
+            # create a virtual split that contains the leftover remainders
+            split = create_split(session, transaction, decimal.Decimal(remainder) / 100)
+            split_by_index.append(split)
+        elif len(remainder_split_amount_actions):
+            amount_per_remainder_split = round(remainder / len(remainder_split_amount_actions), 0)
+            for action in remainder_split_amount_actions:
+                split = create_split(session, transaction, decimal.Decimal(amount_per_remainder_split) / 100)
+                remainder -= amount_per_remainder_split
+                split_by_index[action.options.get("splitIndex") - 1] = split
+            # The last non-fixed split will be adjusted for the remainder
+            split_by_index[remainder_split_amount_actions[-1].options.get("splitIndex") - 1].amount += remainder
+        # make sure the splits are still valid and the sum equals the parent
+        if sum(s.amount for s in split_by_index) != transaction.amount:
+            raise ActualSplitTransactionError("Splits do not match amount of parent transaction.")
+        transaction.is_parent, transaction.is_child = 1, 0
+        # make sure the splits are ordered correctly
+        for idx, split in enumerate(split_by_index):
+            split.sort_order = -idx - 2
+        return split_by_index
+
     def evaluate(self, transaction: Transactions) -> bool:
         """Evaluates the rule on the transaction, without applying any action."""
         op = any if self.operation == "or" else all
@@ -416,7 +493,12 @@ class Rule(pydantic.BaseModel):
         """Runs the rule on the transaction, calling evaluate, and if the return is `True` then running each of
         the actions."""
         if condition_met := self.evaluate(transaction):
+            splits = self.set_split_amount(transaction)
+            if splits:
+                transaction.splits = splits
             for action in self.actions:
+                if action.op == ActionType.SET_SPLIT_AMOUNT:
+                    continue  # handle in the create_splits
                 action.run(transaction)
         return condition_met
 
