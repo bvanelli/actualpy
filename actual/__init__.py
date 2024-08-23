@@ -47,6 +47,7 @@ class Actual(ActualServer):
         file: str = None,
         encryption_password: str = None,
         data_dir: Union[str, pathlib.Path] = None,
+        cert: str | bool = False,
         bootstrap: bool = False,
         sa_kwargs: dict = None,
     ):
@@ -69,7 +70,7 @@ class Actual(ActualServer):
         by default), `autocommit` (disabled by default). For a list of all parameters, check the SQLAlchemy
         documentation: https://docs.sqlalchemy.org/en/20/orm/session_api.html#sqlalchemy.orm.Session.__init__
         """
-        super().__init__(base_url, token, password, bootstrap)
+        super().__init__(base_url, token, password, bootstrap, cert)
         self._file: RemoteFileListDTO | None = None
         self._data_dir = pathlib.Path(data_dir) if data_dir else None
         self.engine = None

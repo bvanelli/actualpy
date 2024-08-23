@@ -34,5 +34,6 @@ def test_rename_delete_budget_without_file():
 def test_api_login_unknown_error(_post):
     actual = Actual.__new__(Actual)
     actual.api_url = "localhost"
+    actual.cert = False
     with pytest.raises(AuthorizationError, match="Something went wrong on login"):
         actual.login("foo")
