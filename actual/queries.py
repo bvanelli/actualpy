@@ -545,6 +545,22 @@ def get_or_create_account(s: Session, name: str | Accounts) -> Accounts:
     return account
 
 
+def get_budgets(s: Session) -> typing.Sequence[ZeroBudgets]:
+    """
+    Returns a list of all available ZeroBudgets.
+    :param s: session from Actual local database.
+    :return: list of ZeroBudgets
+    """
+    query = select(ZeroBudgets).options(joinedload(ZeroBudgets.category_item))
+    return s.exec(query).unique().all()
+
+
+def get_budget(s: Session, category_name: str) -> typing.Optional[ZeroBudgets]:
+    """Gets an existing budget by category name, returns `None` if not found"""
+    query = select(ZeroBudgets).join(Categories).filter(Categories.name == category_name)
+    return s.exec(query).unique().all()
+
+
 def create_transfer(
     s: Session,
     date: datetime.date,

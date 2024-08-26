@@ -98,7 +98,8 @@ def strong_reference_session(session):
     @event.listens_for(session, "after_commit")
     @event.listens_for(session, "after_soft_rollback")
     def after_commit_or_rollback(
-        sess, previous_transaction=None  # noqa: previous_transaction needed for soft rollback
+        sess,
+        previous_transaction=None,  # noqa: previous_transaction needed for soft rollback
     ):
         if sess.info.get("messages"):
             del sess.info["messages"]
@@ -235,6 +236,8 @@ class Categories(BaseModel, table=True):
     sort_order: Optional[float] = Field(default=None, sa_column=Column("sort_order", Float))
     tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
     goal_def: Optional[str] = Field(default=None, sa_column=Column("goal_def", Text, server_default=text("null")))
+
+    zero_budgets: "ZeroBudgets" = Relationship(back_populates="category_item")
 
     transactions: List["Transactions"] = Relationship(
         back_populates="category",
@@ -571,7 +574,14 @@ class ZeroBudgets(SQLModel, table=True):
 
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
     month: Optional[int] = Field(default=None, sa_column=Column("month", Integer))
-    category: Optional[str] = Field(default=None, sa_column=Column("category", Text))
+    category: Optional[str] = Field(default=None, sa_column=Column("category", ForeignKey("categories.id")))
+    category_item: "Categories" = Relationship(
+        back_populates="zero_budgets",
+        sa_relationship_kwargs={
+            "uselist": False,
+            "primaryjoin": "and_(ZeroBudgets.category == Categories.id,Categories.tombstone == 0)",
+        },
+    )
     amount: Optional[int] = Field(default=None, sa_column=Column("amount", Integer, server_default=text("0")))
     carryover: Optional[int] = Field(default=None, sa_column=Column("carryover", Integer, server_default=text("0")))
     goal: Optional[int] = Field(default=None, sa_column=Column("goal", Integer, server_default=text("null")))
