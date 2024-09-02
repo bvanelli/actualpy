@@ -5,6 +5,7 @@ from datetime import date, timedelta
 import pytest
 
 from actual import ActualError
+from actual.database import Notes
 from actual.queries import (
     create_account,
     create_rule,
@@ -181,3 +182,12 @@ def test_rollback(session):
     assert len(session.info["messages"])
     session.rollback()
     assert "messages" not in session.info
+
+
+def test_model_notes(session):
+    account_with_note = create_account(session, "Bank 1")
+    account_without_note = create_account(session, "Bank 2")
+    session.add(Notes(id=f"account-{account_with_note.id}", note="My note"))
+    session.commit()
+    assert account_with_note.notes == "My note"
+    assert account_without_note.notes is None

@@ -214,6 +214,11 @@ class Accounts(BaseModel, table=True):
         )
         return decimal.Decimal(value) / 100
 
+    @property
+    def notes(self) -> Optional[str]:
+        """Returns notes for the account. If none are present, returns `None`."""
+        return object_session(self).scalar(select(Notes.note).where(Notes.id == f"account-{self.id}"))
+
 
 class Banks(BaseModel, table=True):
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
@@ -366,7 +371,7 @@ class MessagesCrdt(SQLModel, table=True):
     id: Optional[int] = Field(default=None, sa_column=Column("id", Integer, primary_key=True))
 
 
-class Notes(SQLModel, table=True):
+class Notes(BaseModel, table=True):
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
     note: Optional[str] = Field(default=None, sa_column=Column("note", Text))
 
