@@ -5,7 +5,6 @@ import datetime
 import io
 import json
 import pathlib
-import re
 import sqlite3
 import tempfile
 import uuid
@@ -13,7 +12,8 @@ import zipfile
 from os import PathLike
 from typing import IO, Union
 
-from sqlmodel import Session, create_engine, select
+from sqlalchemy import insert, update
+from sqlmodel import MetaData, Session, create_engine, select
 
 from actual.api import ActualServer
 from actual.api.models import RemoteFileListDTO
@@ -22,11 +22,13 @@ from actual.database import (
     Accounts,
     MessagesClock,
     Transactions,
-    get_attribute_by_table_name,
-    get_class_by_table_name,
+    get_attribute_from_reflected_table_name,
+    get_class_from_reflected_table_name,
+    reflect_model,
     strong_reference_session,
 )
 from actual.exceptions import ActualError, InvalidZipFile, UnknownFileId
+from actual.migrations import js_migration_statements
 from actual.protobuf_models import HULC_Client, Message, SyncRequest
 from actual.queries import (
     get_account,
@@ -76,6 +78,7 @@ class Actual(ActualServer):
         self.engine = None
         self._session: Session | None = None
         self._client: HULC_Client | None = None
+        self._meta: MetaData | None = None  # stores the metadata loaded from remote
         # set the correct file
         if file:
             self.set_file(file)
@@ -139,7 +142,7 @@ class Actual(ActualServer):
             sql_statements = migration.decode()
             if file.endswith(".js"):
                 # there is one migration which is Javascript. All entries inside db.execQuery(`...`) must be executed
-                exec_entries = re.findall(r"db\.execQuery\(`([^`]*)`\)", sql_statements, re.DOTALL)
+                exec_entries = js_migration_statements(sql_statements)
                 sql_statements = "\n".join(exec_entries)
             conn.executescript(sql_statements)
             conn.execute(f"INSERT INTO __migrations__ (id) VALUES ({file_id});")
@@ -175,6 +178,8 @@ class Actual(ActualServer):
         self.engine = create_engine(f"sqlite:///{self._data_dir}/db.sqlite")
         if self._in_context:
             self._session = strong_reference_session(Session(self.engine, **self._sa_kwargs))
+        # reflect the session
+        self._meta = reflect_model(self.engine)
         # create a clock
         self.load_clock()
 
@@ -266,22 +271,21 @@ class Actual(ActualServer):
                     # write it to metadata.json instead
                     self.update_metadata({message.row: message.get_value()})
                     continue
-                table = get_class_by_table_name(message.dataset)
+                table = get_class_from_reflected_table_name(self._meta, message.dataset)
                 if table is None:
                     raise ActualError(
                         f"Actual found a table not supported by the library: table '{message.dataset}' not found"
                     )
-                column = get_attribute_by_table_name(message.dataset, message.column)
+                column = get_attribute_from_reflected_table_name(self._meta, message.dataset, message.column)
                 if column is None:
                     raise ActualError(
                         f"Actual found a column not supported by the library: "
                         f"column '{message.column}' at table '{message.dataset}' not found"
                     )
-                entry = s.get(table, message.row)
+                entry = s.exec(select(table).where(table.columns.id == message.row)).one_or_none()
                 if not entry:
-                    entry = table(id=message.row)
-                setattr(entry, column, message.get_value())
-                s.add(entry)
+                    s.exec(insert(table).values(id=message.row))
+                s.exec(update(table).values({column: message.get_value()}).where(table.columns.id == message.row))
                 # this seems to be required for sqlmodel, remove if not needed anymore when querying from cache
                 s.flush()
             s.commit()
@@ -323,9 +327,6 @@ class Actual(ActualServer):
         self.import_zip(io.BytesIO(file_bytes))
         # actual js always calls validation
         self.validate()
-        # run migrations if needed
-        migration_files = self.data_file_index()
-        self.run_migrations(migration_files[1:])
         self.sync()
         # create session if not existing
         if self._in_context and not self._session:
@@ -341,6 +342,7 @@ class Actual(ActualServer):
         # this should extract 'db.sqlite' and 'metadata.json' to the folder
         zip_file.extractall(self._data_dir)
         self.engine = create_engine(f"sqlite:///{self._data_dir}/db.sqlite")
+        self._meta = reflect_model(self.engine)
         # load the client id
         self.load_clock()
 
