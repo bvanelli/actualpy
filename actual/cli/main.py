@@ -1,4 +1,6 @@
+import datetime
 import pathlib
+import warnings
 from typing import Optional
 
 import typer
@@ -9,6 +11,9 @@ from actual import Actual, get_accounts, get_transactions
 from actual.cli.config import BudgetConfig, Config, OutputType, State
 from actual.queries import get_payees
 from actual.version import __version__
+
+# avoid displaying warnings on a CLI
+warnings.filterwarnings("ignore")
 
 app = typer.Typer()
 
@@ -38,7 +43,7 @@ def init(
         url = typer.prompt("Please enter the URL of the actual server", default="http://localhost:5006")
 
     if not password:
-        password = typer.prompt("Please enter the Actual server password.", hide_input=True)
+        password = typer.prompt("Please enter the Actual server password", hide_input=True)
 
     # test the login
     server = Actual(url, password=password)
@@ -64,7 +69,7 @@ def init(
 
     if not context:
         # take the default context name as the file name in lowercase
-        default_context = server._file.name.lower()
+        default_context = server._file.name.lower().replace(" ", "-")
         context = typer.prompt("Name of the context for this budget", default=default_context)
 
     config.budgets[context] = BudgetConfig(
@@ -185,7 +190,7 @@ def payees():
         for payee in payees_raw_data:
             payees_data.append({"name": payee.name, "balance": payee.balance})
 
-    if state.output == "table":
+    if state.output == OutputType.table:
         table = Table(title="Payees")
         table.add_column("Name", justify="left", style="cyan", no_wrap=True)
         table.add_column("Balance", justify="right")
@@ -203,17 +208,27 @@ def payees():
 
 @app.command()
 def export(
-    filename: Optional[pathlib.Path] = typer.Argument(help="Name of the file to export, in zip format."),
+    filename: Optional[pathlib.Path] = typer.Argument(
+        default=None,
+        help="Name of the file to export, in zip format. "
+        "Leave it empty to export it to the current folder with default name.",
+    ),
 ):
     """
     Generates an export from the budget (for CLI backups).
     """
     with config.actual() as actual:
+        if filename is None:
+            current_date = datetime.datetime.now().strftime("%Y-%m-%d-%H%M")
+            budget_name = actual.get_metadata().get("budgetName", "My Finances")
+            filename = pathlib.Path(f"{current_date}-{budget_name}.zip")
         actual.export_data(filename)
         actual_metadata = actual.get_metadata()
         budget_name = actual_metadata["budgetName"]
         budget_id = actual_metadata["id"]
-    console.print(f"[green]Exported budget '{budget_name}' (budget id '{budget_id}') to {filename}.[/green]")
+    console.print(
+        f"[green]Exported budget '{budget_name}' (budget id '{budget_id}') to [bold]'{filename}'[/bold].[/green]"
+    )
 
 
 @app.command()

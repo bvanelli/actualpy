@@ -11,7 +11,9 @@ from actual import Actual
 
 console = Console()
 
-CONFIG_PATH = Path.home() / ".actual" / "config.yaml"
+
+def default_config_path():
+    return Path.home() / ".actual" / "config.yaml"
 
 
 class OutputType(Enum):
@@ -40,21 +42,23 @@ class Config(pydantic.BaseModel):
 
     def save(self):
         """Saves the current configuration to a file."""
-        os.makedirs(CONFIG_PATH.parent, exist_ok=True)
-        with open(CONFIG_PATH, "w") as file:
+        config_path = default_config_path()
+        os.makedirs(config_path.parent, exist_ok=True)
+        with open(config_path, "w") as file:
             yaml.dump(self.model_dump(by_alias=True), file)
 
     @classmethod
     def load(cls):
         """Load the configuration file. If it doesn't exist, create a basic config."""
-        if not CONFIG_PATH.exists():
-            console.print("[yellow]Config file not found! Creating a new one...[/yellow]")
+        config_path = default_config_path()
+        if not config_path.exists():
+            console.print(f"[yellow]Config file not found at '{config_path}'! Creating a new one...[/yellow]")
             # Create a basic config with default values
             default_config = cls()
             default_config.save()
             return default_config
         else:
-            with open(CONFIG_PATH, "r") as file:
+            with open(config_path, "r") as file:
                 config = yaml.safe_load(file)
                 return cls.model_validate(config)
 
