@@ -11,7 +11,7 @@ import datetime
 import decimal
 from typing import List, Optional, Union
 
-from sqlalchemy import event, inspect
+from sqlalchemy import MetaData, Table, engine, event, inspect
 from sqlalchemy.orm import class_mapper, object_session
 from sqlmodel import (
     Boolean,
@@ -49,6 +49,31 @@ that converts into the SQL equivalent `transactions.isParent`. In this case, we 
     }
 """
 __TABLE_COLUMNS_MAP__ = dict()
+
+
+def reflect_model(eng: engine.Engine) -> MetaData:
+    """Reflects the current state of the database."""
+    local_meta = MetaData()
+    local_meta.reflect(bind=eng)
+    return local_meta
+
+
+def get_class_from_reflected_table_name(metadata: MetaData, table_name: str) -> Union[Table, None]:
+    """
+    Returns, based on the defined tables on the reflected model the corresponding SQLAlchemy table.
+    If not found, returns None.
+    """
+    return metadata.tables.get(table_name, None)
+
+
+def get_attribute_from_reflected_table_name(
+    metadata: MetaData, table_name: str, column_name: str
+) -> Union[Column, None]:
+    """
+    Returns, based, on the defined reflected model the corresponding and the SAColumn. If not found, returns None.
+    """
+    table = get_class_from_reflected_table_name(metadata, table_name)
+    return table.columns.get(column_name, None)
 
 
 def get_class_by_table_name(table_name: str) -> Union[SQLModel, None]:
@@ -214,6 +239,11 @@ class Accounts(BaseModel, table=True):
         )
         return decimal.Decimal(value) / 100
 
+    @property
+    def notes(self) -> Optional[str]:
+        """Returns notes for the account. If none are present, returns `None`."""
+        return object_session(self).scalar(select(Notes.note).where(Notes.id == f"account-{self.id}"))
+
 
 class Banks(BaseModel, table=True):
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
@@ -335,6 +365,17 @@ class CustomReports(BaseModel, table=True):
     )
 
 
+class Dashboard(BaseModel, table=True):
+    id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    type: Optional[str] = Field(default=None, sa_column=Column("type", Text))
+    width: Optional[int] = Field(default=None, sa_column=Column("width", Integer))
+    height: Optional[int] = Field(default=None, sa_column=Column("height", Integer))
+    x: Optional[int] = Field(default=None, sa_column=Column("x", Integer))
+    y: Optional[int] = Field(default=None, sa_column=Column("y", Integer))
+    meta: Optional[str] = Field(default=None, sa_column=Column("meta", Text))
+    tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
+
+
 class Kvcache(SQLModel, table=True):
     key: Optional[str] = Field(default=None, sa_column=Column("key", Text, primary_key=True))
     value: Optional[str] = Field(default=None, sa_column=Column("value", Text))
@@ -366,7 +407,7 @@ class MessagesCrdt(SQLModel, table=True):
     id: Optional[int] = Field(default=None, sa_column=Column("id", Integer, primary_key=True))
 
 
-class Notes(SQLModel, table=True):
+class Notes(BaseModel, table=True):
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
     note: Optional[str] = Field(default=None, sa_column=Column("note", Text))
 
