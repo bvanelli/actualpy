@@ -1,12 +1,11 @@
 import datetime
 
 import pytest
-import sqlalchemy.ext.declarative
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.waiting_utils import wait_for_logs
 
-from actual import Actual
-from actual.database import __TABLE_COLUMNS_MAP__
+from actual import Actual, js_migration_statements
+from actual.database import __TABLE_COLUMNS_MAP__, reflect_model
 from actual.exceptions import ActualDecryptionError, ActualError, AuthorizationError
 from actual.queries import (
     create_transaction,
@@ -23,7 +22,7 @@ from actual.queries import (
 )
 
 
-@pytest.fixture(params=["24.8.0"])  # todo: support multiple versions at once
+@pytest.fixture(params=["24.8.0", "24.9.0"])  # todo: support multiple versions at once
 def actual_server(request):
     # we test integration with the 5 latest versions of actual server
     with DockerContainer(f"actualbudget/actual-server:{request.param}").with_exposed_ports(5006) as container:
@@ -131,9 +130,7 @@ def test_models(actual_server):
     with Actual(f"http://localhost:{port}", password="mypass", encryption_password="mypass", bootstrap=True) as actual:
         actual.create_budget("My Budget")
         # check if the models are matching
-        base = sqlalchemy.ext.declarative.declarative_base()
-        metadata = base.metadata
-        metadata.reflect(actual.engine)
+        metadata = reflect_model(actual.session.bind)
         # check first if all tables are present
         for table_name, table in metadata.tables.items():
             assert table_name in __TABLE_COLUMNS_MAP__, f"Missing table '{table_name}' on models."
@@ -157,3 +154,12 @@ def test_header_login():
         response_login = actual.login("mypass")
         response_header_login = actual.login("mypass", "header")
         assert response_login.data.token == response_header_login.data.token
+
+
+def test_empty_query_migrations():
+    # empty queries should not fail
+    assert js_migration_statements("await db.runQuery('');") == []
+    # malformed entries should not fail
+    assert js_migration_statements("await db.runQuery(") == []
+    # weird formats neither
+    assert js_migration_statements("db.runQuery\n('update 1')") == ["update 1;"]
