@@ -4,7 +4,7 @@ import pytest
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.waiting_utils import wait_for_logs
 
-from actual import Actual
+from actual import Actual, js_migration_statements
 from actual.database import __TABLE_COLUMNS_MAP__, reflect_model
 from actual.exceptions import ActualDecryptionError, ActualError, AuthorizationError
 from actual.queries import (
@@ -154,3 +154,12 @@ def test_header_login():
         response_login = actual.login("mypass")
         response_header_login = actual.login("mypass", "header")
         assert response_login.data.token == response_header_login.data.token
+
+
+def test_empty_query_migrations():
+    # empty queries should not fail
+    assert js_migration_statements("await db.runQuery('');") == []
+    # malformed entries should not fail
+    assert js_migration_statements("await db.runQuery(") == []
+    # weird formats neither
+    assert js_migration_statements("db.runQuery\n('update 1')") == ["update 1;"]

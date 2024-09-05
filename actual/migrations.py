@@ -21,7 +21,13 @@ def js_migration_statements(js_file: str) -> list[str]:
                 break
         function_call = js_file[start_index:end_index]
         # extract the query
-        query = re.search(r"['`](.*)['`]", function_call, re.DOTALL).group(1)
+        next_tick = function_call.find("`")
+        next_quote = function_call.find("'")
+        string_character = "`" if next_tick > 0 and ((next_tick < next_quote) or next_quote < 0) else "'"
+        search = re.search(rf"{string_character}(.*?){string_character}", function_call, re.DOTALL)
+        if not search:
+            continue
+        query = search.group(1)
         # skip empty queries
         if not query:
             continue
@@ -30,7 +36,10 @@ def js_migration_statements(js_file: str) -> list[str]:
             continue
         # if there are unknowns in the query, skip
         if "?" in query:
-            warnings.warn(f"Migration query {query} from migrations cannot be executed, it will be skipped")
+            warnings.warn(
+                f"Migration query from migrations cannot be executed due to custom code, it will be skipped. Query:\n\n"
+                f"{query}\n"
+            )
             continue
         # if there is an uuid generation, use it
         while "${uuidv4()}" in query:

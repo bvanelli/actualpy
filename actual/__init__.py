@@ -8,6 +8,7 @@ import pathlib
 import sqlite3
 import tempfile
 import uuid
+import warnings
 import zipfile
 from os import PathLike
 from typing import IO, Union
@@ -151,7 +152,10 @@ class Actual(ActualServer):
 
     def create_budget(self, budget_name: str):
         """Creates a budget using the remote server default database and migrations. If password is provided, the
-        budget will be encrypted."""
+        budget will be encrypted. It's important to note that `create_budget` depends on the migration files from the
+        Actual server, and those could be written in Javascript. Event though the library tries to execute all
+        statements in those files, is not an exact match. It is preferred to create budgets via frontend instead."""
+        warnings.warn("Creating budgets via actualpy is not recommended due to custom code migrations.")
         migration_files = self.data_file_index()
         # create folder for the files
         if not self._data_dir:
@@ -274,13 +278,13 @@ class Actual(ActualServer):
                 table = get_class_from_reflected_table_name(self._meta, message.dataset)
                 if table is None:
                     raise ActualError(
-                        f"Actual found a table not supported by the library: table '{message.dataset}' not found"
+                        f"Actual found a table not supported by the library: table '{message.dataset}' not found\n"
                     )
                 column = get_attribute_from_reflected_table_name(self._meta, message.dataset, message.column)
                 if column is None:
                     raise ActualError(
                         f"Actual found a column not supported by the library: "
-                        f"column '{message.column}' at table '{message.dataset}' not found"
+                        f"column '{message.column}' at table '{message.dataset}' not found\n"
                     )
                 entry = s.exec(select(table).where(table.columns.id == message.row)).one_or_none()
                 if not entry:
@@ -327,6 +331,9 @@ class Actual(ActualServer):
         self.import_zip(io.BytesIO(file_bytes))
         # actual js always calls validation
         self.validate()
+        # run migrations if needed
+        migration_files = self.data_file_index()
+        self.run_migrations(migration_files[1:])
         self.sync()
         # create session if not existing
         if self._in_context and not self._session:
