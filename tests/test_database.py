@@ -191,3 +191,10 @@ def test_model_notes(session):
     session.commit()
     assert account_with_note.notes == "My note"
     assert account_without_note.notes is None
+
+
+def test_default_imported_payee(session):
+    t = create_transaction(session, date(2024, 1, 4), create_account(session, "Bank"), imported_payee=" foo ")
+    session.flush()
+    assert t.payee.name == "foo"
+    assert t.imported_description == "foo"
