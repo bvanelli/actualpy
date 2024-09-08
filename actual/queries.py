@@ -224,11 +224,16 @@ def create_transaction(
     acct = get_account(s, account)
     if acct is None:
         raise ActualError(f"Account {account} not found")
+    if imported_payee:
+        imported_payee = imported_payee.strip()
+        if not payee:
+            payee = imported_payee
     payee = get_or_create_payee(s, payee)
     if category:
         category_id = get_or_create_category(s, category).id
     else:
         category_id = None
+
     return create_transaction_from_ids(
         s, date, acct.id, payee.id, notes, category_id, amount, imported_id, cleared, imported_payee
     )

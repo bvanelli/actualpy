@@ -74,6 +74,7 @@ class ValueType(enum.Enum):
     STRING = "string"
     NUMBER = "number"
     BOOLEAN = "boolean"
+    IMPORTED_PAYEE = "imported_payee"
 
     def is_valid(self, operation: ConditionType) -> bool:
         """Returns if a conditional operation for a certain type is valid. For example, if the value is of type string,
@@ -81,7 +82,7 @@ class ValueType(enum.Enum):
         greater than defined for strings."""
         if self == ValueType.DATE:
             return operation.value in ("is", "isapprox", "gt", "gte", "lt", "lte")
-        elif self == ValueType.STRING:
+        elif self in (ValueType.STRING, ValueType.IMPORTED_PAYEE):
             return operation.value in ("is", "contains", "oneOf", "isNot", "doesNotContain", "notOneOf", "matches")
         elif self == ValueType.ID:
             return operation.value in ("is", "isNot", "oneOf", "notOneOf")
@@ -99,7 +100,7 @@ class ValueType(enum.Enum):
         if self == ValueType.ID:
             # make sure it's an uuid
             return isinstance(value, str) and is_uuid(value)
-        elif self == ValueType.STRING:
+        elif self in (ValueType.STRING, ValueType.IMPORTED_PAYEE):
             return isinstance(value, str)
         elif self == ValueType.DATE:
             try:
@@ -120,8 +121,10 @@ class ValueType(enum.Enum):
     def from_field(cls, field: str | None) -> ValueType:
         if field in ("acct", "category", "description"):
             return ValueType.ID
-        elif field in ("notes", "imported_description"):
+        elif field in ("notes",):
             return ValueType.STRING
+        elif field in ("imported_description",):
+            return ValueType.IMPORTED_PAYEE
         elif field in ("date",):
             return ValueType.DATE
         elif field in ("cleared", "reconciled"):
@@ -143,7 +146,7 @@ def get_value(
             return datetime.datetime.strptime(str(value), "%Y%m%d").date()
     elif value_type is ValueType.BOOLEAN:
         return int(value)  # database accepts 0 or 1
-    elif value_type is ValueType.STRING:
+    elif value_type in (ValueType.STRING, ValueType.IMPORTED_PAYEE):
         if isinstance(value, list):
             return [get_value(v, value_type) for v in value]
         else:
@@ -193,7 +196,7 @@ def condition_evaluation(
     elif op == ConditionType.CONTAINS:
         return self_value in true_value
     elif op == ConditionType.MATCHES:
-        return bool(re.match(self_value, true_value, re.IGNORECASE))
+        return bool(re.search(self_value, true_value, re.IGNORECASE))
     elif op == ConditionType.NOT_ONE_OF:
         return true_value not in self_value
     elif op == ConditionType.DOES_NOT_CONTAIN:
