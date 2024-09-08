@@ -98,6 +98,23 @@ def test_string_condition():
     assert Condition(field="notes", op="doesNotContain", value="FOOBAR").run(t) is True
 
 
+@pytest.mark.parametrize(
+    "op,condition_value,value,expected_result",
+    [
+        ("contains", "supermarket", "Best Supermarket", True),
+        ("contains", "supermarket", None, False),
+        ("oneOf", ["my supermarket", "other supermarket"], "MY SUPERMARKET", True),
+        ("oneOf", ["supermarket"], None, False),
+        ("matches", "market", "hypermarket", True),
+    ],
+)
+def test_imported_payee_condition(op, condition_value, value, expected_result):
+    t = create_transaction(MagicMock(), datetime.date(2024, 1, 1), "Bank", "", amount=5, imported_payee=value)
+    condition = {"field": "imported_description", "type": "imported_payee", "op": op, "value": condition_value}
+    cond = Condition.model_validate(condition)
+    assert cond.run(t) == expected_result
+
+
 def test_numeric_condition():
     t = create_transaction(MagicMock(), datetime.date(2024, 1, 1), "Bank", "", amount=5)
     c1 = Condition(field="amount_inflow", op="gt", value=10.0)
@@ -181,6 +198,8 @@ def test_value_type_condition_validation():
     assert ValueType.ID.is_valid(ConditionType.CONTAINS) is False
     assert ValueType.STRING.is_valid(ConditionType.CONTAINS) is True
     assert ValueType.STRING.is_valid(ConditionType.GT) is False
+    assert ValueType.IMPORTED_PAYEE.is_valid(ConditionType.CONTAINS) is True
+    assert ValueType.IMPORTED_PAYEE.is_valid(ConditionType.GT) is False
 
 
 def test_value_type_value_validation():
@@ -196,6 +215,8 @@ def test_value_type_value_validation():
     assert ValueType.ID.validate("foo") is False
     assert ValueType.BOOLEAN.validate(True) is True
     assert ValueType.BOOLEAN.validate("") is False
+    assert ValueType.IMPORTED_PAYEE.validate("") is True
+    assert ValueType.IMPORTED_PAYEE.validate(1) is False
     # list and NoneType
     assert ValueType.DATE.validate(None)
     assert ValueType.DATE.validate(["2024-10-04"], ConditionType.ONE_OF) is True
@@ -207,6 +228,7 @@ def test_value_type_from_field():
     assert ValueType.from_field("notes") == ValueType.STRING
     assert ValueType.from_field("date") == ValueType.DATE
     assert ValueType.from_field("cleared") == ValueType.BOOLEAN
+    assert ValueType.from_field("imported_description") == ValueType.IMPORTED_PAYEE
     with pytest.raises(ValueError):
         ValueType.from_field("foo")
 
