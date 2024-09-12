@@ -104,7 +104,10 @@ class Actual(ActualServer):
     @property
     def session(self) -> Session:
         if not self._session:
-            raise ActualError("No session defined. Use `with Actual() as actual:` construct to generate one.")
+            raise ActualError(
+                "No session defined. Use `with Actual() as actual:` construct to generate one.\n"
+                "If you are already using the context manager, try setting a file to use the session."
+            )
         return self._session
 
     def set_file(self, file_id: Union[str, RemoteFileListDTO]) -> RemoteFileListDTO:
@@ -149,6 +152,8 @@ class Actual(ActualServer):
             conn.execute(f"INSERT INTO __migrations__ (id) VALUES ({file_id});")
         conn.commit()
         conn.close()
+        # update the metadata by reflecting the model
+        self._meta = reflect_model(self.engine)
 
     def create_budget(self, budget_name: str):
         """Creates a budget using the remote server default database and migrations. If password is provided, the
@@ -176,14 +181,12 @@ class Actual(ActualServer):
             }
         )
         self._file = RemoteFileListDTO(name=budget_name, fileId=file_id, groupId=None, deleted=0, encryptKeyId=None)
-        # create engine for downloaded database and run migrations
-        self.run_migrations(migration_files[1:])
         # generate a session
         self.engine = create_engine(f"sqlite:///{self._data_dir}/db.sqlite")
+        # create engine for downloaded database and run migrations
+        self.run_migrations(migration_files[1:])
         if self._in_context:
             self._session = strong_reference_session(Session(self.engine, **self._sa_kwargs))
-        # reflect the session
-        self._meta = reflect_model(self.engine)
         # create a clock
         self.load_clock()
 
@@ -275,6 +278,7 @@ class Actual(ActualServer):
                     # write it to metadata.json instead
                     self.update_metadata({message.row: message.get_value()})
                     continue
+                print(message)
                 table = get_class_from_reflected_table_name(self._meta, message.dataset)
                 if table is None:
                     raise ActualError(
