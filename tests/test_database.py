@@ -4,7 +4,7 @@ from datetime import date, timedelta
 
 import pytest
 
-from actual import ActualError
+from actual import Actual, ActualError
 from actual.database import Notes
 from actual.queries import (
     create_account,
@@ -198,3 +198,10 @@ def test_default_imported_payee(session):
     session.flush()
     assert t.payee.name == "foo"
     assert t.imported_description == "foo"
+
+
+def test_session_error(mocker):
+    mocker.patch("actual.Actual.validate")
+    with Actual(token="foo") as actual:
+        with pytest.raises(ActualError, match="No session defined"):
+            print(actual.session)  # try to access the session, should raise an exception
