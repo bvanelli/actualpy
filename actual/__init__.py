@@ -278,7 +278,6 @@ class Actual(ActualServer):
                     # write it to metadata.json instead
                     self.update_metadata({message.row: message.get_value()})
                     continue
-                print(message)
                 table = get_class_from_reflected_table_name(self._meta, message.dataset)
                 if table is None:
                     raise ActualError(
