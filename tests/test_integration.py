@@ -1,11 +1,12 @@
 import datetime
 
 import pytest
+from sqlalchemy import delete, select
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.waiting_utils import wait_for_logs
 
 from actual import Actual, js_migration_statements
-from actual.database import __TABLE_COLUMNS_MAP__, reflect_model
+from actual.database import __TABLE_COLUMNS_MAP__, Dashboard, Migrations, reflect_model
 from actual.exceptions import ActualDecryptionError, ActualError, AuthorizationError
 from actual.queries import (
     create_transaction,
@@ -154,6 +155,25 @@ def test_header_login():
         response_login = actual.login("mypass")
         response_header_login = actual.login("mypass", "header")
         assert response_login.data.token == response_header_login.data.token
+
+
+def test_session_reflection_after_migrations():
+    with DockerContainer("actualbudget/actual-server:24.9.0").with_exposed_ports(5006) as container:
+        port = container.get_exposed_port(5006)
+        wait_for_logs(container, "Listening on :::5006...")
+        with Actual(f"http://localhost:{port}", password="mypass", bootstrap=True) as actual:
+            actual.create_budget("My Budget")
+            actual.upload_budget()
+            # add a dashboard entry
+            actual.session.add(Dashboard(id="123", x=1, y=2))
+            actual.commit()
+            # revert the last migration like it never happened
+            Dashboard.__table__.drop(actual.engine)
+            actual.session.exec(delete(Migrations).where(Migrations.id == 1722804019000))
+            actual.session.commit()
+        # now try to download the budget, it should not fail
+        with Actual(f"http://localhost:{port}", file="My Budget", password="mypass") as actual:
+            assert len(actual.session.exec(select(Dashboard)).all()) > 2  # there are two default dashboards
 
 
 def test_empty_query_migrations():
