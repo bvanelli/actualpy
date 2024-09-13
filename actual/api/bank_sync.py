@@ -117,3 +117,10 @@ class BankSyncTransactionData(BaseModel):
     # goCardless specific
     iban: Optional[str] = None
     institution_id: Optional[str] = Field(None, alias="institutionId")
+
+
+class BankSyncErrorData(BaseModel):
+    error_type: str
+    error_code: str
+    status: Optional[str] = None
+    reason: Optional[str] = None
