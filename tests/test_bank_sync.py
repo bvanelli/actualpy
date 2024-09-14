@@ -4,7 +4,7 @@ import decimal
 
 import pytest
 
-from actual import Actual
+from actual import Actual, ActualBankSyncError
 from actual.database import Banks
 from actual.queries import create_account
 from tests.conftest import RequestsMock
@@ -52,6 +52,12 @@ response = {
         "booked": [],
         "pending": [],
     },
+}
+
+fail_response = {
+    "error_type": "ACCOUNT_NEEDS_ATTENTION",
+    "error_code": "ACCOUNT_NEEDS_ATTENTION",
+    "reason": "The account needs your attention.",
 }
 
 
@@ -140,3 +146,19 @@ def test_bank_sync_unconfigured(mocker, session):
         actual._session = session
         create_accounts(session, "simplefin")
         assert actual.run_bank_sync() == []
+
+
+def test_bank_sync_exception(session, mocker):
+    mocker.patch("requests.get").return_value = RequestsMock({"status": "ok", "data": {"validated": True}})
+    main_mock = mocker.patch("requests.post")
+    main_mock.side_effect = [
+        RequestsMock({"status": "ok", "data": {"configured": True}}),
+        RequestsMock({"status": "ok", "data": fail_response}),
+    ]
+    with Actual(token="foo") as actual:
+        actual._session = session
+        create_accounts(session, "simplefin")
+
+        # now try to run the bank sync
+        with pytest.raises(ActualBankSyncError):
+            actual.run_bank_sync()

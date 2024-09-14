@@ -17,7 +17,7 @@ from sqlalchemy import insert, update
 from sqlmodel import MetaData, Session, create_engine, select
 
 from actual.api import ActualServer
-from actual.api.models import RemoteFileListDTO
+from actual.api.models import BankSyncErrorDTO, RemoteFileListDTO
 from actual.crypto import create_key_buffer, decrypt_from_meta, encrypt, make_salt
 from actual.database import (
     Accounts,
@@ -28,7 +28,12 @@ from actual.database import (
     reflect_model,
     strong_reference_session,
 )
-from actual.exceptions import ActualError, InvalidZipFile, UnknownFileId
+from actual.exceptions import (
+    ActualBankSyncError,
+    ActualError,
+    InvalidZipFile,
+    UnknownFileId,
+)
 from actual.migrations import js_migration_statements
 from actual.protobuf_models import HULC_Client, Message, SyncRequest
 from actual.queries import (
@@ -425,6 +430,12 @@ class Actual(ActualServer):
         new_transactions_data = self.bank_sync_transactions(
             sync_method.lower(), account_id, start_date, requisition_id=requisition_id
         )
+        if isinstance(new_transactions_data, BankSyncErrorDTO):
+            raise ActualBankSyncError(
+                new_transactions_data.data.error_type,
+                new_transactions_data.data.status,
+                new_transactions_data.data.reason,
+            )
         new_transactions = new_transactions_data.data.transactions.all
         imported_transactions = []
         for transaction in new_transactions:

@@ -8,8 +8,8 @@ import requests
 
 from actual.api.models import (
     BankSyncAccountResponseDTO,
+    BankSyncResponseDTO,
     BankSyncStatusDTO,
-    BankSyncTransactionResponseDTO,
     BootstrapInfoDTO,
     Endpoints,
     GetUserFileInfoDTO,
@@ -284,7 +284,7 @@ class ActualServer:
         account_id: str,
         start_date: datetime.date,
         requisition_id: str = None,
-    ) -> BankSyncTransactionResponseDTO:
+    ) -> BankSyncResponseDTO:
         if bank_sync == "gocardless" and requisition_id is None:
             raise ActualInvalidOperationError("Retrieving transactions with goCardless requires `requisition_id`")
         endpoint = Endpoints.BANK_SYNC_TRANSACTIONS.value.format(bank_sync=bank_sync)
@@ -292,4 +292,4 @@ class ActualServer:
         if requisition_id:
             payload["requisitionId"] = requisition_id
         response = requests.post(f"{self.api_url}/{endpoint}", headers=self.headers(), json=payload, verify=self.cert)
-        return BankSyncTransactionResponseDTO.model_validate(response.json())
+        return BankSyncResponseDTO.validate_python(response.json())
