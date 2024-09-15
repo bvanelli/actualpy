@@ -40,12 +40,15 @@ class ConditionType(enum.Enum):
     NOT_ONE_OF = "notOneOf"
     IS_BETWEEN = "isbetween"
     MATCHES = "matches"
+    HAS_TAGS = "hasTags"
 
 
 class ActionType(enum.Enum):
     SET = "set"
     SET_SPLIT_AMOUNT = "set-split-amount"
     LINK_SCHEDULE = "link-schedule"
+    PREPEND_NOTES = "prepend-notes"
+    APPEND_NOTES = "append-notes"
 
 
 class BetweenValue(pydantic.BaseModel):
@@ -83,7 +86,16 @@ class ValueType(enum.Enum):
         if self == ValueType.DATE:
             return operation.value in ("is", "isapprox", "gt", "gte", "lt", "lte")
         elif self in (ValueType.STRING, ValueType.IMPORTED_PAYEE):
-            return operation.value in ("is", "contains", "oneOf", "isNot", "doesNotContain", "notOneOf", "matches")
+            return operation.value in (
+                "is",
+                "contains",
+                "oneOf",
+                "isNot",
+                "doesNotContain",
+                "notOneOf",
+                "matches",
+                "hasTags",
+            )
         elif self == ValueType.ID:
             return operation.value in ("is", "isNot", "oneOf", "notOneOf")
         elif self == ValueType.NUMBER:
@@ -211,6 +223,11 @@ def condition_evaluation(
         return self_value >= true_value
     elif op == ConditionType.IS_BETWEEN:
         return self_value.num_1 <= true_value <= self_value.num_2
+    elif op == ConditionType.HAS_TAGS:
+        # this regex is not correct, but is good enough according to testing
+        # taken from https://stackoverflow.com/a/26740753/12681470
+        tags = re.findall(r"\#[\U00002600-\U000027BF\U0001f300-\U0001f64F\U0001f680-\U0001f6FF\w-]+", self_value)
+        return any(tag in true_value for tag in tags)
     else:
         raise ActualError(f"Operation {op} not supported")
 
@@ -346,6 +363,12 @@ class Action(pydantic.BaseModel):
             method = self.options.get("method") or ""
             split_index = self.options.get("splitIndex") or ""
             return f"allocate a {method} at Split {split_index}: {self.value}"
+        elif self.op in (ActionType.APPEND_NOTES, ActionType.PREPEND_NOTES):
+            return (
+                f"append to notes '{self.value}'"
+                if self.op == ActionType.APPEND_NOTES
+                else f"prepend to notes '{self.value}'"
+            )
 
     def as_dict(self):
         """Returns valid dict for database insertion."""
@@ -372,6 +395,11 @@ class Action(pydantic.BaseModel):
                 self.type = ValueType.ID
             elif self.op == ActionType.SET_SPLIT_AMOUNT:
                 self.type = ValueType.NUMBER
+            elif self.op in (ActionType.APPEND_NOTES, ActionType.PREPEND_NOTES):
+                self.type = ValueType.STRING
+        # questionable choice from the developers, I hope they fix it at some point, but we change it
+        if self.op in (ActionType.APPEND_NOTES, ActionType.PREPEND_NOTES):
+            self.type = ValueType.STRING
         # if a pydantic object is provided and id is expected, extract the id
         if isinstance(self.value, pydantic.BaseModel) and hasattr(self.value, "id"):
             self.value = str(self.value.id)
@@ -395,6 +423,16 @@ class Action(pydantic.BaseModel):
                 setattr(transaction, attr, value)
         elif self.op == ActionType.LINK_SCHEDULE:
             transaction.schedule_id = self.value
+        # for the notes rule, check if the rule was already applied since actual does not do that.
+        # this should ensure the prefix or suffix is not applied multiple times
+        elif self.op == ActionType.APPEND_NOTES:
+            notes = transaction.notes or ""
+            if not notes.endswith(self.value):
+                transaction.notes = f"{notes}{self.value}"
+        elif self.op == ActionType.PREPEND_NOTES:
+            notes = transaction.notes or ""
+            if not notes.startswith(self.value):
+                transaction.notes = f"{self.value}{notes}"
         else:
             raise ActualError(f"Operation {self.op} not supported")
 
