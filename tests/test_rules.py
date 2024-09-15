@@ -87,7 +87,7 @@ def test_string_condition():
     assert Condition(field="notes", op="matches", value="g.*").run(t) is False
     assert Condition(field="notes", op="doesNotContain", value="foo").run(t) is False
     assert Condition(field="notes", op="doesNotContain", value="foobar").run(t) is True
-    # test the cases where the case do not match
+    # case insensitive entries
     assert Condition(field="notes", op="oneOf", value=["FOO", "BAR"]).run(t) is True
     assert Condition(field="notes", op="notOneOf", value=["FOO", "BAR"]).run(t) is False
     assert Condition(field="notes", op="contains", value="FO").run(t) is True
@@ -96,6 +96,18 @@ def test_string_condition():
     assert Condition(field="notes", op="matches", value="G.*").run(t) is False
     assert Condition(field="notes", op="doesNotContain", value="FOO").run(t) is False
     assert Condition(field="notes", op="doesNotContain", value="FOOBAR").run(t) is True
+
+
+def test_has_tags():
+    mock = MagicMock()
+    acct = create_account(mock, "Bank")
+    t = create_transaction(mock, datetime.date(2024, 1, 1), acct, "", "foo #bar #✨ #🙂‍↔️")
+    assert Condition(field="notes", op="hasTags", value="#bar").run(t) is True
+    assert Condition(field="notes", op="hasTags", value="#foo").run(t) is False
+    # test other unicode entries
+    assert Condition(field="notes", op="hasTags", value="#emoji #✨").run(t) is True
+    assert Condition(field="notes", op="hasTags", value="#🙂‍↔️").run(t) is True  # new emojis should be supported
+    assert Condition(field="notes", op="hasTags", value="bar").run(t) is False  # individual string will not match
 
 
 @pytest.mark.parametrize(
@@ -353,3 +365,23 @@ def test_set_split_amount_exception(session, mocker):
     session.flush()
     with pytest.raises(ActualSplitTransactionError):
         rs.run(t)
+
+
+@pytest.mark.parametrize(
+    "operation,value,note,expected",
+    [
+        ("append-notes", "bar", "foo", "foobar"),
+        ("prepend-notes", "bar", "foo", "barfoo"),
+        ("append-notes", "bar", None, "bar"),
+        ("prepend-notes", "bar", None, "bar"),
+    ],
+)
+def test_preppend_append_notes(operation, value, note, expected):
+    mock = MagicMock()
+    t = create_transaction(mock, datetime.date(2024, 1, 1), "Bank", "", notes=note)
+    action = Action(field="description", op=operation, value=value)
+    action.run(t)
+    assert t.notes == expected
+    action.run(t)  # second iteration should not update the result
+    assert t.notes == expected
+    assert f"{operation.split('-')[0]} to notes '{value}'" in str(action)
