@@ -397,7 +397,7 @@ class Action(pydantic.BaseModel):
                 self.type = ValueType.NUMBER
             elif self.op in (ActionType.APPEND_NOTES, ActionType.PREPEND_NOTES):
                 self.type = ValueType.STRING
-        # questionable choice from the developers, I hope they fix it at some point, but we change it
+        # questionable choice from the developers to set it to ID, I hope they fix it at some point, but we change it
         if self.op in (ActionType.APPEND_NOTES, ActionType.PREPEND_NOTES):
             self.type = ValueType.STRING
         # if a pydantic object is provided and id is expected, extract the id

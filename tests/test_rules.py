@@ -379,7 +379,7 @@ def test_set_split_amount_exception(session, mocker):
 def test_preppend_append_notes(operation, value, note, expected):
     mock = MagicMock()
     t = create_transaction(mock, datetime.date(2024, 1, 1), "Bank", "", notes=note)
-    action = Action(field="description", op=operation, value=value, type="id")
+    action = Action(field="description", op=operation, value=value)
     action.run(t)
     assert t.notes == expected
     action.run(t)  # second iteration should not update the result
