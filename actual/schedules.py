@@ -214,11 +214,11 @@ class Schedule(pydantic.BaseModel):
                 if self.end_mode == EndMode.ON_DATE and value > date_to_datetime(self.end_date):
                     return None
             else:  # BEFORE
-                value_after = value - datetime.timedelta(days=value.weekday() - 4)
-                if value_after < dt_start:
+                value_before = value - datetime.timedelta(days=value.weekday() - 4)
+                if value_before < dt_start:
                     # value is in the past, skip and look for another
                     return None
-                value = value_after
+                value = value_before
         return value
 
     def before(self, date: datetime.date = None) -> typing.Optional[datetime.date]:
@@ -230,7 +230,10 @@ class Schedule(pydantic.BaseModel):
         before_datetime = rs.before(dt_start)
         if not before_datetime:
             return None
-        return self.do_skip_weekend(dt_start, before_datetime).date()
+        with_weekend_skip = self.do_skip_weekend(date_to_datetime(self.start), before_datetime)
+        if not with_weekend_skip:
+            return None
+        return with_weekend_skip.date()
 
     def xafter(self, date: datetime.date = None, count: int = 1) -> list[datetime.date]:
         if not date:
