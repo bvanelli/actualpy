@@ -105,7 +105,7 @@ def match_transaction(
     date: datetime.date,
     account: str | Accounts,
     payee: str | Payees = "",
-    amount: decimal.Decimal | float | int = 0,
+    amount: decimal.Decimal | int = 0,
     imported_id: str | None = None,
     already_matched: list[Transactions] = None,
 ) -> typing.Optional[Transactions]:
@@ -196,7 +196,7 @@ def create_transaction(
     payee: str | Payees = "",
     notes: str | None = "",
     category: str | Categories | None = None,
-    amount: decimal.Decimal | float | int = 0,
+    amount: decimal.Decimal | int = 0,
     imported_id: str | None = None,
     cleared: bool = False,
     imported_payee: str = None,
@@ -269,7 +269,7 @@ def reconcile_transaction(
     payee: str | Payees = "",
     notes: str = "",
     category: str | Categories | None = None,
-    amount: decimal.Decimal | float | int = 0,
+    amount: decimal.Decimal | int = 0,
     imported_id: str | None = None,
     cleared: bool = False,
     imported_payee: str = None,
@@ -342,7 +342,7 @@ def create_splits(
     return split_transaction
 
 
-def create_split(s: Session, transaction: Transactions, amount: float | decimal.Decimal) -> Transactions:
+def create_split(s: Session, transaction: Transactions, amount: decimal.Decimal) -> Transactions:
     """
     Creates a transaction split based on the parent transaction. This is the opposite of create_splits, that joins
     all transactions as one big transaction. When using this method, you need to make sure all splits that you add to
