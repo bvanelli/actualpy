@@ -594,7 +594,7 @@ class Transactions(BaseModel, table=True):
         self.date = int(datetime.date.strftime(date, "%Y%m%d"))
 
     def set_amount(self, amount: Union[decimal.Decimal, int, float]):
-        self.amount = int(amount * 100)
+        self.amount = int(round(amount * 100))
 
     def get_amount(self) -> decimal.Decimal:
         return decimal.Decimal(self.amount) / decimal.Decimal(100)

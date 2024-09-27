@@ -105,7 +105,7 @@ def match_transaction(
     date: datetime.date,
     account: str | Accounts,
     payee: str | Payees = "",
-    amount: decimal.Decimal | int = 0,
+    amount: decimal.Decimal | float | int = 0,
     imported_id: str | None = None,
     already_matched: list[Transactions] = None,
 ) -> typing.Optional[Transactions]:
@@ -129,7 +129,7 @@ def match_transaction(
     # if not matched, look 7 days ahead and 7 days back when fuzzy matching
     query = _transactions_base_query(
         s, date - datetime.timedelta(days=7), date + datetime.timedelta(days=8), account=account
-    ).filter(Transactions.amount == amount * 100)
+    ).filter(Transactions.amount == round(amount * 100))
     results: list[Transactions] = s.exec(query).all()  # noqa
     # filter out the ones that were already matched
     if already_matched:
@@ -175,7 +175,7 @@ def create_transaction_from_ids(
         id=str(uuid.uuid4()),
         acct=account_id,
         date=date_int,
-        amount=int(amount * 100),
+        amount=int(round(amount * 100)),
         category_id=category_id,
         payee_id=payee_id,
         notes=notes,
@@ -196,7 +196,7 @@ def create_transaction(
     payee: str | Payees = "",
     notes: str | None = "",
     category: str | Categories | None = None,
-    amount: decimal.Decimal | int = 0,
+    amount: decimal.Decimal | float | int = 0,
     imported_id: str | None = None,
     cleared: bool = False,
     imported_payee: str = None,
@@ -269,7 +269,7 @@ def reconcile_transaction(
     payee: str | Payees = "",
     notes: str = "",
     category: str | Categories | None = None,
-    amount: decimal.Decimal | int = 0,
+    amount: decimal.Decimal | float | int = 0,
     imported_id: str | None = None,
     cleared: bool = False,
     imported_payee: str = None,
@@ -342,7 +342,7 @@ def create_splits(
     return split_transaction
 
 
-def create_split(s: Session, transaction: Transactions, amount: decimal.Decimal) -> Transactions:
+def create_split(s: Session, transaction: Transactions, amount: float | decimal.Decimal) -> Transactions:
     """
     Creates a transaction split based on the parent transaction. This is the opposite of create_splits, that joins
     all transactions as one big transaction. When using this method, you need to make sure all splits that you add to
