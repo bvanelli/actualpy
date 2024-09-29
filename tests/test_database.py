@@ -63,7 +63,7 @@ def test_account_relationships(session):
     assert get_accounts(session, "Bank") == [bank]
 
 
-def test_transaction(session: Actual.session):
+def test_transaction(session):
     today = date.today()
     other = create_account(session, "Other")
     coffee = create_transaction(
@@ -72,7 +72,7 @@ def test_transaction(session: Actual.session):
     session.commit()
     assert coffee.amount == -995
     assert len(other.transactions) == 1
-    assert other.balance == decimal.Decimal('-9.95')
+    assert other.balance == decimal.Decimal("-9.95")
 
 
 def test_reconcile_transaction(session):
