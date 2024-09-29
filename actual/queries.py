@@ -129,7 +129,7 @@ def match_transaction(
     # if not matched, look 7 days ahead and 7 days back when fuzzy matching
     query = _transactions_base_query(
         s, date - datetime.timedelta(days=7), date + datetime.timedelta(days=8), account=account
-    ).filter(Transactions.amount == amount * 100)
+    ).filter(Transactions.amount == round(amount * 100))
     results: list[Transactions] = s.exec(query).all()  # noqa
     # filter out the ones that were already matched
     if already_matched:
@@ -175,7 +175,7 @@ def create_transaction_from_ids(
         id=str(uuid.uuid4()),
         acct=account_id,
         date=date_int,
-        amount=int(amount * 100),
+        amount=int(round(amount * 100)),
         category_id=category_id,
         payee_id=payee_id,
         notes=notes,
