@@ -71,25 +71,18 @@ def make_test_message(key_id: str, key: bytes) -> dict:
 
 def is_uuid(text: str, version: int = 4):
     """
-    Check if uuid_to_test is a valid UUID.
+    Check if uuid_to_test is a valid UUID. Taken from [this thread](https://stackoverflow.com/a/54254115/12681470)
 
-    Taken from https://stackoverflow.com/a/54254115/12681470
+    Examples:
 
-     Parameters
-    ----------
-    uuid_to_test : str
-    version : {1, 2, 3, 4}
-
-     Returns
-    -------
-    `True` if uuid_to_test is a valid UUID, otherwise `False`.
-
-     Examples
-    --------
     >>> is_uuid('c9bf9e57-1685-4c89-bafb-ff5af830be8a')
     True
     >>> is_uuid('c9bf9e58')
     False
+
+    :param text: UUID string to test
+    :param version: expected version for the UUID
+    :return: `True` if `text` is a valid UUID, otherwise `False`.
     """
     try:
         uuid.UUID(str(text), version=version)

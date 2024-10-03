@@ -2,3 +2,4 @@ pytest-mock
 pytest
 pytest-cov
 testcontainers
+pre-commit

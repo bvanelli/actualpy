@@ -55,7 +55,7 @@ class Actual(ActualServer):
         file: str = None,
         encryption_password: str = None,
         data_dir: Union[str, pathlib.Path] = None,
-        cert: str | bool = False,
+        cert: str | bool = None,
         bootstrap: bool = False,
         sa_kwargs: dict = None,
     ):
@@ -63,8 +63,8 @@ class Actual(ActualServer):
         Implements the Python API for the Actual Server in order to be able to read and modify information on Actual
         books using Python.
 
-        Parts of the implementation are available at the following file:
-        https://github.com/actualbudget/actual/blob/2178da0414958064337b2c53efc95ff1d3abf98a/packages/loot-core/src/server/cloud-storage.ts
+        Parts of the implementation are [available at the following file.](
+        https://github.com/actualbudget/actual/blob/2178da0414958064337b2c53efc95ff1d3abf98a/packages/loot-core/src/server/cloud-storage.ts)
 
         :param base_url: url of the running Actual server
         :param token: the token for authentication, if this is available (optional)
@@ -73,10 +73,12 @@ class Actual(ActualServer):
         :param encryption_password: password used to configure encryption, if existing
         :param data_dir: where to store the downloaded files from the server. If not specified, a temporary folder will
         be created instead.
+        :param cert: if a custom certificate should be used (i.e. self-signed certificate), it's path can be provided
+                     as a string. Set to `False` for no certificate check.
         :param bootstrap: if the server is not bootstrapped, bootstrap it with the password.
         :param sa_kwargs: additional kwargs passed to the SQLAlchemy session maker. Examples are `autoflush` (enabled
-        by default), `autocommit` (disabled by default). For a list of all parameters, check the SQLAlchemy
-        documentation: https://docs.sqlalchemy.org/en/20/orm/session_api.html#sqlalchemy.orm.Session.__init__
+        by default), `autocommit` (disabled by default). For a list of all parameters, check the [SQLAlchemy
+        documentation.](https://docs.sqlalchemy.org/en/20/orm/session_api.html#sqlalchemy.orm.Session.__init__)
         """
         super().__init__(base_url, token, password, bootstrap, cert)
         self._file: RemoteFileListDTO | None = None
@@ -196,11 +198,13 @@ class Actual(ActualServer):
         self.load_clock()
 
     def rename_budget(self, budget_name: str):
+        """Renames the budget with the given name."""
         if not self._file:
             raise UnknownFileId("No current file loaded.")
         self.update_user_file_name(self._file.file_id, budget_name)
 
     def delete_budget(self):
+        """Deletes the currently loaded file from the server."""
         if not self._file:
             raise UnknownFileId("No current file loaded.")
         self.delete_user_file(self._file.file_id)
@@ -249,7 +253,9 @@ class Actual(ActualServer):
         self.set_file(self._file.file_id)
 
     def upload_budget(self):
-        """Uploads the current file to the Actual server."""
+        """Uploads the current file to the Actual server. If attempting to upload your first budget, make sure you use
+        [actual.Actual.create_budget][] first.
+        """
         if not self._data_dir:
             raise UnknownFileId("No current file loaded.")
         if not self._file:
@@ -270,6 +276,9 @@ class Actual(ActualServer):
             self.encrypt(self._encryption_password)
 
     def reupload_budget(self):
+        """Similar to the reset sync option from the frontend, resets the user file on the backend and reuploads the
+        current copy instead. **This operation can be destructive**, so make sure you generate a copy before
+        attempting to reupload your budget."""
         self.reset_user_file(self._file.file_id)
         self.upload_budget()
 
@@ -349,6 +358,8 @@ class Actual(ActualServer):
             self._session = strong_reference_session(Session(self.engine, **self._sa_kwargs))
 
     def import_zip(self, file_bytes: str | PathLike[str] | IO[bytes]):
+        """Imports a zip file as the current database, as well as generating the local reflected session. Enables you
+        to inspect backups by loading them directly, instead of unzipping the contents."""
         try:
             zip_file = zipfile.ZipFile(file_bytes)
         except zipfile.BadZipfile as e:
@@ -363,6 +374,9 @@ class Actual(ActualServer):
         self.load_clock()
 
     def sync(self):
+        """Does a sync request and applies all changes that are stored on the server on the local copy of the database.
+        Since all changes are retrieved, this function cannot be used for partial changes (since the budget is online).
+        """
         # after downloading the budget, some pending transactions still need to be retrieved using sync
         request = SyncRequest(
             {
@@ -379,8 +393,9 @@ class Actual(ActualServer):
             self._client = HULC_Client.from_timestamp(changes.messages[-1].timestamp)
 
     def load_clock(self) -> MessagesClock:
-        """See implementation at:
-        https://github.com/actualbudget/actual/blob/5bcfc71be67c6e7b7c8b444e4c4f60da9ea9fdaa/packages/loot-core/src/server/db/index.ts#L81-L98
+        """Loads the HULC Clock from the database. This clock tells the server from when the messages should be
+        retrieved. See the [original implementation.](
+        https://github.com/actualbudget/actual/blob/5bcfc71be67c6e7b7c8b444e4c4f60da9ea9fdaa/packages/loot-core/src/server/db/index.ts#L81-L98)
         """
         with Session(self.engine) as session:
             clock = session.exec(select(MessagesClock)).one_or_none()
@@ -420,6 +435,7 @@ class Actual(ActualServer):
             self.sync_sync(req)
 
     def run_rules(self):
+        """Runs all the stored rules on the database on all transactions, without any filters."""
         ruleset = get_ruleset(self.session)
         transactions = get_transactions(self.session, is_parent=True)
         ruleset.run(transactions)

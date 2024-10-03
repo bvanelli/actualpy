@@ -37,8 +37,20 @@ class ActualServer:
         token: str = None,
         password: str = None,
         bootstrap: bool = False,
-        cert: str | bool = False,
+        cert: str | bool = None,
     ):
+        """
+        Implements the low-level API for interacting with the Actual server by just implementing the API calls and
+        response models.
+
+        :param base_url: url of the running Actual server
+        :param token: the token for authentication, if this is available (optional)
+        :param password: the password for authentication. It will be used on the .login() method to retrieve the token.
+        be created instead.
+        :param bootstrap: if the server is not bootstrapped, bootstrap it with the password.
+        :param cert: if a custom certificate should be used (i.e. self-signed certificate), it's path can be provided
+                     as a string. Set to `False` for no certificate check.
+        """
         self.api_url = base_url
         self._token = token
         self.cert = cert
@@ -58,8 +70,8 @@ class ActualServer:
         authenticate the user.
 
         :param password: password of the Actual server.
-        :param method: the method used to authenticate with the server. Check
-        https://actualbudget.org/docs/advanced/http-header-auth/ for information.
+        :param method: the method used to authenticate with the server. Check the [official auth header documentation](
+        https://actualbudget.org/docs/advanced/http-header-auth/) for information.
         """
         if not password:
             raise AuthorizationError("Trying to login but not password was provided.")

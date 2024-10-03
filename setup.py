@@ -7,7 +7,7 @@ setup(
     version=__version__,
     packages=find_packages(),
     description="Implementation of the Actual API to interact with Actual over Python.",
-    long_description=open("README.md").read(),
+    long_description=open("README.md").read().replace("> [!WARNING]", "⚠️**Warning**: "),
     long_description_content_type="text/markdown",
     author="Brunno Vanelli",
     author_email="brunnovanelli@gmail.com",
