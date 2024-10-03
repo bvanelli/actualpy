@@ -359,7 +359,7 @@ class Action(pydantic.BaseModel):
     op: ActionType = pydantic.Field(ActionType.SET, description="Action type to apply (default changes a column).")
     value: typing.Union[str, bool, int, float, pydantic.BaseModel, None]
     type: typing.Optional[ValueType] = None
-    options: dict[str, typing.Union[str, int]] = None
+    options: typing.Dict[str, typing.Union[str, int]] = None
 
     def __str__(self) -> str:
         if self.op in (ActionType.SET, ActionType.LINK_SCHEDULE):
