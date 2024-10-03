@@ -36,12 +36,15 @@ from actual import Actual
 from actual.queries import get_transactions
 
 with Actual(
-    base_url="http://localhost:5006",  # Url of the Actual Server
-    password="<your_password>",  # Password for authentication
-    encryption_password=None,    # Optional: Password for the file encryption. Will not use it if set to None.
-    file="<file_id_or_name>",  # Set the file to work with. Can be either the file id or file name, if name is unique
-    data_dir="<path_to_data_directory>",  # Optional: Directory to store downloaded files. Will use a temporary if not provided
-    cert="<path_to_cert_file>"  # Optional: Path to the certificate file to use for the connection, can also be set as False to disable SSL verification
+        base_url="http://localhost:5006",  # Url of the Actual Server
+        password="<your_password>",  # Password for authentication
+        encryption_password=None,  # Optional: Password for the file encryption. Will not use it if set to None.
+        # Set the file to work with. Can be either the file id or file name, if name is unique
+        file="<file_id_or_name>",
+        # Optional: Directory to store downloaded files. Will use a temporary if not provided
+        data_dir="<path_to_data_directory>",
+        # Optional: Path to the certificate file to use for the connection, can also be set as False to disable SSL verification
+        cert="<path_to_cert_file>"
 ) as actual:
     transactions = get_transactions(actual.session)
     for t in transactions:
@@ -56,7 +59,7 @@ The `file` will be matched to either one of the following:
 - The ID of the budget, a UUID that is only available if you inspect the result of the method `list_user_files`
 - The Sync ID of the budget, a UUID available on the frontend on the "Advanced options"
 - If none of those options work for you, you can search for the file manually with `list_user_files` and provide the
-object directly:
+  object directly:
 
 ```python
 from actual import Actual
@@ -82,11 +85,12 @@ change, done locally, a SYNC request is sent to the server with a list of the fo
 - `row`: the row identifier for the entry that was added/update. This would be the primary key of the row (a uuid value)
 - `column`: the column that had the value changed
 - `value`: the new value. Since it's a string, the values are either prefixed by `S:` to denote a string, `N:` to denote
-a numeric value and `0:` to denote a null value.
+  a numeric value and `0:` to denote a null value.
 
 All individual column changes are computed on an insert, serialized with protobuf and sent to the server to be stored.
 Null values and server defaults are not required to be present in the SYNC message, unless a column is changed to null.
-If the file is encrypted, the protobuf content will also be encrypted, so that the server does not know what was changed.
+If the file is encrypted, the protobuf content will also be encrypted, so that the server does not know what was
+changed.
 
 New clients can use this individual changes to then sync their local copies and add the changes executed on other users.
 Whenever a SYNC request is done, the response will also contain changes that might have been done in other browsers, so
@@ -94,14 +98,15 @@ that the user the retrieve the information and update its local copy.
 
 But this also means that new users need to download a long list of changes, possibly making the initialization slow.
 Thankfully, user is also allowed to reset the sync. When doing a reset of the file via frontend, the browser is then
-resetting the file completely and clearing the list of changes. This would make sure all changes are actually stored in the
+resetting the file completely and clearing the list of changes. This would make sure all changes are actually stored in
+the
 database. This is done on the frontend under *Settings > Reset sync*, and causes the current file to be reset (removed
 from the server) and re-uploaded again, with all changes already in place.
 
 This means that, when using this library to operate changes on the database, you have to make sure that either:
 
 - do a sync request is made using the `actual.commit()` method. This only handles pending operations that haven't yet
-been committed, generates a change list with them and posts them on the sync endpoint.
+  been committed, generates a change list with them and posts them on the sync endpoint.
 - do a full re-upload of the database is done.
 
 # Contributing
@@ -109,12 +114,27 @@ been committed, generates a change list with them and posts them on the sync end
 The goal is to have more features implemented and tested on the Actual API. If you have ideas, comments, bug fixes or
 requests feel free to open an issue or submit a pull request.
 
+To install requirements, install both requirements files:
+
+```bash
+# optionally setup a venv (recommended)
+python3 -m venv venv && source venv/bin/activate
+# install requirements
+pip install -r requirements.txt
+pip install -r requirements-dev.txt
+```
+
 We use [`pre-commit`](https://pre-commit.com/) to ensure consistent formatting across different developers. To develop
-locally, make sure you install all development requirements, then install `pre-commit`.
+locally, make sure you install all development requirements, then install `pre-commit` hooks. This would make sure the
+formatting runs on every commit.
 
 ```
-pip install pre-commit
 pre-commit install
 ```
 
-This would make sure the formatting hooks run on every commit.
+To run tests, make sure you have docker installed ([how to install docker](https://docs.docker.com/engine/install/)).
+Run the tests on your machine:
+
+```bash
+pytest
+```
