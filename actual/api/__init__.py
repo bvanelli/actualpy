@@ -108,7 +108,7 @@ class ActualServer:
         if file_id:
             headers["X-ACTUAL-FILE-ID"] = file_id
         if extra_headers:
-            headers = headers | extra_headers
+            headers.update(extra_headers)
         return headers
 
     def info(self) -> InfoDTO:

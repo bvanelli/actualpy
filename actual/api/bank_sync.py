@@ -76,7 +76,7 @@ class TransactionItem(BaseModel):
     )
     date: datetime.date
     remittance_information_unstructured: str = Field(None, alias="remittanceInformationUnstructured")
-    remittance_information_unstructured_array: list[str] = Field(
+    remittance_information_unstructured_array: List[str] = Field(
         default_factory=list, alias="remittanceInformationUnstructuredArray"
     )
     additional_information: Optional[str] = Field(None, alias="additionalInformation")

@@ -37,6 +37,7 @@ def test_create_user_file(actual_server):
         assert len(actual.list_user_files().data) == 0
         actual.create_budget("My Budget")
         actual.upload_budget()
+        assert "userId" in actual.get_metadata()
         # add some entries to the budget
         acct = get_or_create_account(actual.session, "Bank")
         assert acct.balance == 0

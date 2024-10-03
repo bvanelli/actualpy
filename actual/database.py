@@ -163,7 +163,7 @@ class BaseModel(SQLModel):
                 changes.append(m)
         return changes
 
-    def changed(self) -> list[str]:
+    def changed(self) -> List[str]:
         """Returns list of model changed attributes."""
         changed_attributes = []
         inspr = inspect(self)
