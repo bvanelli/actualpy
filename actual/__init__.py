@@ -312,7 +312,8 @@ class Actual(ActualServer):
         then be merged on the metadata and written again to a file."""
         metadata_file = self._data_dir / "metadata.json"
         if metadata_file.is_file():
-            config = self.get_metadata() | patch
+            config = self.get_metadata()
+            config.update(patch)
         else:
             config = patch
         metadata_file.write_text(json.dumps(config, separators=(",", ":")))
