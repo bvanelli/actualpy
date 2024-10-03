@@ -1,4 +1,5 @@
 import re
+from typing import List
 
 conjunctions = [
     "for",
@@ -159,7 +160,7 @@ regex = re.compile(
 )
 
 
-def convert_to_regexp(special_characters: list[str]):
+def convert_to_regexp(special_characters: List[str]):
     return [(re.compile(rf"\b{s}\b", re.IGNORECASE), s) for s in special_characters]
 
 
@@ -184,7 +185,7 @@ def replace_func(m: re.Match):
     return (lead or "") + (lower or forced or "").upper() + (rest or "")
 
 
-def title(title_str: str, custom_specials: list[str] = None):
+def title(title_str: str, custom_specials: List[str] = None):
     title_str = title_str.lower()
     title_str = regex.sub(replace_func, title_str)
 

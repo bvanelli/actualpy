@@ -101,7 +101,7 @@ class Schedule(pydantic.BaseModel):
     start: datetime.date = pydantic.Field(..., description="Start date of the schedule.")
     interval: int = pydantic.Field(1, description="Repeat every interval at frequency unit.")
     frequency: Frequency = pydantic.Field(Frequency.MONTHLY, description="Unit for the defined interval.")
-    patterns: list[Pattern] = pydantic.Field(default_factory=list)
+    patterns: typing.List[Pattern] = pydantic.Field(default_factory=list)
     skip_weekend: bool = pydantic.Field(
         False, alias="skipWeekend", description="If should move schedule before or after a weekend."
     )
@@ -192,10 +192,13 @@ class Schedule(pydantic.BaseModel):
             # for the month or weekday rules, add a different rrule to the ruleset. This is because otherwise the rule
             # would only look for, for example, days that are 15 that are also Fridays, and that is not desired
             if by_month_day:
-                monthly_config = config.copy() | {"bymonthday": by_month_day}
+                monthly_config = config.copy()
+                monthly_config.update({"bymonthday": by_month_day})
                 rule_sets_configs.append(monthly_config)
             if by_weekday:
-                rule_sets_configs.append(config.copy() | {"byweekday": by_weekday})
+                weekly_config = config.copy()
+                weekly_config.update({"byweekday": by_weekday})
+                rule_sets_configs.append(weekly_config)
         # if ruleset does not contain multiple rules, add the current rule as default
         if not rule_sets_configs:
             rule_sets_configs.append(config)
@@ -235,7 +238,7 @@ class Schedule(pydantic.BaseModel):
             return None
         return with_weekend_skip.date()
 
-    def xafter(self, date: datetime.date = None, count: int = 1) -> list[datetime.date]:
+    def xafter(self, date: datetime.date = None, count: int = 1) -> typing.List[datetime.date]:
         if not date:
             date = datetime.date.today()
         # dateutils only accepts datetime for evaluation
