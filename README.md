@@ -69,7 +69,7 @@ with Actual("http://localhost:5006", password="mypass") as actual:
     actual.download_budget()
 ```
 
-Checkout [the full documentation](https://actualpy.readthedocs.com) for more examples.
+Checkout [the full documentation](https://actualpy.readthedocs.io) for more examples.
 
 # Understanding how Actual handles changes
 
