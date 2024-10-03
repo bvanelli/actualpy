@@ -52,10 +52,10 @@ with Actual(base_url="http://localhost:5006", password="mypass", file="My budget
 
 ```
 
-> [!IMPORTANT]
-> You can also modify the relationships, for example the `transaction.payee.name`, but you to be aware that
-> this payee might be used for more than one transaction. Whenever the relationship is anything but 1:1, you have to
-> track the changes already done to prevent modifying a field twice.
+!!! warning
+    You can also modify the relationships, for example the `transaction.payee.name`, but you to be aware that
+    this payee might be used for more than one transaction. Whenever the relationship is anything but 1:1, you have to
+    track the changes already done to prevent modifying a field twice.
 
 ## Generating backups
 
