@@ -2,8 +2,4 @@ pytest-mock
 pytest
 pytest-cov
 testcontainers
-mkdocs-material
-mkdocs
-mkdocstrings-python
-griffe-fieldz
 pre-commit
