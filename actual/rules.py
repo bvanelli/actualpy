@@ -564,7 +564,7 @@ class RuleSet(pydantic.BaseModel):
     >>> ])
     """
 
-    rules: list[Rule]
+    rules: typing.List[Rule]
 
     def __str__(self):
         return "\n".join([str(r) for r in self.rules])

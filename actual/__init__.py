@@ -11,7 +11,7 @@ import uuid
 import warnings
 import zipfile
 from os import PathLike
-from typing import IO, Union
+from typing import IO, List, Union
 
 from sqlalchemy import insert, update
 from sqlmodel import MetaData, Session, create_engine, select
@@ -136,7 +136,7 @@ class Actual(ActualServer):
                 raise UnknownFileId(f"Multiple files found with identifier '{file_id}'")
             return self.set_file(selected_files[0])
 
-    def run_migrations(self, migration_files: list[str]):
+    def run_migrations(self, migration_files: List[str]):
         """Runs the migration files, skipping the ones that have already been run. The files can be retrieved from
         .data_file_index() method. This first file is the base database, and the following files are migrations.
         Migrations can also be .js files. In this case, we have to extract and execute queries from the standard JS."""
@@ -273,7 +273,7 @@ class Actual(ActualServer):
         self.reset_user_file(self._file.file_id)
         self.upload_budget()
 
-    def apply_changes(self, messages: list[Message]):
+    def apply_changes(self, messages: List[Message]):
         """Applies a list of sync changes, based on what the sync method returned on the remote."""
         if not self.engine:
             raise UnknownFileId("No valid file available, download one with download_budget()")
@@ -423,7 +423,7 @@ class Actual(ActualServer):
         transactions = get_transactions(self.session, is_parent=True)
         ruleset.run(transactions)
 
-    def _run_bank_sync_account(self, acct: Accounts, start_date: datetime.date) -> list[Transactions]:
+    def _run_bank_sync_account(self, acct: Accounts, start_date: datetime.date) -> List[Transactions]:
         sync_method = acct.account_sync_source
         account_id = acct.account_id
         requisition_id = acct.bank.bank_id if sync_method == "goCardless" else None
@@ -458,7 +458,7 @@ class Actual(ActualServer):
 
     def run_bank_sync(
         self, account: str | Accounts | None = None, start_date: datetime.date | None = None
-    ) -> list[Transactions]:
+    ) -> List[Transactions]:
         """
         Runs the bank synchronization for the selected account. If missing, all accounts are synchronized. If a
         start_date is provided, is used as a reference, otherwise, the last timestamp of each account will be used. If
