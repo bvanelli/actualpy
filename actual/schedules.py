@@ -192,10 +192,13 @@ class Schedule(pydantic.BaseModel):
             # for the month or weekday rules, add a different rrule to the ruleset. This is because otherwise the rule
             # would only look for, for example, days that are 15 that are also Fridays, and that is not desired
             if by_month_day:
-                monthly_config = config.copy() | {"bymonthday": by_month_day}
+                monthly_config = config.copy()
+                monthly_config.update({"bymonthday": by_month_day})
                 rule_sets_configs.append(monthly_config)
             if by_weekday:
-                rule_sets_configs.append(config.copy() | {"byweekday": by_weekday})
+                weekly_config = config.copy()
+                weekly_config.update({"byweekday": by_weekday})
+                rule_sets_configs.append(weekly_config)
         # if ruleset does not contain multiple rules, add the current rule as default
         if not rule_sets_configs:
             rule_sets_configs.append(config)
