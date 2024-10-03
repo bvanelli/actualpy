@@ -2,3 +2,4 @@ mkdocs-material
 mkdocs
 mkdocstrings-python
 griffe-fieldz
+black
