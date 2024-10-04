@@ -454,6 +454,11 @@ class Payees(BaseModel, table=True):
         return decimal.Decimal(value) / 100
 
 
+class Preferences(BaseModel, table=True):
+    id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    value: Optional[str] = Field(default=None, sa_column=Column("value", Text))
+
+
 class ReflectBudgets(SQLModel, table=True):
     __tablename__ = "reflect_budgets"
 
