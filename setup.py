@@ -22,6 +22,6 @@ setup(
     },
     entry_points="""
       [console_scripts]
-      actual=actual.cli.main:app
+      actualpy=actual.cli.main:app
       """,
 )

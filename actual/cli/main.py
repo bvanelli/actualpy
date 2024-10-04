@@ -86,7 +86,7 @@ def init(
 
 
 @app.command()
-def set_context(context: str = typer.Argument(..., help="Context for this budget context")):
+def use_context(context: str = typer.Argument(..., help="Context for this budget context")):
     """Sets the default context for the CLI."""
     if context not in config.budgets:
         raise ValueError(f"Context '{context}' is not registered. Choose one from {list(config.budgets.keys())}")
@@ -96,6 +96,7 @@ def set_context(context: str = typer.Argument(..., help="Context for this budget
 
 @app.command()
 def remove_context(context: str = typer.Argument(..., help="Context to be removed")):
+    """Removes a configured context from the configuration."""
     if context not in config.budgets:
         raise ValueError(f"Context '{context}' is not registered. Choose one from {list(config.budgets.keys())}")
     config.budgets.pop(context)

@@ -75,12 +75,12 @@ def test_init_interactive(actual_server, mocker):
     mock_prompt = mocker.patch("typer.prompt")
     mock_prompt.side_effect = [f"http://localhost:{port}", "mypass", 2, "mypass", "myextra"]
     assert invoke(["init"]).exit_code == 0
-    assert invoke(["set-context", "myextra"]).exit_code == 0
-    assert invoke(["set-context", "test"]).exit_code == 0
+    assert invoke(["use-context", "myextra"]).exit_code == 0
+    assert invoke(["use-context", "test"]).exit_code == 0
     # remove extra context
     assert invoke(["remove-context", "myextra"]).exit_code == 0
     # different context should not succeed
-    assert invoke(["set-context", "myextra"]).exit_code != 0
+    assert invoke(["use-context", "myextra"]).exit_code != 0
     assert invoke(["remove-context", "myextra"]).exit_code != 0
 
 
