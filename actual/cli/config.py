@@ -13,7 +13,7 @@ console = Console()
 
 
 def default_config_path():
-    return Path.home() / ".actual" / "config.yaml"
+    return Path.home() / ".actualpy" / "config.yaml"
 
 
 class OutputType(Enum):
