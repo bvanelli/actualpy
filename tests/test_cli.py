@@ -77,8 +77,11 @@ def test_init_interactive(actual_server, mocker):
     assert invoke(["init"]).exit_code == 0
     assert invoke(["set-context", "myextra"]).exit_code == 0
     assert invoke(["set-context", "test"]).exit_code == 0
+    # remove extra context
+    assert invoke(["remove-context", "myextra"]).exit_code == 0
     # different context should not succeed
-    assert invoke(["set-context", "foo"]).exit_code != 0
+    assert invoke(["set-context", "myextra"]).exit_code != 0
+    assert invoke(["remove-context", "myextra"]).exit_code != 0
 
 
 def test_load_config(actual_server):
