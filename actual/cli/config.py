@@ -1,7 +1,7 @@
 import os
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 
 import pydantic
 import yaml
@@ -36,7 +36,7 @@ class BudgetConfig(pydantic.BaseModel):
 
 class Config(pydantic.BaseModel):
     default_context: str = pydantic.Field("", alias="defaultContext", description="Default budget context for CLI.")
-    budgets: dict[str, BudgetConfig] = pydantic.Field(
+    budgets: Dict[str, BudgetConfig] = pydantic.Field(
         default_factory=dict, description="Dict of configured budgets on CLI."
     )
 
