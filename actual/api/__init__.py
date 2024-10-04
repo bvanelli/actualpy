@@ -8,8 +8,8 @@ import requests
 
 from actual.api.models import (
     BankSyncAccountResponseDTO,
+    BankSyncResponseDTO,
     BankSyncStatusDTO,
-    BankSyncTransactionResponseDTO,
     BootstrapInfoDTO,
     Endpoints,
     GetUserFileInfoDTO,
@@ -37,8 +37,20 @@ class ActualServer:
         token: str = None,
         password: str = None,
         bootstrap: bool = False,
-        cert: str | bool = False,
+        cert: str | bool = None,
     ):
+        """
+        Implements the low-level API for interacting with the Actual server by just implementing the API calls and
+        response models.
+
+        :param base_url: url of the running Actual server
+        :param token: the token for authentication, if this is available (optional)
+        :param password: the password for authentication. It will be used on the .login() method to retrieve the token.
+        be created instead.
+        :param bootstrap: if the server is not bootstrapped, bootstrap it with the password.
+        :param cert: if a custom certificate should be used (i.e. self-signed certificate), it's path can be provided
+                     as a string. Set to `False` for no certificate check.
+        """
         self.api_url = base_url
         self._token = token
         self.cert = cert
@@ -58,8 +70,8 @@ class ActualServer:
         authenticate the user.
 
         :param password: password of the Actual server.
-        :param method: the method used to authenticate with the server. Check
-        https://actualbudget.org/docs/advanced/http-header-auth/ for information.
+        :param method: the method used to authenticate with the server. Check the [official auth header documentation](
+        https://actualbudget.org/docs/advanced/http-header-auth/) for information.
         """
         if not password:
             raise AuthorizationError("Trying to login but not password was provided.")
@@ -96,7 +108,7 @@ class ActualServer:
         if file_id:
             headers["X-ACTUAL-FILE-ID"] = file_id
         if extra_headers:
-            headers = headers | extra_headers
+            headers.update(extra_headers)
         return headers
 
     def info(self) -> InfoDTO:
@@ -284,7 +296,7 @@ class ActualServer:
         account_id: str,
         start_date: datetime.date,
         requisition_id: str = None,
-    ) -> BankSyncTransactionResponseDTO:
+    ) -> BankSyncResponseDTO:
         if bank_sync == "gocardless" and requisition_id is None:
             raise ActualInvalidOperationError("Retrieving transactions with goCardless requires `requisition_id`")
         endpoint = Endpoints.BANK_SYNC_TRANSACTIONS.value.format(bank_sync=bank_sync)
@@ -292,4 +304,4 @@ class ActualServer:
         if requisition_id:
             payload["requisitionId"] = requisition_id
         response = requests.post(f"{self.api_url}/{endpoint}", headers=self.headers(), json=payload, verify=self.cert)
-        return BankSyncTransactionResponseDTO.model_validate(response.json())
+        return BankSyncResponseDTO.validate_python(response.json())

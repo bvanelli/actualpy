@@ -4,7 +4,8 @@ from datetime import date, timedelta
 
 import pytest
 
-from actual import ActualError
+from actual import Actual, ActualError
+from actual.database import Notes
 from actual.queries import (
     create_account,
     create_rule,
@@ -60,6 +61,18 @@ def test_account_relationships(session):
     )
     assert [utilities_payment] == deleted_transaction
     assert get_accounts(session, "Bank") == [bank]
+
+
+def test_transaction(session):
+    today = date.today()
+    other = create_account(session, "Other")
+    coffee = create_transaction(
+        session, date=today, account="Other", payee="Starbucks", notes="coffee", amount=float(-9.95)
+    )
+    session.commit()
+    assert coffee.amount == -995
+    assert len(other.transactions) == 1
+    assert other.balance == decimal.Decimal("-9.95")
 
 
 def test_reconcile_transaction(session):
@@ -181,3 +194,26 @@ def test_rollback(session):
     assert len(session.info["messages"])
     session.rollback()
     assert "messages" not in session.info
+
+
+def test_model_notes(session):
+    account_with_note = create_account(session, "Bank 1")
+    account_without_note = create_account(session, "Bank 2")
+    session.add(Notes(id=f"account-{account_with_note.id}", note="My note"))
+    session.commit()
+    assert account_with_note.notes == "My note"
+    assert account_without_note.notes is None
+
+
+def test_default_imported_payee(session):
+    t = create_transaction(session, date(2024, 1, 4), create_account(session, "Bank"), imported_payee=" foo ")
+    session.flush()
+    assert t.payee.name == "foo"
+    assert t.imported_description == "foo"
+
+
+def test_session_error(mocker):
+    mocker.patch("actual.Actual.validate")
+    with Actual(token="foo") as actual:
+        with pytest.raises(ActualError, match="No session defined"):
+            print(actual.session)  # try to access the session, should raise an exception

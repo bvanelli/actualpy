@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import enum
-from typing import List, Optional
+from typing import List, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, TypeAdapter
 
-from actual.api.bank_sync import BankSyncAccountData, BankSyncTransactionData
+from actual.api.bank_sync import (
+    BankSyncAccountData,
+    BankSyncErrorData,
+    BankSyncTransactionData,
+)
 
 
 class Endpoints(enum.Enum):
@@ -158,3 +162,10 @@ class BankSyncAccountResponseDTO(StatusDTO):
 
 class BankSyncTransactionResponseDTO(StatusDTO):
     data: BankSyncTransactionData
+
+
+class BankSyncErrorDTO(StatusDTO):
+    data: BankSyncErrorData
+
+
+BankSyncResponseDTO = TypeAdapter(Union[BankSyncErrorDTO, BankSyncTransactionResponseDTO])

@@ -7,7 +7,7 @@ setup(
     version=__version__,
     packages=find_packages(),
     description="Implementation of the Actual API to interact with Actual over Python.",
-    long_description=open("README.md").read(),
+    long_description=open("README.md").read().replace("> [!WARNING]", "⚠️**Warning**: "),
     long_description_content_type="text/markdown",
     author="Brunno Vanelli",
     author_email="brunnovanelli@gmail.com",
@@ -17,4 +17,11 @@ setup(
         "Issues": "https://github.com/bvanelli/actualpy/issues",
     },
     install_requires=["cryptography", "proto-plus", "python-dateutil", "requests", "sqlmodel"],
+    extras_require={
+        "cli": ["rich", "typer", "pyyaml"],
+    },
+    entry_points="""
+      [console_scripts]
+      actualpy=actual.cli.main:app
+      """,
 )

@@ -2,16 +2,20 @@
 This file was partially generated using sqlacodegen using the downloaded version of the db.sqlite file export
 in order to update this file, you can generate the code with:
 
-> sqlacodegen --generator sqlmodels sqlite:///db.sqlite
+```bash
+sqlacodegen --generator sqlmodels sqlite:///db.sqlite
+```
 
-and patch the necessary models by merging the results.
+and patch the necessary models by merging the results. The [actual.database.BaseModel][] defines all models that can
+be updated from the user, and must contain a unique `id`. Those models can then be converted automatically into a
+protobuf change message using [actual.database.BaseModel.convert][].
 """
 
 import datetime
 import decimal
 from typing import List, Optional, Union
 
-from sqlalchemy import event, inspect
+from sqlalchemy import MetaData, Table, engine, event, inspect
 from sqlalchemy.orm import class_mapper, object_session
 from sqlmodel import (
     Boolean,
@@ -35,34 +39,62 @@ from actual.protobuf_models import Message
 
 """
 This variable contains the internal model mappings for all databases. It solves a couple of issues, namely having the
-mapping from __tablename__ to the actual SQLAlchemy class, and later mapping the SQL column into the Pydantic field,
+mapping from `__tablename__` to the actual SQLAlchemy class, and later mapping the SQL column into the Pydantic field,
 which could be different and follows the Python naming convention. An example is the field `Transactions.is_parent`,
 that converts into the SQL equivalent `transactions.isParent`. In this case, we would have the following entries:
 
-    __TABLE_COLUMNS_MAP__ = {
-        "transactions": {
-            "entity": <class 'actual.database.Transactions'>,
-            "columns": {
-                "isParent": "is_parent"
-            }
+```
+__TABLE_COLUMNS_MAP__ = {
+    "transactions": {
+        "entity": <class 'actual.database.Transactions'>,
+        "columns": {
+            "isParent": "is_parent"
         }
     }
+}
+```
 """
 __TABLE_COLUMNS_MAP__ = dict()
 
 
+def reflect_model(eng: engine.Engine) -> MetaData:
+    """Reflects the current state of the database."""
+    local_meta = MetaData()
+    local_meta.reflect(bind=eng)
+    return local_meta
+
+
+def get_class_from_reflected_table_name(metadata: MetaData, table_name: str) -> Union[Table, None]:
+    """
+    Returns, based on the defined tables on the reflected model the corresponding SQLAlchemy table.
+    If not found, returns `None`.
+    """
+    return metadata.tables.get(table_name, None)
+
+
+def get_attribute_from_reflected_table_name(
+    metadata: MetaData, table_name: str, column_name: str
+) -> Union[Column, None]:
+    """
+    Returns, based, on the defined reflected model the corresponding and the SAColumn. If not found, returns `None`.
+    """
+    table = get_class_from_reflected_table_name(metadata, table_name)
+    return table.columns.get(column_name, None)
+
+
 def get_class_by_table_name(table_name: str) -> Union[SQLModel, None]:
     """
-    Returns, based on the defined tables __tablename__ the corresponding SQLModel object. If not found, returns None.
+    Returns, based on the defined tables `__tablename__` the corresponding SQLModel object. If not found, returns
+    `None`.
     """
     return __TABLE_COLUMNS_MAP__.get(table_name, {}).get("entity", None)
 
 
 def get_attribute_by_table_name(table_name: str, column_name: str, reverse: bool = False) -> Union[str, None]:
     """
-    Returns, based, on the defined tables __tablename__ and the SAColumn name, the correct pydantic attribute. Search
+    Returns, based, on the defined tables `__tablename__` and the SAColumn name, the correct pydantic attribute. Search
     can be reversed by setting the `reverse` flag to `True`.
-    If not found, returns None.
+    If not found, returns `None`.
 
     :param table_name: SQL table name.
     :param column_name: SQL column name.
@@ -111,9 +143,8 @@ class BaseModel(SQLModel):
     id: str = Field(sa_column=Column("id", Text, primary_key=True))
 
     def convert(self, is_new: bool = True) -> List[Message]:
-        """Convert the object into distinct entries for sync method. Based on the original implementation:
-
-        https://github.com/actualbudget/actual/blob/98c17bd5e0f13e27a09a7f6ac176510530572be7/packages/loot-core/src/server/aql/schema-helpers.ts#L146
+        """Convert the object into distinct entries for sync method. Based on the [original implementation](
+        https://github.com/actualbudget/actual/blob/98c17bd5e0f13e27a09a7f6ac176510530572be7/packages/loot-core/src/server/aql/schema-helpers.ts#L146)
         """
         row = getattr(self, "id", None)  # also helps lazy loading the instance
         if row is None:
@@ -133,7 +164,7 @@ class BaseModel(SQLModel):
                 changes.append(m)
         return changes
 
-    def changed(self) -> list[str]:
+    def changed(self) -> List[str]:
         """Returns list of model changed attributes."""
         changed_attributes = []
         inspr = inspect(self)
@@ -214,6 +245,11 @@ class Accounts(BaseModel, table=True):
             )
         )
         return decimal.Decimal(value) / 100
+
+    @property
+    def notes(self) -> Optional[str]:
+        """Returns notes for the account. If none are present, returns `None`."""
+        return object_session(self).scalar(select(Notes.note).where(Notes.id == f"account-{self.id}"))
 
 
 class Banks(BaseModel, table=True):
@@ -338,6 +374,17 @@ class CustomReports(BaseModel, table=True):
     )
 
 
+class Dashboard(BaseModel, table=True):
+    id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    type: Optional[str] = Field(default=None, sa_column=Column("type", Text))
+    width: Optional[int] = Field(default=None, sa_column=Column("width", Integer))
+    height: Optional[int] = Field(default=None, sa_column=Column("height", Integer))
+    x: Optional[int] = Field(default=None, sa_column=Column("x", Integer))
+    y: Optional[int] = Field(default=None, sa_column=Column("y", Integer))
+    meta: Optional[str] = Field(default=None, sa_column=Column("meta", Text))
+    tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
+
+
 class Kvcache(SQLModel, table=True):
     key: Optional[str] = Field(default=None, sa_column=Column("key", Text, primary_key=True))
     value: Optional[str] = Field(default=None, sa_column=Column("value", Text))
@@ -369,7 +416,7 @@ class MessagesCrdt(SQLModel, table=True):
     id: Optional[int] = Field(default=None, sa_column=Column("id", Integer, primary_key=True))
 
 
-class Notes(SQLModel, table=True):
+class Notes(BaseModel, table=True):
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
     note: Optional[str] = Field(default=None, sa_column=Column("note", Text))
 
@@ -408,6 +455,11 @@ class Payees(BaseModel, table=True):
             )
         )
         return decimal.Decimal(value) / 100
+
+
+class Preferences(BaseModel, table=True):
+    id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    value: Optional[str] = Field(default=None, sa_column=Column("value", Text))
 
 
 class ReflectBudgets(SQLModel, table=True):
@@ -556,7 +608,7 @@ class Transactions(BaseModel, table=True):
         self.date = int(datetime.date.strftime(date, "%Y%m%d"))
 
     def set_amount(self, amount: Union[decimal.Decimal, int, float]):
-        self.amount = int(amount * 100)
+        self.amount = int(round(amount * 100))
 
     def get_amount(self) -> decimal.Decimal:
         return decimal.Decimal(self.amount) / decimal.Decimal(100)
