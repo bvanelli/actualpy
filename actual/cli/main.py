@@ -5,6 +5,7 @@ from typing import Optional
 
 import typer
 from rich.console import Console
+from rich.json import JSON
 from rich.table import Table
 
 from actual import Actual, get_accounts, get_transactions
@@ -104,7 +105,7 @@ def version():
         console.print(f"Library Version: {__version__}")
         console.print(f"Server Version: {info.build.version}")
     else:
-        console.print({"library_version": __version__, "server_version": info.build.version})
+        console.print(JSON.from_data({"library_version": __version__, "server_version": info.build.version}))
 
 
 @app.command()
@@ -134,7 +135,7 @@ def accounts():
 
         console.print(table)
     else:
-        typer.echo(accounts_data)
+        console.print(JSON.from_data(accounts_data))
 
 
 @app.command()
@@ -152,7 +153,7 @@ def transactions():
                     "payee": transaction.payee.name,
                     "notes": transaction.notes or "",
                     "category": (transaction.category.name if transaction.category else None),
-                    "amount": transaction.get_amount(),
+                    "amount": round(float(transaction.get_amount()), 2),
                 }
             )
 
@@ -176,7 +177,7 @@ def transactions():
 
         console.print(table)
     else:
-        typer.echo(transactions_data)
+        console.print(JSON.from_data(transactions_data))
 
 
 @app.command()
@@ -188,7 +189,7 @@ def payees():
     with config.actual() as actual:
         payees_raw_data = get_payees(actual.session)
         for payee in payees_raw_data:
-            payees_data.append({"name": payee.name, "balance": payee.balance})
+            payees_data.append({"name": payee.name, "balance": round(float(payee.balance), 2)})
 
     if state.output == OutputType.table:
         table = Table(title="Payees")
@@ -203,7 +204,7 @@ def payees():
             )
         console.print(table)
     else:
-        typer.echo(payees_data)
+        console.print(JSON.from_data(payees_data))
 
 
 @app.command()
@@ -244,7 +245,7 @@ def metadata():
             table.add_row(key, str(value))
         console.print(table)
     else:
-        typer.echo(actual_metadata)
+        console.print(JSON.from_data(actual_metadata))
 
 
 if __name__ == "__main__":

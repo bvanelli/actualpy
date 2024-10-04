@@ -1,4 +1,5 @@
 import datetime
+import json
 import pathlib
 from typing import List
 
@@ -16,8 +17,8 @@ runner = CliRunner()
 server_version = "24.9.0"
 
 
-def base_dataset(actual: Actual):
-    actual.create_budget("Test")
+def base_dataset(actual: Actual, budget_name: str = "Test", encryption_password: str = None):
+    actual.create_budget(budget_name)
     bank = create_account(actual.session, "Bank")
     create_transaction(
         actual.session, datetime.date(2024, 9, 5), bank, "Starting Balance", category="Starting", amount=150
@@ -27,6 +28,8 @@ def base_dataset(actual: Actual):
     )
     actual.commit()
     actual.upload_budget()
+    if encryption_password:
+        actual.encrypt(encryption_password)
 
 
 @pytest.fixture(scope="module")
@@ -40,10 +43,7 @@ def actual_server(request, module_mocker, tmp_path_factory):
         with Actual(f"http://localhost:{port}", password="mypass", bootstrap=True) as actual:
             base_dataset(actual)
         # init configuration
-        from actual.cli.main import app
-
-        result = runner.invoke(
-            app,
+        result = invoke(
             [
                 "init",
                 "--url",
@@ -54,7 +54,7 @@ def actual_server(request, module_mocker, tmp_path_factory):
                 "Test",
                 "--context",
                 "test",
-            ],
+            ]
         )
         assert result.exit_code == 0
         yield container
@@ -66,22 +66,47 @@ def invoke(command: List[str]) -> Result:
     return runner.invoke(app, command)
 
 
+def test_init_interactive(actual_server, mocker):
+    # create a new encrypted file
+    port = actual_server.get_exposed_port(5006)
+    with Actual(f"http://localhost:{port}", password="mypass") as actual:
+        base_dataset(actual, "Extra", "mypass")
+    # test full prompt
+    mock_prompt = mocker.patch("typer.prompt")
+    mock_prompt.side_effect = [f"http://localhost:{port}", "mypass", 2, "mypass", "myextra"]
+    assert invoke(["init"]).exit_code == 0
+    assert invoke(["set-context", "myextra"]).exit_code == 0
+    assert invoke(["set-context", "test"]).exit_code == 0
+    # different context should not succeed
+    assert invoke(["set-context", "foo"]).exit_code != 0
+
+
 def test_load_config(actual_server):
     cfg = Config.load()
     assert cfg.default_context == "test"
     assert str(default_config_path()).endswith(".actual/config.yaml")
+    # if the context does not exist, it should fail to load the server
+    cfg.default_context = "foo"
+    with pytest.raises(ValueError, match="Could not find budget with context"):
+        cfg.actual()
 
 
 def test_app(actual_server):
     result = invoke(["version"])
     assert result.exit_code == 0
     assert result.stdout == f"Library Version: {__version__}\nServer Version: {server_version}\n"
+    # make sure json is valid
+    result = invoke(["-o", "json", "version"])
+    assert json.loads(result.stdout) == {"library_version": __version__, "server_version": server_version}
 
 
 def test_metadata(actual_server):
     result = invoke(["metadata"])
     assert result.exit_code == 0
-    assert "budgetName" in result.stdout
+    assert "" in result.stdout
+    # make sure json is valid
+    result = invoke(["-o", "json", "metadata"])
+    assert "budgetName" in json.loads(result.stdout)
 
 
 def test_accounts(actual_server):
@@ -95,6 +120,9 @@ def test_accounts(actual_server):
         "│ Bank         │   50.00 │\n"
         "└──────────────┴─────────┘\n"
     )
+    # make sure json is valid
+    result = invoke(["-o", "json", "accounts"])
+    assert json.loads(result.stdout) == [{"name": "Bank", "balance": 50.00}]
 
 
 def test_transactions(actual_server):
@@ -109,6 +137,15 @@ def test_transactions(actual_server):
         "│ 2024-09-05 │ Starting Balance │                 │ Starting │  150.00 │\n"
         "└────────────┴──────────────────┴─────────────────┴──────────┴─────────┘\n"
     )
+    # make sure json is valid
+    result = invoke(["-o", "json", "transactions"])
+    assert {
+        "date": "2024-12-24",
+        "payee": "Shopping Center",
+        "notes": "Christmas Gifts",
+        "category": "Gifts",
+        "amount": -100.00,
+    } in json.loads(result.stdout)
 
 
 def test_payees(actual_server):
@@ -124,6 +161,9 @@ def test_payees(actual_server):
         "│ Shopping Center  │ -100.00 │\n"
         "└──────────────────┴─────────┘\n"
     )
+    # make sure json is valid
+    result = invoke(["-o", "json", "payees"])
+    assert {"name": "Shopping Center", "balance": -100.00} in json.loads(result.stdout)
 
 
 def test_export(actual_server, mocker):
