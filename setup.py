@@ -17,4 +17,11 @@ setup(
         "Issues": "https://github.com/bvanelli/actualpy/issues",
     },
     install_requires=["cryptography", "proto-plus", "python-dateutil", "requests", "sqlmodel"],
+    extras_require={
+        "cli": ["rich", "typer", "pyyaml"],
+    },
+    entry_points="""
+      [console_scripts]
+      actualpy=actual.cli.main:app
+      """,
 )

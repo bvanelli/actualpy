@@ -25,6 +25,9 @@ If you want to have the latest git version, you can also install using the repos
 pip install git+https://github.com/bvanelli/actualpy.git
 ```
 
+For querying basic information, you additionally install the CLI, checkout the
+[basic documentation](https://actualpy.readthedocs.io/en/latest/command-line-interface/)
+
 # Basic usage
 
 The most common usage would be downloading a budget to more easily build queries. This would you could handle the
