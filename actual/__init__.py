@@ -11,13 +11,13 @@ import uuid
 import warnings
 import zipfile
 from os import PathLike
-from typing import IO, Union
+from typing import IO, List, Union
 
 from sqlalchemy import insert, update
 from sqlmodel import MetaData, Session, create_engine, select
 
 from actual.api import ActualServer
-from actual.api.models import RemoteFileListDTO
+from actual.api.models import BankSyncErrorDTO, RemoteFileListDTO
 from actual.crypto import create_key_buffer, decrypt_from_meta, encrypt, make_salt
 from actual.database import (
     Accounts,
@@ -28,7 +28,12 @@ from actual.database import (
     reflect_model,
     strong_reference_session,
 )
-from actual.exceptions import ActualError, InvalidZipFile, UnknownFileId
+from actual.exceptions import (
+    ActualBankSyncError,
+    ActualError,
+    InvalidZipFile,
+    UnknownFileId,
+)
 from actual.migrations import js_migration_statements
 from actual.protobuf_models import HULC_Client, Message, SyncRequest
 from actual.queries import (
@@ -50,7 +55,7 @@ class Actual(ActualServer):
         file: str = None,
         encryption_password: str = None,
         data_dir: Union[str, pathlib.Path] = None,
-        cert: str | bool = False,
+        cert: str | bool = None,
         bootstrap: bool = False,
         sa_kwargs: dict = None,
     ):
@@ -58,8 +63,8 @@ class Actual(ActualServer):
         Implements the Python API for the Actual Server in order to be able to read and modify information on Actual
         books using Python.
 
-        Parts of the implementation are available at the following file:
-        https://github.com/actualbudget/actual/blob/2178da0414958064337b2c53efc95ff1d3abf98a/packages/loot-core/src/server/cloud-storage.ts
+        Parts of the implementation are [available at the following file.](
+        https://github.com/actualbudget/actual/blob/2178da0414958064337b2c53efc95ff1d3abf98a/packages/loot-core/src/server/cloud-storage.ts)
 
         :param base_url: url of the running Actual server
         :param token: the token for authentication, if this is available (optional)
@@ -68,10 +73,12 @@ class Actual(ActualServer):
         :param encryption_password: password used to configure encryption, if existing
         :param data_dir: where to store the downloaded files from the server. If not specified, a temporary folder will
         be created instead.
+        :param cert: if a custom certificate should be used (i.e. self-signed certificate), it's path can be provided
+                     as a string. Set to `False` for no certificate check.
         :param bootstrap: if the server is not bootstrapped, bootstrap it with the password.
         :param sa_kwargs: additional kwargs passed to the SQLAlchemy session maker. Examples are `autoflush` (enabled
-        by default), `autocommit` (disabled by default). For a list of all parameters, check the SQLAlchemy
-        documentation: https://docs.sqlalchemy.org/en/20/orm/session_api.html#sqlalchemy.orm.Session.__init__
+        by default), `autocommit` (disabled by default). For a list of all parameters, check the [SQLAlchemy
+        documentation.](https://docs.sqlalchemy.org/en/20/orm/session_api.html#sqlalchemy.orm.Session.__init__)
         """
         super().__init__(base_url, token, password, bootstrap, cert)
         self._file: RemoteFileListDTO | None = None
@@ -104,7 +111,10 @@ class Actual(ActualServer):
     @property
     def session(self) -> Session:
         if not self._session:
-            raise ActualError("No session defined. Use `with Actual() as actual:` construct to generate one.")
+            raise ActualError(
+                "No session defined. Use `with Actual() as actual:` construct to generate one.\n"
+                "If you are already using the context manager, try setting a file to use the session."
+            )
         return self._session
 
     def set_file(self, file_id: Union[str, RemoteFileListDTO]) -> RemoteFileListDTO:
@@ -128,7 +138,7 @@ class Actual(ActualServer):
                 raise UnknownFileId(f"Multiple files found with identifier '{file_id}'")
             return self.set_file(selected_files[0])
 
-    def run_migrations(self, migration_files: list[str]):
+    def run_migrations(self, migration_files: List[str]):
         """Runs the migration files, skipping the ones that have already been run. The files can be retrieved from
         .data_file_index() method. This first file is the base database, and the following files are migrations.
         Migrations can also be .js files. In this case, we have to extract and execute queries from the standard JS."""
@@ -149,6 +159,8 @@ class Actual(ActualServer):
             conn.execute(f"INSERT INTO __migrations__ (id) VALUES ({file_id});")
         conn.commit()
         conn.close()
+        # update the metadata by reflecting the model
+        self._meta = reflect_model(self.engine)
 
     def create_budget(self, budget_name: str):
         """Creates a budget using the remote server default database and migrations. If password is provided, the
@@ -176,23 +188,23 @@ class Actual(ActualServer):
             }
         )
         self._file = RemoteFileListDTO(name=budget_name, fileId=file_id, groupId=None, deleted=0, encryptKeyId=None)
-        # create engine for downloaded database and run migrations
-        self.run_migrations(migration_files[1:])
         # generate a session
         self.engine = create_engine(f"sqlite:///{self._data_dir}/db.sqlite")
+        # create engine for downloaded database and run migrations
+        self.run_migrations(migration_files[1:])
         if self._in_context:
             self._session = strong_reference_session(Session(self.engine, **self._sa_kwargs))
-        # reflect the session
-        self._meta = reflect_model(self.engine)
         # create a clock
         self.load_clock()
 
     def rename_budget(self, budget_name: str):
+        """Renames the budget with the given name."""
         if not self._file:
             raise UnknownFileId("No current file loaded.")
         self.update_user_file_name(self._file.file_id, budget_name)
 
     def delete_budget(self):
+        """Deletes the currently loaded file from the server."""
         if not self._file:
             raise UnknownFileId("No current file loaded.")
         self.delete_user_file(self._file.file_id)
@@ -241,7 +253,9 @@ class Actual(ActualServer):
         self.set_file(self._file.file_id)
 
     def upload_budget(self):
-        """Uploads the current file to the Actual server."""
+        """Uploads the current file to the Actual server. If attempting to upload your first budget, make sure you use
+        [actual.Actual.create_budget][] first.
+        """
         if not self._data_dir:
             raise UnknownFileId("No current file loaded.")
         if not self._file:
@@ -262,10 +276,13 @@ class Actual(ActualServer):
             self.encrypt(self._encryption_password)
 
     def reupload_budget(self):
+        """Similar to the reset sync option from the frontend, resets the user file on the backend and reuploads the
+        current copy instead. **This operation can be destructive**, so make sure you generate a copy before
+        attempting to reupload your budget."""
         self.reset_user_file(self._file.file_id)
         self.upload_budget()
 
-    def apply_changes(self, messages: list[Message]):
+    def apply_changes(self, messages: List[Message]):
         """Applies a list of sync changes, based on what the sync method returned on the remote."""
         if not self.engine:
             raise UnknownFileId("No valid file available, download one with download_budget()")
@@ -304,7 +321,8 @@ class Actual(ActualServer):
         then be merged on the metadata and written again to a file."""
         metadata_file = self._data_dir / "metadata.json"
         if metadata_file.is_file():
-            config = self.get_metadata() | patch
+            config = self.get_metadata()
+            config.update(patch)
         else:
             config = patch
         metadata_file.write_text(json.dumps(config, separators=(",", ":")))
@@ -340,6 +358,8 @@ class Actual(ActualServer):
             self._session = strong_reference_session(Session(self.engine, **self._sa_kwargs))
 
     def import_zip(self, file_bytes: str | PathLike[str] | IO[bytes]):
+        """Imports a zip file as the current database, as well as generating the local reflected session. Enables you
+        to inspect backups by loading them directly, instead of unzipping the contents."""
         try:
             zip_file = zipfile.ZipFile(file_bytes)
         except zipfile.BadZipfile as e:
@@ -354,6 +374,9 @@ class Actual(ActualServer):
         self.load_clock()
 
     def sync(self):
+        """Does a sync request and applies all changes that are stored on the server on the local copy of the database.
+        Since all changes are retrieved, this function cannot be used for partial changes (since the budget is online).
+        """
         # after downloading the budget, some pending transactions still need to be retrieved using sync
         request = SyncRequest(
             {
@@ -370,8 +393,9 @@ class Actual(ActualServer):
             self._client = HULC_Client.from_timestamp(changes.messages[-1].timestamp)
 
     def load_clock(self) -> MessagesClock:
-        """See implementation at:
-        https://github.com/actualbudget/actual/blob/5bcfc71be67c6e7b7c8b444e4c4f60da9ea9fdaa/packages/loot-core/src/server/db/index.ts#L81-L98
+        """Loads the HULC Clock from the database. This clock tells the server from when the messages should be
+        retrieved. See the [original implementation.](
+        https://github.com/actualbudget/actual/blob/5bcfc71be67c6e7b7c8b444e4c4f60da9ea9fdaa/packages/loot-core/src/server/db/index.ts#L81-L98)
         """
         with Session(self.engine) as session:
             clock = session.exec(select(MessagesClock)).one_or_none()
@@ -411,17 +435,24 @@ class Actual(ActualServer):
             self.sync_sync(req)
 
     def run_rules(self):
+        """Runs all the stored rules on the database on all transactions, without any filters."""
         ruleset = get_ruleset(self.session)
         transactions = get_transactions(self.session, is_parent=True)
         ruleset.run(transactions)
 
-    def _run_bank_sync_account(self, acct: Accounts, start_date: datetime.date) -> list[Transactions]:
+    def _run_bank_sync_account(self, acct: Accounts, start_date: datetime.date) -> List[Transactions]:
         sync_method = acct.account_sync_source
         account_id = acct.account_id
         requisition_id = acct.bank.bank_id if sync_method == "goCardless" else None
         new_transactions_data = self.bank_sync_transactions(
             sync_method.lower(), account_id, start_date, requisition_id=requisition_id
         )
+        if isinstance(new_transactions_data, BankSyncErrorDTO):
+            raise ActualBankSyncError(
+                new_transactions_data.data.error_type,
+                new_transactions_data.data.status,
+                new_transactions_data.data.reason,
+            )
         new_transactions = new_transactions_data.data.transactions.all
         imported_transactions = []
         for transaction in new_transactions:
@@ -444,7 +475,7 @@ class Actual(ActualServer):
 
     def run_bank_sync(
         self, account: str | Accounts | None = None, start_date: datetime.date | None = None
-    ) -> list[Transactions]:
+    ) -> List[Transactions]:
         """
         Runs the bank synchronization for the selected account. If missing, all accounts are synchronized. If a
         start_date is provided, is used as a reference, otherwise, the last timestamp of each account will be used. If

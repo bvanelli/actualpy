@@ -87,7 +87,7 @@ def test_string_condition():
     assert Condition(field="notes", op="matches", value="g.*").run(t) is False
     assert Condition(field="notes", op="doesNotContain", value="foo").run(t) is False
     assert Condition(field="notes", op="doesNotContain", value="foobar").run(t) is True
-    # test the cases where the case do not match
+    # case insensitive entries
     assert Condition(field="notes", op="oneOf", value=["FOO", "BAR"]).run(t) is True
     assert Condition(field="notes", op="notOneOf", value=["FOO", "BAR"]).run(t) is False
     assert Condition(field="notes", op="contains", value="FO").run(t) is True
@@ -96,6 +96,35 @@ def test_string_condition():
     assert Condition(field="notes", op="matches", value="G.*").run(t) is False
     assert Condition(field="notes", op="doesNotContain", value="FOO").run(t) is False
     assert Condition(field="notes", op="doesNotContain", value="FOOBAR").run(t) is True
+
+
+def test_has_tags():
+    mock = MagicMock()
+    acct = create_account(mock, "Bank")
+    t = create_transaction(mock, datetime.date(2024, 1, 1), acct, "", "foo #bar #✨ #🙂‍↔️")
+    assert Condition(field="notes", op="hasTags", value="#bar").run(t) is True
+    assert Condition(field="notes", op="hasTags", value="#foo").run(t) is False
+    # test other unicode entries
+    assert Condition(field="notes", op="hasTags", value="#emoji #✨").run(t) is True
+    assert Condition(field="notes", op="hasTags", value="#🙂‍↔️").run(t) is True  # new emojis should be supported
+    assert Condition(field="notes", op="hasTags", value="bar").run(t) is False  # individual string will not match
+
+
+@pytest.mark.parametrize(
+    "op,condition_value,value,expected_result",
+    [
+        ("contains", "supermarket", "Best Supermarket", True),
+        ("contains", "supermarket", None, False),
+        ("oneOf", ["my supermarket", "other supermarket"], "MY SUPERMARKET", True),
+        ("oneOf", ["supermarket"], None, False),
+        ("matches", "market", "hypermarket", True),
+    ],
+)
+def test_imported_payee_condition(op, condition_value, value, expected_result):
+    t = create_transaction(MagicMock(), datetime.date(2024, 1, 1), "Bank", "", amount=5, imported_payee=value)
+    condition = {"field": "imported_description", "type": "imported_payee", "op": op, "value": condition_value}
+    cond = Condition.model_validate(condition)
+    assert cond.run(t) == expected_result
 
 
 def test_numeric_condition():
@@ -181,6 +210,8 @@ def test_value_type_condition_validation():
     assert ValueType.ID.is_valid(ConditionType.CONTAINS) is False
     assert ValueType.STRING.is_valid(ConditionType.CONTAINS) is True
     assert ValueType.STRING.is_valid(ConditionType.GT) is False
+    assert ValueType.IMPORTED_PAYEE.is_valid(ConditionType.CONTAINS) is True
+    assert ValueType.IMPORTED_PAYEE.is_valid(ConditionType.GT) is False
 
 
 def test_value_type_value_validation():
@@ -196,6 +227,8 @@ def test_value_type_value_validation():
     assert ValueType.ID.validate("foo") is False
     assert ValueType.BOOLEAN.validate(True) is True
     assert ValueType.BOOLEAN.validate("") is False
+    assert ValueType.IMPORTED_PAYEE.validate("") is True
+    assert ValueType.IMPORTED_PAYEE.validate(1) is False
     # list and NoneType
     assert ValueType.DATE.validate(None)
     assert ValueType.DATE.validate(["2024-10-04"], ConditionType.ONE_OF) is True
@@ -207,6 +240,7 @@ def test_value_type_from_field():
     assert ValueType.from_field("notes") == ValueType.STRING
     assert ValueType.from_field("date") == ValueType.DATE
     assert ValueType.from_field("cleared") == ValueType.BOOLEAN
+    assert ValueType.from_field("imported_description") == ValueType.IMPORTED_PAYEE
     with pytest.raises(ValueError):
         ValueType.from_field("foo")
 
@@ -331,3 +365,23 @@ def test_set_split_amount_exception(session, mocker):
     session.flush()
     with pytest.raises(ActualSplitTransactionError):
         rs.run(t)
+
+
+@pytest.mark.parametrize(
+    "operation,value,note,expected",
+    [
+        ("append-notes", "bar", "foo", "foobar"),
+        ("prepend-notes", "bar", "foo", "barfoo"),
+        ("append-notes", "bar", None, "bar"),
+        ("prepend-notes", "bar", None, "bar"),
+    ],
+)
+def test_preppend_append_notes(operation, value, note, expected):
+    mock = MagicMock()
+    t = create_transaction(mock, datetime.date(2024, 1, 1), "Bank", "", notes=note)
+    action = Action(field="description", op=operation, value=value)
+    action.run(t)
+    assert t.notes == expected
+    action.run(t)  # second iteration should not update the result
+    assert t.notes == expected
+    assert f"{operation.split('-')[0]} to notes '{value}'" in str(action)

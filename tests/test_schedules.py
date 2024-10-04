@@ -70,6 +70,48 @@ def test_complex_schedules():
     assert str(s) == "Every month on the last Sunday, 2nd Saturday, 10th, 31st, 5th (before weekend)"
 
 
+def test_skip_weekend_after_schedule():
+    s = Schedule.model_validate(
+        {
+            "start": "2024-08-14",
+            "interval": 1,
+            "frequency": "monthly",
+            "patterns": [],
+            "skipWeekend": True,
+            "weekendSolveMode": "after",
+            "endMode": "on_date",
+            "endOccurrences": 1,
+            "endDate": "2024-09-14",
+        }
+    )
+    after = s.xafter(date(2024, 9, 10), count=2)
+    # we should ensure that dates that fall outside the endDate are not covered, even though actual will accept it
+    assert after == []
+
+
+def test_skip_weekend_before_schedule():
+    s = Schedule.model_validate(
+        {
+            "start": "2024-04-10",
+            "interval": 1,
+            "frequency": "monthly",
+            "patterns": [],
+            "skipWeekend": True,
+            "weekendSolveMode": "before",
+            "endMode": "never",
+            "endOccurrences": 1,
+            "endDate": "2024-04-10",
+        }
+    )
+    before = s.before(date(2024, 8, 14))
+    assert before == date(2024, 8, 9)
+    # check that it wouldn't pick itself
+    assert s.before(date(2024, 7, 10)) == date(2024, 6, 10)
+    # we should ensure that dates that fall outside the endDate are not covered, even though actual will accept it
+    s.start = date(2024, 9, 21)
+    assert s.before(date(2024, 9, 22)) is None
+
+
 def test_is_approx():
     # create schedule for every 1st and last day of the month (30th or 31st)
     s = Schedule.model_validate(

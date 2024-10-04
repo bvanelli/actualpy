@@ -1,9 +1,10 @@
 import re
 import uuid
 import warnings
+from typing import List
 
 
-def js_migration_statements(js_file: str) -> list[str]:
+def js_migration_statements(js_file: str) -> List[str]:
     queries = []
     matches = re.finditer(r"db\.(execQuery|runQuery)", js_file)
     for match in matches:

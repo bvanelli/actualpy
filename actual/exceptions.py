@@ -50,3 +50,8 @@ class ActualDecryptionError(ActualError):
 
 class ActualSplitTransactionError(ActualError):
     pass
+
+
+class ActualBankSyncError(ActualError):
+    def __init__(self, error_type: str, status: str = None, reason: str = None):
+        self.error_type, self.status, self.reason = error_type, status, reason

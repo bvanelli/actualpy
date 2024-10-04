@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import datetime
 import uuid
+from typing import List
 
 import proto
 
@@ -10,13 +11,11 @@ from actual.crypto import decrypt, encrypt
 from actual.exceptions import ActualDecryptionError
 
 """
-Protobuf message definitions taken from:
+Protobuf message definitions taken from the [sync.proto file](
+https://github.com/actualbudget/actual/blob/029e2f09bf6caf386523bbfa944ab845271a3932/packages/crdt/src/proto/sync.proto).
 
-https://github.com/actualbudget/actual/blob/029e2f09bf6caf386523bbfa944ab845271a3932/packages/crdt/src/proto/sync.proto
-
-They should represent how the server take requests from the client. The server side implementation is available here:
-
-https://github.com/actualbudget/actual-server/blob/master/src/app-sync.js#L32
+They should represent how the server take requests from the client. The server side implementation is available [here](
+https://github.com/actualbudget/actual-server/blob/master/src/app-sync.js#L32).
 """
 
 
@@ -33,11 +32,13 @@ class HULC_Client:
     def timestamp(self, now: datetime.datetime = None) -> str:
         """Actual uses Hybrid Unique Logical Clock (HULC) timestamp generator.
 
-        Timestamps serialize into a 46-character collatable string
-         *    example: 2015-04-24T22:23:42.123Z-1000-0123456789ABCDEF
-         *    example: 2015-04-24T22:23:42.123Z-1000-A219E7A71CC18912
+        Timestamps serialize into a 46-character collatable string. Examples:
 
-        See https://github.com/actualbudget/actual/blob/a9362cc6f9b974140a760ad05816cac51c849769/packages/crdt/src/crdt/timestamp.ts
+         - `2015-04-24T22:23:42.123Z-1000-0123456789ABCDEF`
+         - `2015-04-24T22:23:42.123Z-1000-A219E7A71CC18912`
+
+        See [original source code](
+        https://github.com/actualbudget/actual/blob/a9362cc6f9b974140a760ad05816cac51c849769/packages/crdt/src/crdt/timestamp.ts)
         for reference.
         """
         if not now:
@@ -47,9 +48,8 @@ class HULC_Client:
         return f"{now.isoformat(timespec='milliseconds')}Z-{count}-{self.client_id}"
 
     def get_client_id(self):
-        """Creates a client id for the HULC request. Copied implementation from:
-
-        https://github.com/actualbudget/actual/blob/a9362cc6f9b974140a760ad05816cac51c849769/packages/crdt/src/crdt/timestamp.ts#L80
+        """Creates a client id for the HULC request. Implementation copied [from the source code](
+        https://github.com/actualbudget/actual/blob/a9362cc6f9b974140a760ad05816cac51c849769/packages/crdt/src/crdt/timestamp.ts#L80)
         """
         return (
             self.client_id if getattr(self, "client_id", None) is not None else str(uuid.uuid4()).replace("-", "")[-16:]
@@ -69,9 +69,8 @@ class Message(proto.Message):
     value = proto.Field(proto.STRING, number=4)
 
     def get_value(self) -> str | int | float | None:
-        """Serialization types from Actual. Source:
-
-        https://github.com/actualbudget/actual/blob/998efb9447da6f8ce97956cbe83d6e8a3c18cf53/packages/loot-core/src/server/sync/index.ts#L154-L160
+        """Serialization types from Actual. [Original source code](
+        https://github.com/actualbudget/actual/blob/998efb9447da6f8ce97956cbe83d6e8a3c18cf53/packages/loot-core/src/server/sync/index.ts#L154-L160)
         """
         datatype, _, value = self.value.partition(":")
         if datatype == "S":
@@ -120,7 +119,7 @@ class SyncRequest(proto.Message):
     def set_null_timestamp(self, client_id: str = None) -> str:
         return self.set_timestamp(client_id, datetime.datetime(1970, 1, 1, 0, 0, 0, 0))
 
-    def set_messages(self, messages: list[Message], client: HULC_Client, master_key: bytes = None):
+    def set_messages(self, messages: List[Message], client: HULC_Client, master_key: bytes = None):
         if not self.messages:
             self.messages = []
         for message in messages:
@@ -146,7 +145,7 @@ class SyncResponse(proto.Message):
     messages = proto.RepeatedField(MessageEnvelope, number=1)
     merkle = proto.Field(proto.STRING, number=2)
 
-    def get_messages(self, master_key: bytes = None) -> list[Message]:
+    def get_messages(self, master_key: bytes = None) -> List[Message]:
         messages = []
         for message in self.messages:  # noqa
             if message.isEncrypted:

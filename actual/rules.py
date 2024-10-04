@@ -40,12 +40,15 @@ class ConditionType(enum.Enum):
     NOT_ONE_OF = "notOneOf"
     IS_BETWEEN = "isbetween"
     MATCHES = "matches"
+    HAS_TAGS = "hasTags"
 
 
 class ActionType(enum.Enum):
     SET = "set"
     SET_SPLIT_AMOUNT = "set-split-amount"
     LINK_SCHEDULE = "link-schedule"
+    PREPEND_NOTES = "prepend-notes"
+    APPEND_NOTES = "append-notes"
 
 
 class BetweenValue(pydantic.BaseModel):
@@ -74,6 +77,7 @@ class ValueType(enum.Enum):
     STRING = "string"
     NUMBER = "number"
     BOOLEAN = "boolean"
+    IMPORTED_PAYEE = "imported_payee"
 
     def is_valid(self, operation: ConditionType) -> bool:
         """Returns if a conditional operation for a certain type is valid. For example, if the value is of type string,
@@ -81,8 +85,17 @@ class ValueType(enum.Enum):
         greater than defined for strings."""
         if self == ValueType.DATE:
             return operation.value in ("is", "isapprox", "gt", "gte", "lt", "lte")
-        elif self == ValueType.STRING:
-            return operation.value in ("is", "contains", "oneOf", "isNot", "doesNotContain", "notOneOf", "matches")
+        elif self in (ValueType.STRING, ValueType.IMPORTED_PAYEE):
+            return operation.value in (
+                "is",
+                "contains",
+                "oneOf",
+                "isNot",
+                "doesNotContain",
+                "notOneOf",
+                "matches",
+                "hasTags",
+            )
         elif self == ValueType.ID:
             return operation.value in ("is", "isNot", "oneOf", "notOneOf")
         elif self == ValueType.NUMBER:
@@ -91,7 +104,7 @@ class ValueType(enum.Enum):
             # must be BOOLEAN
             return operation.value in ("is",)
 
-    def validate(self, value: typing.Union[int, list[str], str, None], operation: ConditionType = None) -> bool:
+    def validate(self, value: typing.Union[int, typing.List[str], str, None], operation: ConditionType = None) -> bool:
         if isinstance(value, list) and operation in (ConditionType.ONE_OF, ConditionType.NOT_ONE_OF):
             return all(self.validate(v, None) for v in value)
         if value is None:
@@ -99,7 +112,7 @@ class ValueType(enum.Enum):
         if self == ValueType.ID:
             # make sure it's an uuid
             return isinstance(value, str) and is_uuid(value)
-        elif self == ValueType.STRING:
+        elif self in (ValueType.STRING, ValueType.IMPORTED_PAYEE):
             return isinstance(value, str)
         elif self == ValueType.DATE:
             try:
@@ -120,8 +133,10 @@ class ValueType(enum.Enum):
     def from_field(cls, field: str | None) -> ValueType:
         if field in ("acct", "category", "description"):
             return ValueType.ID
-        elif field in ("notes", "imported_description"):
+        elif field in ("notes",):
             return ValueType.STRING
+        elif field in ("imported_description",):
+            return ValueType.IMPORTED_PAYEE
         elif field in ("date",):
             return ValueType.DATE
         elif field in ("cleared", "reconciled"):
@@ -133,8 +148,8 @@ class ValueType(enum.Enum):
 
 
 def get_value(
-    value: typing.Union[int, list[str], str, None], value_type: ValueType
-) -> typing.Union[int, datetime.date, list[str], str, None]:
+    value: typing.Union[int, typing.List[str], str, None], value_type: ValueType
+) -> typing.Union[int, datetime.date, typing.List[str], str, None]:
     """Converts the value to an actual value according to the type."""
     if value_type is ValueType.DATE:
         if isinstance(value, str):
@@ -143,7 +158,7 @@ def get_value(
             return datetime.datetime.strptime(str(value), "%Y%m%d").date()
     elif value_type is ValueType.BOOLEAN:
         return int(value)  # database accepts 0 or 1
-    elif value_type is ValueType.STRING:
+    elif value_type in (ValueType.STRING, ValueType.IMPORTED_PAYEE):
         if isinstance(value, list):
             return [get_value(v, value_type) for v in value]
         else:
@@ -153,8 +168,8 @@ def get_value(
 
 def condition_evaluation(
     op: ConditionType,
-    true_value: typing.Union[int, list[str], str, datetime.date, None],
-    self_value: typing.Union[int, list[str], str, datetime.date, BetweenValue, None],
+    true_value: typing.Union[int, typing.List[str], str, datetime.date, None],
+    self_value: typing.Union[int, typing.List[str], str, datetime.date, BetweenValue, None],
     options: dict = None,
 ) -> bool:
     """Helper function to evaluate the condition based on the true_value, value found on the transaction, and the
@@ -193,7 +208,7 @@ def condition_evaluation(
     elif op == ConditionType.CONTAINS:
         return self_value in true_value
     elif op == ConditionType.MATCHES:
-        return bool(re.match(self_value, true_value, re.IGNORECASE))
+        return bool(re.search(self_value, true_value, re.IGNORECASE))
     elif op == ConditionType.NOT_ONE_OF:
         return true_value not in self_value
     elif op == ConditionType.DOES_NOT_CONTAIN:
@@ -208,6 +223,11 @@ def condition_evaluation(
         return self_value >= true_value
     elif op == ConditionType.IS_BETWEEN:
         return self_value.num_1 <= true_value <= self_value.num_2
+    elif op == ConditionType.HAS_TAGS:
+        # this regex is not correct, but is good enough according to testing
+        # taken from https://stackoverflow.com/a/26740753/12681470
+        tags = re.findall(r"\#[\U00002600-\U000027BF\U0001f300-\U0001f64F\U0001f680-\U0001f6FF\w-]+", self_value)
+        return any(tag in true_value for tag in tags)
     else:
         raise ActualError(f"Operation {op} not supported")
 
@@ -248,7 +268,16 @@ class Condition(pydantic.BaseModel):
     ]
     op: ConditionType
     value: typing.Union[
-        int, float, str, list[str], Schedule, list[BaseModel], BetweenValue, BaseModel, datetime.date, None
+        int,
+        float,
+        str,
+        typing.List[str],
+        Schedule,
+        typing.List[BaseModel],
+        BetweenValue,
+        BaseModel,
+        datetime.date,
+        None,
     ]
     type: typing.Optional[ValueType] = None
     options: typing.Optional[dict] = None
@@ -264,7 +293,7 @@ class Condition(pydantic.BaseModel):
             ret.pop("options", None)
         return ret
 
-    def get_value(self) -> typing.Union[int, datetime.date, list[str], str, None]:
+    def get_value(self) -> typing.Union[int, datetime.date, typing.List[str], str, None]:
         return get_value(self.value, self.type)
 
     @pydantic.model_validator(mode="after")
@@ -330,7 +359,7 @@ class Action(pydantic.BaseModel):
     op: ActionType = pydantic.Field(ActionType.SET, description="Action type to apply (default changes a column).")
     value: typing.Union[str, bool, int, float, pydantic.BaseModel, None]
     type: typing.Optional[ValueType] = None
-    options: dict[str, typing.Union[str, int]] = None
+    options: typing.Dict[str, typing.Union[str, int]] = None
 
     def __str__(self) -> str:
         if self.op in (ActionType.SET, ActionType.LINK_SCHEDULE):
@@ -343,6 +372,12 @@ class Action(pydantic.BaseModel):
             method = self.options.get("method") or ""
             split_index = self.options.get("splitIndex") or ""
             return f"allocate a {method} at Split {split_index}: {self.value}"
+        elif self.op in (ActionType.APPEND_NOTES, ActionType.PREPEND_NOTES):
+            return (
+                f"append to notes '{self.value}'"
+                if self.op == ActionType.APPEND_NOTES
+                else f"prepend to notes '{self.value}'"
+            )
 
     def as_dict(self):
         """Returns valid dict for database insertion."""
@@ -369,6 +404,9 @@ class Action(pydantic.BaseModel):
                 self.type = ValueType.ID
             elif self.op == ActionType.SET_SPLIT_AMOUNT:
                 self.type = ValueType.NUMBER
+        # questionable choice from the developers to set it to ID, I hope they fix it at some point, but we change it
+        if self.op in (ActionType.APPEND_NOTES, ActionType.PREPEND_NOTES):
+            self.type = ValueType.STRING
         # if a pydantic object is provided and id is expected, extract the id
         if isinstance(self.value, pydantic.BaseModel) and hasattr(self.value, "id"):
             self.value = str(self.value.id)
@@ -392,6 +430,16 @@ class Action(pydantic.BaseModel):
                 setattr(transaction, attr, value)
         elif self.op == ActionType.LINK_SCHEDULE:
             transaction.schedule_id = self.value
+        # for the notes rule, check if the rule was already applied since actual does not do that.
+        # this should ensure the prefix or suffix is not applied multiple times
+        elif self.op == ActionType.APPEND_NOTES:
+            notes = transaction.notes or ""
+            if not notes.endswith(self.value):
+                transaction.notes = f"{notes}{self.value}"
+        elif self.op == ActionType.PREPEND_NOTES:
+            notes = transaction.notes or ""
+            if not notes.startswith(self.value):
+                transaction.notes = f"{self.value}{notes}"
         else:
             raise ActualError(f"Operation {self.op} not supported")
 
@@ -406,13 +454,13 @@ class Rule(pydantic.BaseModel):
     automatically.
     """
 
-    conditions: list[Condition] = pydantic.Field(
+    conditions: typing.List[Condition] = pydantic.Field(
         ..., description="List of conditions that need to be met (one or all) in order for the actions to be applied."
     )
     operation: typing.Literal["and", "or"] = pydantic.Field(
         "and", description="Operation to apply for the rule evaluation. If 'all' or 'any' need to be evaluated."
     )
-    actions: list[Action] = pydantic.Field(..., description="List of actions to apply to the transaction.")
+    actions: typing.List[Action] = pydantic.Field(..., description="List of actions to apply to the transaction.")
     stage: typing.Literal["pre", "post", None] = pydantic.Field(
         None, description="Stage in which the rule" "will be evaluated (default None)"
     )
@@ -525,7 +573,7 @@ class RuleSet(pydantic.BaseModel):
     >>> ])
     """
 
-    rules: list[Rule]
+    rules: typing.List[Rule]
 
     def __str__(self):
         return "\n".join([str(r) for r in self.rules])
@@ -534,7 +582,9 @@ class RuleSet(pydantic.BaseModel):
         return self.rules.__iter__()
 
     def _run(
-        self, transaction: typing.Union[Transactions, list[Transactions]], stage: typing.Literal["pre", "post", None]
+        self,
+        transaction: typing.Union[Transactions, typing.List[Transactions]],
+        stage: typing.Literal["pre", "post", None],
     ):
         for rule in [r for r in self.rules if r.stage == stage]:
             if isinstance(transaction, list):

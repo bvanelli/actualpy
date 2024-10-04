@@ -2,9 +2,13 @@
 This file was partially generated using sqlacodegen using the downloaded version of the db.sqlite file export
 in order to update this file, you can generate the code with:
 
-> sqlacodegen --generator sqlmodels sqlite:///db.sqlite
+```bash
+sqlacodegen --generator sqlmodels sqlite:///db.sqlite
+```
 
-and patch the necessary models by merging the results.
+and patch the necessary models by merging the results. The [actual.database.BaseModel][] defines all models that can
+be updated from the user, and must contain a unique `id`. Those models can then be converted automatically into a
+protobuf change message using [actual.database.BaseModel.convert][].
 """
 
 import datetime
@@ -35,18 +39,20 @@ from actual.protobuf_models import Message
 
 """
 This variable contains the internal model mappings for all databases. It solves a couple of issues, namely having the
-mapping from __tablename__ to the actual SQLAlchemy class, and later mapping the SQL column into the Pydantic field,
+mapping from `__tablename__` to the actual SQLAlchemy class, and later mapping the SQL column into the Pydantic field,
 which could be different and follows the Python naming convention. An example is the field `Transactions.is_parent`,
 that converts into the SQL equivalent `transactions.isParent`. In this case, we would have the following entries:
 
-    __TABLE_COLUMNS_MAP__ = {
-        "transactions": {
-            "entity": <class 'actual.database.Transactions'>,
-            "columns": {
-                "isParent": "is_parent"
-            }
+```
+__TABLE_COLUMNS_MAP__ = {
+    "transactions": {
+        "entity": <class 'actual.database.Transactions'>,
+        "columns": {
+            "isParent": "is_parent"
         }
     }
+}
+```
 """
 __TABLE_COLUMNS_MAP__ = dict()
 
@@ -61,7 +67,7 @@ def reflect_model(eng: engine.Engine) -> MetaData:
 def get_class_from_reflected_table_name(metadata: MetaData, table_name: str) -> Union[Table, None]:
     """
     Returns, based on the defined tables on the reflected model the corresponding SQLAlchemy table.
-    If not found, returns None.
+    If not found, returns `None`.
     """
     return metadata.tables.get(table_name, None)
 
@@ -70,7 +76,7 @@ def get_attribute_from_reflected_table_name(
     metadata: MetaData, table_name: str, column_name: str
 ) -> Union[Column, None]:
     """
-    Returns, based, on the defined reflected model the corresponding and the SAColumn. If not found, returns None.
+    Returns, based, on the defined reflected model the corresponding and the SAColumn. If not found, returns `None`.
     """
     table = get_class_from_reflected_table_name(metadata, table_name)
     return table.columns.get(column_name, None)
@@ -78,16 +84,17 @@ def get_attribute_from_reflected_table_name(
 
 def get_class_by_table_name(table_name: str) -> Union[SQLModel, None]:
     """
-    Returns, based on the defined tables __tablename__ the corresponding SQLModel object. If not found, returns None.
+    Returns, based on the defined tables `__tablename__` the corresponding SQLModel object. If not found, returns
+    `None`.
     """
     return __TABLE_COLUMNS_MAP__.get(table_name, {}).get("entity", None)
 
 
 def get_attribute_by_table_name(table_name: str, column_name: str, reverse: bool = False) -> Union[str, None]:
     """
-    Returns, based, on the defined tables __tablename__ and the SAColumn name, the correct pydantic attribute. Search
+    Returns, based, on the defined tables `__tablename__` and the SAColumn name, the correct pydantic attribute. Search
     can be reversed by setting the `reverse` flag to `True`.
-    If not found, returns None.
+    If not found, returns `None`.
 
     :param table_name: SQL table name.
     :param column_name: SQL column name.
@@ -135,9 +142,8 @@ class BaseModel(SQLModel):
     id: str = Field(sa_column=Column("id", Text, primary_key=True))
 
     def convert(self, is_new: bool = True) -> List[Message]:
-        """Convert the object into distinct entries for sync method. Based on the original implementation:
-
-        https://github.com/actualbudget/actual/blob/98c17bd5e0f13e27a09a7f6ac176510530572be7/packages/loot-core/src/server/aql/schema-helpers.ts#L146
+        """Convert the object into distinct entries for sync method. Based on the [original implementation](
+        https://github.com/actualbudget/actual/blob/98c17bd5e0f13e27a09a7f6ac176510530572be7/packages/loot-core/src/server/aql/schema-helpers.ts#L146)
         """
         row = getattr(self, "id", None)  # also helps lazy loading the instance
         if row is None:
@@ -157,7 +163,7 @@ class BaseModel(SQLModel):
                 changes.append(m)
         return changes
 
-    def changed(self) -> list[str]:
+    def changed(self) -> List[str]:
         """Returns list of model changed attributes."""
         changed_attributes = []
         inspr = inspect(self)
@@ -594,7 +600,7 @@ class Transactions(BaseModel, table=True):
         self.date = int(datetime.date.strftime(date, "%Y%m%d"))
 
     def set_amount(self, amount: Union[decimal.Decimal, int, float]):
-        self.amount = int(amount * 100)
+        self.amount = int(round(amount * 100))
 
     def get_amount(self) -> decimal.Decimal:
         return decimal.Decimal(self.amount) / decimal.Decimal(100)
