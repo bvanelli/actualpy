@@ -273,8 +273,12 @@ class Categories(BaseModel, table=True):
     tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
     goal_def: Optional[str] = Field(default=None, sa_column=Column("goal_def", Text, server_default=text("null")))
 
-    zero_budgets: "ZeroBudgets" = Relationship(back_populates="category_item")
-
+    zero_budgets: "ZeroBudgets" = Relationship(
+        back_populates="category",
+        sa_relationship_kwargs={
+            "primaryjoin": "and_(ZeroBudgets.category_id == Categories.id)",
+        },
+    )
     transactions: List["Transactions"] = Relationship(
         back_populates="category",
         sa_relationship_kwargs={
@@ -621,23 +625,36 @@ class ZeroBudgetMonths(SQLModel, table=True):
     buffered: Optional[int] = Field(default=None, sa_column=Column("buffered", Integer, server_default=text("0")))
 
 
-class ZeroBudgets(SQLModel, table=True):
+class ZeroBudgets(BaseModel, table=True):
     __tablename__ = "zero_budgets"
 
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
     month: Optional[int] = Field(default=None, sa_column=Column("month", Integer))
-    category: Optional[str] = Field(default=None, sa_column=Column("category", ForeignKey("categories.id")))
-    category_item: "Categories" = Relationship(
-        back_populates="zero_budgets",
-        sa_relationship_kwargs={
-            "uselist": False,
-            "primaryjoin": "and_(ZeroBudgets.category == Categories.id,Categories.tombstone == 0)",
-        },
-    )
+    category_id: Optional[str] = Field(default=None, sa_column=Column("category", ForeignKey("categories.id")))
     amount: Optional[int] = Field(default=None, sa_column=Column("amount", Integer, server_default=text("0")))
     carryover: Optional[int] = Field(default=None, sa_column=Column("carryover", Integer, server_default=text("0")))
     goal: Optional[int] = Field(default=None, sa_column=Column("goal", Integer, server_default=text("null")))
     long_goal: Optional[int] = Field(default=None, sa_column=Column("long_goal", Integer, server_default=text("null")))
+
+    category: "Categories" = Relationship(
+        back_populates="zero_budgets",
+        sa_relationship_kwargs={
+            "uselist": False,
+            "primaryjoin": "and_(ZeroBudgets.category_id == Categories.id, Categories.tombstone == 0)",
+        },
+    )
+
+    def get_date(self) -> datetime.date:
+        return datetime.datetime.strptime(str(self.month), "%Y%m").date()
+
+    def set_date(self, date: datetime.date):
+        self.month = int(datetime.date.strftime(date, "%Y%m"))
+
+    def set_amount(self, amount: Union[decimal.Decimal, int, float]):
+        self.amount = int(round(amount * 100))
+
+    def get_amount(self) -> decimal.Decimal:
+        return decimal.Decimal(self.amount) / decimal.Decimal(100)
 
 
 class PendingTransactions(SQLModel, table=True):
