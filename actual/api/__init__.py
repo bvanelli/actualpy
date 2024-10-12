@@ -54,7 +54,7 @@ class ActualServer:
         self.api_url: str = base_url
         self._token: str | None = token
         self._requests_session: requests.Session = requests.Session()
-        if cert:
+        if cert is not None:
             self._requests_session.verify = cert
         if token is None and password is None:
             raise ValueError("Either provide a valid token or a password.")
@@ -278,7 +278,7 @@ class ActualServer:
     def bank_sync_accounts(self, bank_sync: Literal["gocardless", "simplefin"]) -> BankSyncAccountResponseDTO:
         endpoint = Endpoints.BANK_SYNC_ACCOUNTS.value.format(bank_sync=bank_sync)
         response = self._requests_session.post(f"{self.api_url}/{endpoint}", json={})
-        return BankSyncAccountResponseDTO.model_validate(response.json())
+        return BankSyncAccountResponseDTO.validate_python(response.json())
 
     def bank_sync_transactions(
         self,

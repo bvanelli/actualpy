@@ -42,3 +42,9 @@ def test_api_login_unknown_error(_post, mocker):
     actual.cert = False
     with pytest.raises(AuthorizationError, match="Something went wrong on login"):
         actual.login("foo")
+
+
+def test_no_certificate(mocker):
+    mocker.patch("actual.Actual.validate")
+    actual = Actual(token="foo", cert=False)
+    assert actual._requests_session.verify is False
