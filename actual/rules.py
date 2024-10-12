@@ -234,9 +234,10 @@ def condition_evaluation(
 
 class Condition(pydantic.BaseModel):
     """
-    A condition does a single comparison check for a transaction. The 'op' indicates the action type, usually being
-    set to IS or CONTAINS, and the operation applied to a 'field' with certain 'value'. If the transaction value matches
-    the condition, the `run` method returns `True`, otherwise it returns `False`.
+    A condition does a single comparison check for a transaction. The `op` indicates the action type, usually being
+    set to `IS` or `CONTAINS`, and the comparison is applied to a `field` with certain `value`. If the transaction
+    value matches the condition, the `run` method returns `True`, otherwise it returns `False`. The individual condition
+    cannot change the value of the transaction, as only the [Action][actual.rules.Action] can.
 
     **Important**: Actual shows the amount on frontend as decimal but handles it internally as cents. Make sure that, if
     you provide the `amount` rule manually, you either provide number of cents, as an integers, or a float that get
