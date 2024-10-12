@@ -47,28 +47,61 @@ with Actual(base_url="http://localhost:5006", password="mypass") as actual:
 
 ## Running rules
 
-You can also automatically run rules using the library:
+Rules can be rune individually via the library. You can filter which rules are going to be run, but also check
+beforehand which rules actually are going to run, similar to the preview function from Actual.
+
+The most simple case is to run all rules for all transactions at once. This is equivalent as "Apply Actions" for all
+rules on frontend:
 
 ```python
 from actual import Actual
+from actual.queries import get_ruleset
 
 with Actual(base_url="http://localhost:5006", password="mypass", file="My budget") as actual:
+    # print all rules and their human-readable descriptions
+    print(get_ruleset(actual.session))
+    # run all rules
     actual.run_rules()
     # sync changes back to the server
     actual.commit()
 ```
 
-You can also manipulate the rules individually:
+You can also manipulate the rules individually, and validate each rule that runs for each transaction. This allows you
+to also debug rules. This can be useful when more than one rule is modifying the same transaction, but the order of
+operations is not correct:
 
 ```python
 from actual import Actual
 from actual.queries import get_ruleset, get_transactions
 
 with Actual(base_url="http://localhost:5006", password="mypass", file="My budget") as actual:
-    rs = get_ruleset(actual.session)
+    ruleset = get_ruleset(actual.session)
     transactions = get_transactions(actual.session)
-    for rule in rs:
+    for rule in ruleset:
         for t in transactions:
             if rule.evaluate(t):
                 print(f"Rule {rule} matches for {t}")
+                # if you are happy with the result from the rule, apply it
+                rule.run(t)
+    # if you want to sync the changes back to the server, uncomment the following line
+    # actual.commit()
+```
+
+If you are importing transactions, the rules are not running automatically. For that reason, you might need to run them
+individually. Use the [RuleSet.run][actual.rules.RuleSet.run] for that purpose, to run the rule after creating the
+transaction:
+
+```python
+from actual import Actual
+from actual.queries import get_ruleset, reconcile_transaction
+from datetime import date
+
+with Actual(base_url="http://localhost:5006", password="mypass", file="My budget") as actual:
+    ruleset = get_ruleset(actual.session)
+    # we create one transaction
+    t = reconcile_transaction(actual.session, date.today(), "Bank", "", notes="Coffee", amount=-4.50)
+    # run the rules on the newly created transaction
+    ruleset.run(t)
+    # send the changes back to the server
+    actual.commit()
 ```
