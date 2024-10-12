@@ -23,7 +23,7 @@ from actual.queries import (
 )
 
 
-@pytest.fixture(params=["24.8.0", "24.9.0", "24.10.0"])  # todo: support multiple versions at once
+@pytest.fixture(params=["24.8.0", "24.9.0", "24.10.0", "24.10.1"])  # todo: support multiple versions at once
 def actual_server(request):
     # we test integration with the 5 latest versions of actual server
     with DockerContainer(f"actualbudget/actual-server:{request.param}").with_exposed_ports(5006) as container:
@@ -54,7 +54,10 @@ def test_create_user_file(actual_server):
         # run rules
         actual.run_rules()
         # run bank sync
-        actual.run_bank_sync()
+        assert actual.run_bank_sync() == []
+        # check also bank sync accounts, should fail because of no token
+        assert actual.bank_sync_accounts("simplefin").data.error_type == "INVALID_ACCESS_TOKEN"
+        # same test with goCardless returns 404 for some reason, so we don't do that
 
     # make sure a new instance can now retrieve the budget info
     with Actual(f"http://localhost:{port}", password="mypass", file="My Budget"):

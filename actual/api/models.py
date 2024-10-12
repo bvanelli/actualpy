@@ -156,7 +156,7 @@ class BankSyncStatusDTO(StatusDTO):
     data: IsConfiguredDTO
 
 
-class BankSyncAccountResponseDTO(StatusDTO):
+class BankSyncAccountDTO(StatusDTO):
     data: BankSyncAccountData
 
 
@@ -168,4 +168,5 @@ class BankSyncErrorDTO(StatusDTO):
     data: BankSyncErrorData
 
 
+BankSyncAccountResponseDTO = TypeAdapter(Union[BankSyncErrorDTO, BankSyncAccountDTO])
 BankSyncResponseDTO = TypeAdapter(Union[BankSyncErrorDTO, BankSyncTransactionResponseDTO])

@@ -3,6 +3,7 @@ import datetime
 import decimal
 
 import pytest
+from requests import Session
 
 from actual import Actual, ActualBankSyncError
 from actual.database import Banks
@@ -76,8 +77,8 @@ def set_mocks(mocker):
     # call for validate
     response_empty = copy.deepcopy(response)
     response_empty["transactions"]["all"] = []
-    mocker.patch("requests.get").return_value = RequestsMock({"status": "ok", "data": {"validated": True}})
-    main_mock = mocker.patch("requests.post")
+    mocker.patch.object(Session, "get").return_value = RequestsMock({"status": "ok", "data": {"validated": True}})
+    main_mock = mocker.patch.object(Session, "post")
     main_mock.side_effect = [
         RequestsMock({"status": "ok", "data": {"configured": True}}),
         RequestsMock({"status": "ok", "data": response}),
@@ -138,8 +139,8 @@ def test_full_bank_sync_go_simplefin(session, set_mocks):
 
 
 def test_bank_sync_unconfigured(mocker, session):
-    mocker.patch("requests.get").return_value = RequestsMock({"status": "ok", "data": {"validated": True}})
-    main_mock = mocker.patch("requests.post")
+    mocker.patch.object(Session, "get").return_value = RequestsMock({"status": "ok", "data": {"validated": True}})
+    main_mock = mocker.patch.object(Session, "post")
     main_mock.return_value = RequestsMock({"status": "ok", "data": {"configured": False}})
 
     with Actual(token="foo") as actual:
@@ -149,8 +150,8 @@ def test_bank_sync_unconfigured(mocker, session):
 
 
 def test_bank_sync_exception(session, mocker):
-    mocker.patch("requests.get").return_value = RequestsMock({"status": "ok", "data": {"validated": True}})
-    main_mock = mocker.patch("requests.post")
+    mocker.patch.object(Session, "get").return_value = RequestsMock({"status": "ok", "data": {"validated": True}})
+    main_mock = mocker.patch.object(Session, "post")
     main_mock.side_effect = [
         RequestsMock({"status": "ok", "data": {"configured": True}}),
         RequestsMock({"status": "ok", "data": fail_response}),
