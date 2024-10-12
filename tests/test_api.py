@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 import pytest
+from requests import Session
 
 from actual import Actual, reflect_model
 from actual.exceptions import ActualError, AuthorizationError, UnknownFileId
@@ -33,7 +34,7 @@ def test_rename_delete_budget_without_file(mocker):
         actual.rename_budget("foo")
 
 
-@patch("requests.post", return_value=RequestsMock({"status": "error", "reason": "proxy-not-trusted"}))
+@patch.object(Session, "post", return_value=RequestsMock({"status": "error", "reason": "proxy-not-trusted"}))
 def test_api_login_unknown_error(_post, mocker):
     mocker.patch("actual.Actual.validate")
     actual = Actual(token="foo")
