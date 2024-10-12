@@ -66,7 +66,7 @@ with Actual(base_url="http://localhost:5006", password="mypass", file="My budget
     actual.commit()
 ```
 
-You can also manipulate the rules individually, and validate each rule that runs for each transaction. This allows you
+You can also manipulate the rules individually, and validate each rule that runs for each transaction, allowing you
 to also debug rules. This can be useful when more than one rule is modifying the same transaction, but the order of
 operations is not correct:
 

@@ -239,20 +239,21 @@ class Condition(pydantic.BaseModel):
     the condition, the `run` method returns `True`, otherwise it returns `False`.
 
     **Important**: Actual shows the amount on frontend as decimal but handles it internally as cents. Make sure that, if
-    you provide the 'amount' rule manually, you either provide number of cents or a float that get automatically
-    converted to cents.
+    you provide the `amount` rule manually, you either provide number of cents, as an integers, or a float that get
+    automatically converted to cents. As an example, `50` will be interpreted as 50 cents, but `50.0` will be
+    interpreted as 50 of the currency (or 5000 cents).
 
     The 'field' can be one of the following ('type' will be set automatically):
 
-        - imported_description: 'type' must be 'string' and 'value' any string
-        - acct: 'type' must be 'id' and 'value' a valid uuid
-        - category: 'type' must be 'id' and 'value' a valid uuid
-        - date: 'type' must be 'date' and 'value' a string in the date format '2024-04-11'
-        - description: 'type' must be 'id' and 'value' a valid uuid (means payee_id)
-        - notes: 'type' must be 'string' and 'value' any string
-        - amount: 'type' must be 'number' and format in cents
-        - amount_inflow: 'type' must be 'number' and format in cents, will set "options":{"inflow":true}
-        - amount_outflow: 'type' must be 'number' and format in cents, will set "options":{"outflow":true}
+    - `imported_description`: `type` must be `string` and `value` any string
+    - `acct`: `type` must be `id` and `value` a valid uuid
+    - `category`: `type` must be `id` and `value` a valid uuid
+    - `date`: `type` must be `date` and `value` a string in the date format `'2024-04-11'`
+    - `description`: `type` must be `id` and `value` a valid uuid (means payee_id)
+    - `notes`: `type` must be 'string' and `value` any string
+    - `amount`: `type` must be `number` and format in cents
+    - `amount_inflow`: `type` must be `number` and format in cents, will set `"options":{"inflow":true}`
+    - `amount_outflow`: `type` must be `number` and format in cents, will set `"options":{"outflow":true}`
     """
 
     field: typing.Literal[
