@@ -13,7 +13,6 @@ import zipfile
 from os import PathLike
 from typing import IO, List, Union
 
-from sqlalchemy import insert, update
 from sqlmodel import MetaData, Session, create_engine, select
 
 from actual.api import ActualServer
@@ -23,6 +22,7 @@ from actual.database import (
     Accounts,
     MessagesClock,
     Transactions,
+    apply_change,
     get_attribute_from_reflected_table_name,
     get_class_from_reflected_table_name,
     reflect_model,
@@ -287,6 +287,8 @@ class Actual(ActualServer):
         if not self.engine:
             raise UnknownFileId("No valid file available, download one with download_budget()")
         with Session(self.engine) as s:
+            # use the current value to group updates together to the same row
+            current_table, current_id, current_value = None, None, {}
             for message in messages:
                 if message.dataset == "prefs":
                     # write it to metadata.json instead
@@ -303,12 +305,17 @@ class Actual(ActualServer):
                         f"Actual found a column not supported by the library: "
                         f"column '{message.column}' at table '{message.dataset}' not found\n"
                     )
-                entry = s.exec(select(table).where(table.columns.id == message.row)).one_or_none()
-                if not entry:
-                    s.exec(insert(table).values(id=message.row))
-                s.exec(update(table).values({column: message.get_value()}).where(table.columns.id == message.row))
-                # this seems to be required for sqlmodel, remove if not needed anymore when querying from cache
-                s.flush()
+                # if the current id exists, and it's different from the next one, we update the values
+                next_id = message.row
+                if current_id and (current_id != next_id or table != current_table):
+                    apply_change(s, current_table, current_id, current_value)
+                    current_table, current_id, current_value = table, next_id, {column: message.get_value()}
+                # otherwise update the cache with the current value
+                else:
+                    current_table, current_id, current_value[column] = table, next_id, message.get_value()
+            # if after finishing all values there is a value left, update it too
+            if current_table is not None and current_id is not None and current_value is not None:
+                apply_change(s, current_table, current_id, current_value)
             s.commit()
 
     def get_metadata(self) -> dict:
