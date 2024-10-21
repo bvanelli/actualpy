@@ -4,7 +4,7 @@ from datetime import date, timedelta
 
 import pytest
 
-from actual import Actual, ActualError
+from actual import Actual, ActualError, reflect_model
 from actual.database import Notes
 from actual.queries import (
     create_account,
@@ -239,3 +239,32 @@ def test_session_error(mocker):
     with Actual(token="foo") as actual:
         with pytest.raises(ActualError, match="No session defined"):
             print(actual.session)  # try to access the session, should raise an exception
+
+
+def test_apply_changes(session, mocker):
+    mocker.patch("actual.Actual.validate")
+    actual = Actual(token="foo")
+    actual._session, actual.engine, actual._meta = session, session.bind, reflect_model(session.bind)
+    # create elements but do not commit them
+    account = create_account(session, "Bank")
+    transaction = create_transaction(session, date(2024, 1, 4), account, amount=35.7)
+    session.flush()
+    messages_size = len(session.info["messages"])
+    transaction.notes = "foobar"
+    session.flush()
+    assert len(session.info["messages"]) == messages_size + 1
+    messages = session.info["messages"]
+    # undo all changes, but apply via database
+    session.rollback()
+    actual.apply_changes(messages)
+    # make sure elements got committed correctly
+    accounts = get_accounts(session, "Bank")
+    assert len(accounts) == 1
+    assert accounts[0].id == account.id
+    assert accounts[0].name == account.name
+    transactions = get_transactions(session)
+    assert len(transactions) == 1
+    assert transactions[0].id == transaction.id
+    assert transactions[0].notes == transaction.notes
+    assert transactions[0].get_date() == transaction.get_date()
+    assert transactions[0].get_amount() == transaction.get_amount()
