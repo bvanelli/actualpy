@@ -209,7 +209,7 @@ def create_transaction(
     :param date: date of the transaction.
     :param account: either account name or account object (via `get_account` or `get_accounts`). Will not be
     auto-created if missing.
-    :param payee: optional name of the payee from the transaction. Will be created if missing. 
+    :param payee: optional name of the payee from the transaction. Will be created if missing.
     :param notes: optional description for the transaction.
     :param category: optional category for the transaction. Will be created if not existing.
     :param amount: amount of the transaction. Positive indicates that the account balance will go up (deposit), and
