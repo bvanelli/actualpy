@@ -194,7 +194,7 @@ def create_transaction(
     s: Session,
     date: datetime.date,
     account: str | Accounts,
-    payee: str | Payees = "",
+    payee: str | Payees | None = None,
     notes: str | None = "",
     category: str | Categories | None = None,
     amount: decimal.Decimal | float | int = 0,
@@ -209,7 +209,7 @@ def create_transaction(
     :param date: date of the transaction.
     :param account: either account name or account object (via `get_account` or `get_accounts`). Will not be
     auto-created if missing.
-    :param payee: name of the payee from the transaction. Will be created if missing.
+    :param payee: optional name of the payee from the transaction. Will be created if missing.
     :param notes: optional description for the transaction.
     :param category: optional category for the transaction. Will be created if not existing.
     :param amount: amount of the transaction. Positive indicates that the account balance will go up (deposit), and
@@ -229,14 +229,16 @@ def create_transaction(
         imported_payee = imported_payee.strip()
         if not payee:
             payee = imported_payee
-    payee = get_or_create_payee(s, payee)
+    payee_id = None
+    if payee is not None:
+        payee_id = get_or_create_payee(s, payee).id
     if category:
         category_id = get_or_create_category(s, category).id
     else:
         category_id = None
 
     return create_transaction_from_ids(
-        s, date, acct.id, payee.id, notes, category_id, amount, imported_id, cleared, imported_payee
+        s, date, acct.id, payee_id, notes, category_id, amount, imported_id, cleared, imported_payee
     )
 
 

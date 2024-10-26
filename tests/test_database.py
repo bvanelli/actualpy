@@ -77,6 +77,12 @@ def test_transaction(session):
     assert other.balance == decimal.Decimal("-9.95")
 
 
+def test_transaction_without_payee(session):
+    other = create_account(session, "Other")
+    tr = create_transaction(session, date=date.today(), account=other)
+    assert tr.payee_id is None
+
+
 def test_reconcile_transaction(session):
     today = date.today()
     create_account(session, "Bank")
