@@ -13,7 +13,7 @@ protobuf change message using [actual.database.BaseModel.convert][].
 
 import datetime
 import decimal
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 from sqlalchemy import MetaData, Table, engine, event, inspect
 from sqlalchemy.dialects.sqlite import insert
@@ -668,6 +668,31 @@ class ZeroBudgets(BaseModel, table=True):
 
     def get_amount(self) -> decimal.Decimal:
         return decimal.Decimal(self.amount) / decimal.Decimal(100)
+
+    @property
+    def range(self) -> Tuple[datetime.date, datetime.date]:
+        """Range of the budget as a tuple [start, end). The end date is not inclusive, as it represents the start of the
+        next month."""
+        budget_start = self.get_date().replace(day=1)
+        # conversion taken from https://stackoverflow.com/a/59199379/12681470
+        budget_end = (budget_start + datetime.timedelta(days=32)).replace(day=1)
+        return budget_start, budget_end
+
+    @property
+    def balance(self) -> decimal.Decimal:
+        """Returns the current balance of the budget. The evaluation will take into account the budget month and
+        only selected transactions for the combination month and category. Deleted transactions are ignored."""
+        budget_start, budget_end = (int(datetime.date.strftime(d, "%Y%m%d")) for d in self.range)
+        value = object_session(self).scalar(
+            select(func.coalesce(func.sum(Transactions.amount), 0)).where(
+                Transactions.category_id == self.category_id,
+                Transactions.date >= budget_start,
+                Transactions.date < budget_end,
+                Transactions.is_parent == 0,
+                Transactions.tombstone == 0,
+            )
+        )
+        return decimal.Decimal(value) / 100
 
 
 class PendingTransactions(SQLModel, table=True):
