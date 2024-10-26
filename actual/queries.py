@@ -194,7 +194,7 @@ def create_transaction(
     s: Session,
     date: datetime.date,
     account: str | Accounts,
-    payee: str | Payees | None = "",
+    payee: str | Payees | None = None,
     notes: str | None = "",
     category: str | Categories | None = None,
     amount: decimal.Decimal | float | int = 0,
