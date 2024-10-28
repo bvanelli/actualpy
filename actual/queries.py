@@ -5,6 +5,7 @@ import decimal
 import json
 import typing
 import uuid
+import warnings
 
 import sqlalchemy
 from pydantic import TypeAdapter
@@ -78,6 +79,7 @@ def get_transactions(
     account: Accounts | str | None = None,
     is_parent: bool = False,
     include_deleted: bool = False,
+    budget: ZeroBudgets | None = None,
 ) -> typing.Sequence[Transactions]:
     """
     Returns a list of all available transactions, sorted by date in descending order.
@@ -92,12 +94,28 @@ def get_transactions(
     single transactions or the main transaction with `Transactions.splits` property. Default is to return all individual
     splits, and the parent can be retrieved by `Transactions.parent`.
     :param include_deleted: includes deleted transactions from the search.
+    :param budget: optional budget filter for the transactions. The budget range and category will be used to filter the
+                   final results. **Usually not used together with the `start_date` and `end_date` filters, as they
+                   might hide results.
     :return: list of transactions with `account`, `category` and `payee` preloaded.
     """
     query = _transactions_base_query(s, start_date, end_date, account, include_deleted)
     query = query.filter(Transactions.is_parent == int(is_parent))
     if notes:
         query = query.filter(Transactions.notes.ilike(f"%{sqlalchemy.text(notes).compile()}%"))
+    if budget:
+        budget_start, budget_end = budget.range
+        if (start_date and start_date >= budget_end) or (end_date and end_date < budget_start):
+            warnings.warn(
+                f"Provided date filters [{start_date}, {end_date}) to get_transactions are outside the bounds of the "
+                f"budget range [{budget_start}, {budget_end}). Results might be empty!"
+            )
+        budget_start, budget_end = (int(datetime.date.strftime(d, "%Y%m%d")) for d in budget.range)
+        query = query.filter(
+            Transactions.date >= budget_start,
+            Transactions.date < budget_end,
+            Transactions.category_id == budget.category_id,
+        )
     return s.exec(query).all()
 
 

@@ -192,6 +192,7 @@ def test_rule_insertion_method(session):
 def test_budgets(session):
     # insert a budget
     category = get_or_create_category(session, "Expenses")
+    unrelated_category = get_or_create_category(session, "Unrelated")
     session.commit()
     create_budget(session, date(2024, 10, 7), category, 10.0)
     assert len(get_budgets(session)) == 1
@@ -204,9 +205,26 @@ def test_budgets(session):
     # get a budget that already exists, but re-set it
     create_budget(session, date(2024, 10, 7), category, 20.0)
     assert budget.get_amount() == 20.0
+    assert budget.range == (date(2024, 10, 1), date(2024, 11, 1))
+    # insert a transaction in the range and see if they are counted on the balance
+    bank = create_account(session, "Bank")
+    t1 = create_transaction(session, date(2024, 10, 1), bank, category=category, amount=-10.0)
+    t2 = create_transaction(session, date(2024, 10, 15), bank, category=category, amount=-10.0)
+    t3 = create_transaction(session, date(2024, 10, 31), bank, category=category, amount=-15.0)
+    # should not be counted
+    create_transaction(session, date(2024, 10, 1), bank, category=category, amount=-15.0).delete()
+    create_transaction(session, date(2024, 11, 1), bank, category=category, amount=-20.0)
+    create_transaction(session, date(2024, 10, 15), bank, category=unrelated_category, amount=-20.0)
+    assert budget.balance == -35.0
+    budget_transactions = get_transactions(session, budget=budget)
+    assert len(budget_transactions) == 3
+    assert all(t in budget_transactions for t in (t1, t2, t3))
     # test if it fails if category does not exist
     with pytest.raises(ActualError, match="Category is provided but does not exist"):
         get_budgets(session, category="foo")
+    # filtering by budget will raise a warning if get_transactions with budget also provides a start-end outside range
+    with pytest.warns(match="Provided date filters"):
+        get_transactions(session, date(2024, 9, 1), date(2024, 9, 15), budget=budget)
 
 
 def test_normalize_payee():
