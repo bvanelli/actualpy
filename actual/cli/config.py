@@ -44,6 +44,7 @@ class Config(pydantic.BaseModel):
         """Saves the current configuration to a file."""
         config_path = default_config_path()
         os.makedirs(config_path.parent, exist_ok=True)
+        os.makedirs(config_path.parent / "cache", exist_ok=True)
         with open(config_path, "w") as file:
             yaml.dump(self.model_dump(by_alias=True), file)
 
@@ -72,4 +73,5 @@ class Config(pydantic.BaseModel):
             password=budget_config.password,
             file=budget_config.file_id,
             encryption_password=budget_config.encryption_password,
+            data_dir=default_config_path().parent / "cache" / context,
         )

@@ -11,16 +11,15 @@ import uuid
 import warnings
 import zipfile
 from os import PathLike
-from typing import IO, List, Union
+from typing import IO, List, Optional, Union
 
-from sqlmodel import MetaData, Session, create_engine, select
+from sqlmodel import MetaData, Session, create_engine
 
 from actual.api import ActualServer
 from actual.api.models import BankSyncErrorDTO, RemoteFileListDTO
 from actual.crypto import create_key_buffer, decrypt_from_meta, encrypt, make_salt
 from actual.database import (
     Accounts,
-    MessagesClock,
     Transactions,
     apply_change,
     get_attribute_from_reflected_table_name,
@@ -30,6 +29,7 @@ from actual.database import (
 )
 from actual.exceptions import (
     ActualBankSyncError,
+    ActualDecryptionError,
     ActualError,
     InvalidZipFile,
     UnknownFileId,
@@ -39,6 +39,7 @@ from actual.protobuf_models import HULC_Client, Message, SyncRequest
 from actual.queries import (
     get_account,
     get_accounts,
+    get_or_create_clock,
     get_ruleset,
     get_transactions,
     reconcile_transaction,
@@ -72,7 +73,8 @@ class Actual(ActualServer):
         :param file: the name or id of the file to be set
         :param encryption_password: password used to configure encryption, if existing
         :param data_dir: where to store the downloaded files from the server. If not specified, a temporary folder will
-        be created instead.
+                         be created instead. If database files are already present on the path, the library will try to
+                         reuse them by re-computing the sync request.
         :param cert: if a custom certificate should be used (i.e. self-signed certificate), it's path can be provided
                      as a string. Set to `False` for no certificate check.
         :param bootstrap: if the server is not bootstrapped, bootstrap it with the password.
@@ -194,8 +196,11 @@ class Actual(ActualServer):
         self.run_migrations(migration_files[1:])
         if self._in_context:
             self._session = strong_reference_session(Session(self.engine, **self._sa_kwargs))
-        # create a clock
-        self.load_clock()
+        # create a clock. Since the clock entry is not tracked, we use a separate session
+        with Session(self.engine) as session:
+            self._client = HULC_Client()
+            get_or_create_clock(session, self._client)
+            session.commit()
 
     def rename_budget(self, budget_name: str):
         """Renames the budget with the given name."""
@@ -254,7 +259,7 @@ class Actual(ActualServer):
 
     def upload_budget(self):
         """Uploads the current file to the Actual server. If attempting to upload your first budget, make sure you use
-        [actual.Actual.create_budget][] first.
+        [Actual.create_budget][actual.Actual.create_budget] first.
         """
         if not self._data_dir:
             raise UnknownFileId("No current file loaded.")
@@ -276,10 +281,11 @@ class Actual(ActualServer):
             self.encrypt(self._encryption_password)
 
     def reupload_budget(self):
-        """Similar to the reset sync option from the frontend, resets the user file on the backend and reuploads the
+        """Similar to the reset sync option from the frontend, resets the user file on the backend and re-uploads the
         current copy instead. **This operation can be destructive**, so make sure you generate a copy before
-        attempting to reupload your budget."""
+        attempting to re-upload your budget."""
         self.reset_user_file(self._file.file_id)
+        self.update_metadata({"groupId": None})  # since we don't know what the new group id will be
         self.upload_budget()
 
     def apply_changes(self, messages: List[Message]):
@@ -341,19 +347,34 @@ class Actual(ActualServer):
 
         If the budget is password protected, the password needs to be present to download the budget, otherwise it will
         fail.
-        """
-        file_bytes = self.download_user_file(self._file.file_id)
-        encryption_password = encryption_password or self._encryption_password
 
-        if self._file.encrypt_key_id and encryption_password is None:
-            raise ActualError("File is encrypted but no encryption password provided.")
-        if encryption_password is not None and self._file.encrypt_key_id:
-            file_info = self.get_user_file_info(self._file.file_id)
-            key_info = self.user_get_key(self._file.file_id)
-            self._master_key = create_key_buffer(encryption_password, key_info.data.salt)
-            # decrypt file bytes
-            file_bytes = decrypt_from_meta(self._master_key, file_bytes, file_info.data.encrypt_meta)
-        self.import_zip(io.BytesIO(file_bytes))
+        When a `data_dir` was provided, the method will try to use the local downloaded copy by first checking if the
+        sync id (named group id) remains the same. If it does, then the sync is executed using the stored files.
+        Otherwise, the file is re-downloaded.
+        """
+        # check if file has an encryption key and retrieve it
+        encryption_password = encryption_password or self._encryption_password
+        self.download_master_encryption_key(encryption_password)
+        # then download user file if the data_dir is set and both files are present
+        if self._data_dir and all((self._data_dir / path).is_file() for path in ["db.sqlite", "metadata.json"]):
+            group_id = self.get_metadata().get("groupId")
+            # handle the case where a new group id exists and the file needs to be re-downloaded
+            if self._file.group_id != group_id:
+                warnings.warn("Sync id has been reset on remote database, re-downloading the budget.")
+                (self._data_dir / "db.sqlite").unlink()
+                (self._data_dir / "metadata.json").unlink()
+                return self.download_budget(encryption_password)
+            # resume budget
+            self.create_engine()
+        else:
+            file_bytes = self.download_user_file(self._file.file_id)
+            if encryption_password is not None and self._file.encrypt_key_id:
+                file_info = self.get_user_file_info(self._file.file_id)
+                # decrypt file bytes
+                file_bytes = decrypt_from_meta(self._master_key, file_bytes, file_info.data.encrypt_meta)
+            self.import_zip(io.BytesIO(file_bytes))
+            # sometimes downloaded budgets will not have the groupId
+            self.update_metadata({"groupId": self._file.group_id})
         # actual js always calls validation
         self.validate()
         # run migrations if needed
@@ -363,6 +384,17 @@ class Actual(ActualServer):
         # create session if not existing
         if self._in_context and not self._session:
             self._session = strong_reference_session(Session(self.engine, **self._sa_kwargs))
+
+    def download_master_encryption_key(self, encryption_password: str) -> Optional[bytes]:
+        """Downloads and assembles the key for decrypting the budget based on the provided encryption password.
+        If the user file is not encryption, no key will be returned. If the file was encrypted, the key is assembled
+        using the key salt and the password with the PBKDF2HMAC algorithm."""
+        if self._file.encrypt_key_id and encryption_password is None:
+            raise ActualDecryptionError("File is encrypted but no encryption password was provided.")
+        if encryption_password is not None and self._file.encrypt_key_id:
+            key_info = self.user_get_key(self._file.file_id)
+            self._master_key = create_key_buffer(encryption_password, key_info.data.salt)
+        return self._master_key
 
     def import_zip(self, file_bytes: str | PathLike[str] | IO[bytes]):
         """Imports a zip file as the current database, as well as generating the local reflected session. Enables you
@@ -375,10 +407,15 @@ class Actual(ActualServer):
             self._data_dir = pathlib.Path(tempfile.mkdtemp())
         # this should extract 'db.sqlite' and 'metadata.json' to the folder
         zip_file.extractall(self._data_dir)
+        self.create_engine()
+
+    def create_engine(self):
         self.engine = create_engine(f"sqlite:///{self._data_dir}/db.sqlite")
         self._meta = reflect_model(self.engine)
         # load the client id
-        self.load_clock()
+        with Session(self.engine) as session:
+            clock = get_or_create_clock(session)
+            self._client = clock.get_timestamp()
 
     def sync(self):
         """Does a sync request and applies all changes that are stored on the server on the local copy of the database.
@@ -393,30 +430,15 @@ class Actual(ActualServer):
                 "keyId": self._file.encrypt_key_id,
             }
         )
-        request.set_null_timestamp(client_id=self._client.client_id)  # using 0 timestamp to retrieve all changes
+        request.set_timestamp(client_id=self._client.client_id, now=self._client.ts)
         changes = self.sync_sync(request)
         self.apply_changes(changes.get_messages(self._master_key))
+        # after receiving changes, update the client clock with the latest value
         if changes.messages:
             self._client = HULC_Client.from_timestamp(changes.messages[-1].timestamp)
-
-    def load_clock(self) -> MessagesClock:
-        """Loads the HULC Clock from the database. This clock tells the server from when the messages should be
-        retrieved. See the [original implementation.](
-        https://github.com/actualbudget/actual/blob/5bcfc71be67c6e7b7c8b444e4c4f60da9ea9fdaa/packages/loot-core/src/server/db/index.ts#L81-L98)
-        """
-        with Session(self.engine) as session:
-            clock = session.exec(select(MessagesClock)).one_or_none()
-            if not clock:
-                clock_message = {
-                    "timestamp": HULC_Client().timestamp(now=datetime.datetime(1970, 1, 1, 0, 0, 0, 0)),
-                    "merkle": {},
-                }
-                clock = MessagesClock(id=1, clock=json.dumps(clock_message, separators=(",", ":")))
-                session.add(clock)
-            session.commit()
-            # add clock id to client id
-            self._client = HULC_Client.from_timestamp(json.loads(clock.clock)["timestamp"])
-        return clock
+            # store timestamp also inside database. Session might not be available here, so we create one
+            with Session(self.engine) as session:
+                get_or_create_clock(session, self._client)
 
     def commit(self):
         """Adds all pending entries to the local database, and sends a sync request to the remote server to synchronize

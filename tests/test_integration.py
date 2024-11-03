@@ -87,10 +87,12 @@ def test_encrypted_file(actual_server):
         f"http://localhost:{port}", password="mypass", encryption_password="mypass", file="My Encrypted Budget"
     ) as actual:
         assert actual.session is not None
-    with pytest.raises(ActualDecryptionError):
+    with pytest.raises(ActualDecryptionError, match="Error decrypting file. Is the encryption key correct"):
         Actual(
             f"http://localhost:{port}", password="mypass", encryption_password="mywrongpass", file="My Encrypted Budget"
         ).download_budget()
+    with pytest.raises(ActualDecryptionError, match="File is encrypted but no encryption password was provided"):
+        Actual(f"http://localhost:{port}", password="mypass", file="My Encrypted Budget").download_budget()
 
 
 def test_update_file_name(actual_server):
@@ -130,6 +132,23 @@ def test_reimport_file_from_zip(actual_server, tmp_path):
     # check if the account can be retrieved
     with Actual(f"http://localhost:{port}", password="mypass", file="My Budget") as actual:
         assert len(get_accounts(actual.session)) == 1
+
+
+def test_redownload_file(actual_server, tmp_path):
+    port = actual_server.get_exposed_port(5006)
+    with Actual(f"http://localhost:{port}", password="mypass", bootstrap=True) as actual:
+        actual.create_budget("My Budget")
+        actual.upload_budget()
+    # download to a certain folder
+    with Actual(f"http://localhost:{port}", password="mypass", file="My Budget", data_dir=tmp_path) as actual:
+        get_or_create_account(actual.session, "Bank")
+        actual.commit()
+    # reupload the budget
+    with Actual(f"http://localhost:{port}", password="mypass", file="My Budget", data_dir=tmp_path) as actual:
+        actual.reupload_budget()
+    with pytest.warns(match="Sync id has been reset on remote database, re-downloading the budget"):
+        with Actual(f"http://localhost:{port}", password="mypass", file="My Budget", data_dir=tmp_path):
+            pass
 
 
 def test_models(actual_server):

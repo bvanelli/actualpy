@@ -160,7 +160,7 @@ def transactions():
             transactions_data.append(
                 {
                     "date": transaction.get_date().isoformat(),
-                    "payee": transaction.payee.name,
+                    "payee": transaction.payee.name if transaction.payee else None,
                     "notes": transaction.notes or "",
                     "category": (transaction.category.name if transaction.category else None),
                     "amount": round(float(transaction.get_amount()), 2),

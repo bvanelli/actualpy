@@ -20,14 +20,21 @@ https://github.com/actualbudget/actual-server/blob/master/src/app-sync.js#L32).
 
 
 class HULC_Client:
-    def __init__(self, client_id: str = None, initial_count: int = 0):
-        self.client_id = client_id or self.get_client_id()
+    def __init__(self, client_id: str = None, initial_count: int = 0, ts: datetime.datetime = None):
+        self.client_id = client_id or self.random_client_id()
         self.initial_count = initial_count
+        self.ts = ts or datetime.datetime(1970, 1, 1, 0, 0, 0)
 
     @classmethod
     def from_timestamp(cls, ts: str) -> HULC_Client:
-        segments = ts.split("-")
-        return cls(segments[-1], int(segments[-2], 16))
+        ts_string, _, rest = ts.partition("Z")
+        segments = rest.split("-")
+        ts = datetime.datetime.fromisoformat(ts_string)
+        return cls(segments[-1], int(segments[-2], 16), ts)
+
+    def __str__(self):
+        count = f"{self.initial_count:0>4X}"
+        return f"{self.ts.isoformat(timespec='milliseconds')}Z-{count}-{self.client_id}"
 
     def timestamp(self, now: datetime.datetime = None) -> str:
         """Actual uses Hybrid Unique Logical Clock (HULC) timestamp generator.
@@ -47,13 +54,12 @@ class HULC_Client:
         self.initial_count += 1
         return f"{now.isoformat(timespec='milliseconds')}Z-{count}-{self.client_id}"
 
-    def get_client_id(self):
+    @staticmethod
+    def random_client_id():
         """Creates a client id for the HULC request. Implementation copied [from the source code](
         https://github.com/actualbudget/actual/blob/a9362cc6f9b974140a760ad05816cac51c849769/packages/crdt/src/crdt/timestamp.ts#L80)
         """
-        return (
-            self.client_id if getattr(self, "client_id", None) is not None else str(uuid.uuid4()).replace("-", "")[-16:]
-        )
+        return str(uuid.uuid4()).replace("-", "")[-16:]
 
 
 class EncryptedData(proto.Message):
