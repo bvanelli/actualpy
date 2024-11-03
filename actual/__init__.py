@@ -284,6 +284,7 @@ class Actual(ActualServer):
         current copy instead. **This operation can be destructive**, so make sure you generate a copy before
         attempting to re-upload your budget."""
         self.reset_user_file(self._file.file_id)
+        self.update_metadata({"groupId": None})  # since we don't know what the new group id will be
         self.upload_budget()
 
     def apply_changes(self, messages: List[Message]):

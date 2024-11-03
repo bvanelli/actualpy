@@ -23,7 +23,7 @@ class HULC_Client:
     def __init__(self, client_id: str = None, initial_count: int = 0, ts: datetime.datetime = None):
         self.client_id = client_id or self.random_client_id()
         self.initial_count = initial_count
-        self.ts = ts or datetime.datetime.fromtimestamp(0)
+        self.ts = ts or datetime.datetime(1970, 1, 1, 0, 0, 0)
 
     @classmethod
     def from_timestamp(cls, ts: str) -> HULC_Client:

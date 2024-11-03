@@ -130,6 +130,23 @@ def test_reimport_file_from_zip(actual_server, tmp_path):
         assert len(get_accounts(actual.session)) == 1
 
 
+def test_redownload_file(actual_server, tmp_path):
+    port = actual_server.get_exposed_port(5006)
+    with Actual(f"http://localhost:{port}", password="mypass", bootstrap=True) as actual:
+        actual.create_budget("My Budget")
+        actual.upload_budget()
+    # download to a certain folder
+    with Actual(f"http://localhost:{port}", password="mypass", file="My Budget", data_dir=tmp_path) as actual:
+        get_or_create_account(actual.session, "Bank")
+        actual.commit()
+    # reupload the budget
+    with Actual(f"http://localhost:{port}", password="mypass", file="My Budget", data_dir=tmp_path) as actual:
+        actual.reupload_budget()
+    with pytest.warns(match="Sync id has been reset on remote database, re-downloading the budget"):
+        with Actual(f"http://localhost:{port}", password="mypass", file="My Budget", data_dir=tmp_path):
+            pass
+
+
 def test_models(actual_server):
     port = actual_server.get_exposed_port(5006)
     with Actual(f"http://localhost:{port}", password="mypass", encryption_password="mypass", bootstrap=True) as actual:

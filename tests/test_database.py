@@ -1,3 +1,4 @@
+import datetime
 import decimal
 import json
 from datetime import date, timedelta
@@ -16,6 +17,7 @@ from actual.queries import (
     get_accounts,
     get_budgets,
     get_or_create_category,
+    get_or_create_clock,
     get_or_create_payee,
     get_ruleset,
     get_transactions,
@@ -292,3 +294,9 @@ def test_apply_changes(session, mocker):
     assert transactions[0].notes == transaction.notes
     assert transactions[0].get_date() == transaction.get_date()
     assert transactions[0].get_amount() == transaction.get_amount()
+
+
+def test_get_or_create_clock(session):
+    clock = get_or_create_clock(session)
+    assert clock.get_timestamp().ts == datetime.datetime(1970, 1, 1, 0, 0, 0)
+    assert clock.get_timestamp().initial_count == 0
