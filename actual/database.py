@@ -6,13 +6,14 @@ in order to update this file, you can generate the code with:
 sqlacodegen --generator sqlmodels sqlite:///db.sqlite
 ```
 
-and patch the necessary models by merging the results. The [actual.database.BaseModel][] defines all models that can
-be updated from the user, and must contain a unique `id`. Those models can then be converted automatically into a
-protobuf change message using [actual.database.BaseModel.convert][].
+and patch the necessary models by merging the results. The [BaseModel][actual.database.BaseModel] defines all models
+that can be updated from the user, and must contain a unique `id`. Those models can then be converted automatically
+into a protobuf change message using [BaseModel.convert][actual.database.BaseModel.convert].
 """
 
 import datetime
 import decimal
+import json
 from typing import Dict, List, Optional, Tuple, Union
 
 from sqlalchemy import MetaData, Table, engine, event, inspect
@@ -37,7 +38,7 @@ from sqlmodel import (
 )
 
 from actual.exceptions import ActualInvalidOperationError
-from actual.protobuf_models import Message
+from actual.protobuf_models import HULC_Client, Message
 
 """
 This variable contains the internal model mappings for all databases. It solves a couple of issues, namely having the
@@ -419,6 +420,26 @@ class MessagesClock(SQLModel, table=True):
 
     id: Optional[int] = Field(default=None, sa_column=Column("id", Integer, primary_key=True))
     clock: Optional[str] = Field(default=None, sa_column=Column("clock", Text))
+
+    def get_clock(self) -> dict:
+        """Gets the clock from JSON text to a dictionary with fields `timestamp` and `merkle`."""
+        return json.loads(self.clock)
+
+    def set_clock(self, value: dict):
+        """Sets the clock from a dictionary and stores it in the correct format."""
+        self.clock = json.dumps(value, separators=(",", ":"))
+
+    def get_timestamp(self) -> HULC_Client:
+        """Gets the timestamp from the clock value directly as a [HULC_Client][actual.protobuf_models.HULC_Client]."""
+        clock = self.get_clock()
+        return HULC_Client.from_timestamp(clock["timestamp"])
+
+    def set_timestamp(self, client: HULC_Client) -> None:
+        """Sets the timestamp on the clock value based on the [HULC_Client][actual.protobuf_models.HULC_Client]
+        provided."""
+        clock_message = self.get_clock()
+        clock_message["timestamp"] = str(client)
+        self.set_clock(clock_message)
 
 
 class MessagesCrdt(SQLModel, table=True):

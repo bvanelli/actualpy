@@ -19,6 +19,7 @@ from actual.database import (
     Categories,
     CategoryGroups,
     CategoryMapping,
+    MessagesClock,
     PayeeMapping,
     Payees,
     Rules,
@@ -27,6 +28,7 @@ from actual.database import (
     ZeroBudgets,
 )
 from actual.exceptions import ActualError
+from actual.protobuf_models import HULC_Client
 from actual.rules import Action, Condition, Rule, RuleSet
 from actual.utils.title import title
 
@@ -738,3 +740,30 @@ def get_schedules(s: Session, name: str = None, include_deleted: bool = False) -
     """
     query = base_query(Schedules, name, include_deleted)
     return s.exec(query).all()
+
+
+def get_or_create_clock(s: Session, client: HULC_Client = None) -> MessagesClock:
+    """Loads the HULC Clock from the database. This clock tells the server from when the messages should be
+    retrieved. See the [original implementation.](
+    https://github.com/actualbudget/actual/blob/5bcfc71be67c6e7b7c8b444e4c4f60da9ea9fdaa/packages/loot-core/src/server/db/index.ts#L81-L98)
+
+    If the clock is not existing, it will be created based on the passed client. If the client is missing, an empty
+    client is created. If the clock was already existing, the timestamp will only be overwritten if a client is
+    provided, otherwise the original value will be returned.
+
+    :param s: session from Actual local database.
+    :param client: HULC Client object.
+    :return: The message clock object.
+    """
+    clock = s.exec(select(MessagesClock)).one_or_none()
+    if not clock:
+        clock = MessagesClock(id=1)
+        if not client:
+            client = HULC_Client()  # create a default client
+        clock.set_clock({"timestamp": str(client), "merkle": {}})
+        s.add(clock)
+    else:
+        # update the clock only if the client was provided
+        if client:
+            clock.set_timestamp(client)
+    return clock
