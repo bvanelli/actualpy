@@ -29,6 +29,7 @@ from actual.database import (
 )
 from actual.exceptions import (
     ActualBankSyncError,
+    ActualDecryptionError,
     ActualError,
     InvalidZipFile,
     UnknownFileId,
@@ -389,7 +390,7 @@ class Actual(ActualServer):
         If the user file is not encryption, no key will be returned. If the file was encrypted, the key is assembled
         using the key salt and the password with the PBKDF2HMAC algorithm."""
         if self._file.encrypt_key_id and encryption_password is None:
-            raise ActualError("File is encrypted but no encryption password provided.")
+            raise ActualDecryptionError("File is encrypted but no encryption password was provided.")
         if encryption_password is not None and self._file.encrypt_key_id:
             key_info = self.user_get_key(self._file.file_id)
             self._master_key = create_key_buffer(encryption_password, key_info.data.salt)

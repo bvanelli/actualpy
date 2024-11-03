@@ -85,10 +85,12 @@ def test_encrypted_file(actual_server):
         f"http://localhost:{port}", password="mypass", encryption_password="mypass", file="My Encrypted Budget"
     ) as actual:
         assert actual.session is not None
-    with pytest.raises(ActualDecryptionError):
+    with pytest.raises(ActualDecryptionError, match="Error decrypting file. Is the encryption key correct"):
         Actual(
             f"http://localhost:{port}", password="mypass", encryption_password="mywrongpass", file="My Encrypted Budget"
         ).download_budget()
+    with pytest.raises(ActualDecryptionError, match="File is encrypted but no encryption password was provided"):
+        Actual(f"http://localhost:{port}", password="mypass", file="My Encrypted Budget").download_budget()
 
 
 def test_update_file_name(actual_server):
