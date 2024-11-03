@@ -22,8 +22,10 @@ from actual.queries import (
     get_transactions,
 )
 
+VERSIONS = ["24.9.0", "24.10.0", "24.10.1", "24.11.0"]
 
-@pytest.fixture(params=["24.8.0", "24.9.0", "24.10.0", "24.10.1"])  # todo: support multiple versions at once
+
+@pytest.fixture(params=VERSIONS)  # todo: support multiple versions at once
 def actual_server(request):
     # we test integration with the 5 latest versions of actual server
     with DockerContainer(f"actualbudget/actual-server:{request.param}").with_exposed_ports(5006) as container:
@@ -166,7 +168,7 @@ def test_models(actual_server):
 
 
 def test_header_login():
-    with DockerContainer("actualbudget/actual-server:24.7.0").with_env(
+    with DockerContainer(f"actualbudget/actual-server:{VERSIONS[-1]}").with_env(
         "ACTUAL_LOGIN_METHOD", "header"
     ).with_exposed_ports(5006) as container:
         port = container.get_exposed_port(5006)
@@ -181,7 +183,7 @@ def test_header_login():
 
 
 def test_session_reflection_after_migrations():
-    with DockerContainer("actualbudget/actual-server:24.9.0").with_exposed_ports(5006) as container:
+    with DockerContainer(f"actualbudget/actual-server:{VERSIONS[-1]}").with_exposed_ports(5006) as container:
         port = container.get_exposed_port(5006)
         wait_for_logs(container, "Listening on :::5006...")
         with Actual(f"http://localhost:{port}", password="mypass", bootstrap=True) as actual:
@@ -190,7 +192,7 @@ def test_session_reflection_after_migrations():
             # add a dashboard entry
             actual.session.add(Dashboard(id="123", x=1, y=2))
             actual.commit()
-            # revert the last migration like it never happened
+            # revert the dashboard creation migration like it never happened
             Dashboard.__table__.drop(actual.engine)
             actual.session.exec(delete(Migrations).where(Migrations.id == 1722804019000))
             actual.session.commit()
