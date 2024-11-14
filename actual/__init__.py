@@ -130,17 +130,16 @@ class Actual(ActualServer):
         if isinstance(file_id, RemoteFileListDTO):
             self._file = file_id
             return file_id
-        else:
-            selected_files = []
-            user_files = self.list_user_files()
-            for file in user_files.data:
-                if (file.file_id == file_id or file.name == file_id or file.group_id == file_id) and file.deleted == 0:
-                    selected_files.append(file)
-            if len(selected_files) == 0:
-                raise UnknownFileId(f"Could not find a file id or identifier '{file_id}'")
-            elif len(selected_files) > 1:
-                raise UnknownFileId(f"Multiple files found with identifier '{file_id}'")
-            return self.set_file(selected_files[0])
+        selected_files = []
+        user_files = self.list_user_files()
+        for file in user_files.data:
+            if (file.file_id == file_id or file.name == file_id or file.group_id == file_id) and file.deleted == 0:
+                selected_files.append(file)
+        if len(selected_files) == 0:
+            raise UnknownFileId(f"Could not find a file id or identifier '{file_id}'")
+        elif len(selected_files) > 1:
+            raise UnknownFileId(f"Multiple files found with identifier '{file_id}'")
+        return self.set_file(selected_files[0])
 
     def run_migrations(self, migration_files: List[str]):
         """Runs the migration files, skipping the ones that have already been run. The files can be retrieved from
@@ -222,6 +221,21 @@ class Actual(ActualServer):
         """Export your data as a zip file containing db.sqlite and metadata.json files. It can be imported into another
         Actual instance by closing an open file (if any), then clicking the “Import file” button, then choosing
         “Actual.” Even when encryption is enabled, the exported zip file will not have any encryption."""
+
+        def vacuum_db(cursor: sqlite3.Cursor) -> None:
+            cursor.execute("VACUUM")
+
+        def delete_sync_tables(cursor: sqlite3.Cursor) -> None:
+            # Delete messages from the respective tables
+            cursor.execute("DELETE FROM messages_crdt")
+            cursor.execute("DELETE FROM messages_clock")
+
+        with sqlite3.connect(self._data_dir / "db.sqlite") as conn:
+            cursor = conn.cursor()
+            vacuum_db(cursor)
+            delete_sync_tables(cursor)
+            conn.commit()
+
         temp_file = io.BytesIO()
         with zipfile.ZipFile(temp_file, "a", zipfile.ZIP_DEFLATED, False) as z:
             z.write(self._data_dir / "db.sqlite", "db.sqlite")
