@@ -5,7 +5,7 @@
 [![docs](https://readthedocs.org/projects/actualpy/badge/?version=latest)](https://actualpy.readthedocs.io/)
 [![codestyle](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/python/black)
 [![ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-![PyPI Downloads](https://static.pepy.tech/badge/actualpy)
+[![PyPI - Downloads](https://img.shields.io/pypi/dm/actualpy)](https://pypistats.org/packages/actualpy)
 
 # actualpy
 
