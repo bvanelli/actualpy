@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=61.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "actualpy"
+description = "Implementation of the Actual API to interact with Actual over Python."
+readme = "README.md"
+authors = [
+    { name = "Brunno Vanelli", email = "brunnovanelli@gmail.com" }
+]
+requires-python = ">=3.8.0"
+dependencies = [
+    "requests>=2,<2.32.0",
+    "sqlmodel==0.0.18",
+    "pydantic>=2,<3",
+    "sqlalchemy>=1.4",
+    "proto-plus>=1",
+    "protobuf>=4",
+    "cryptography>=42",
+    "python-dateutil>=2.9.0",
+]
+classifiers = [
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+keywords = ["actual", "actualbudget", "api", "client"]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+cli = [
+    "rich>=13",
+    "typer>=0.12.0",
+    "pyyaml>=6",
+]
+
+[project.urls]
+Homepage = "https://github.com/bvanelli/actualpy"
+Documentation = "https://actualpy.readthedocs.io/"
+Repository = "https://github.com/bvanelli/actualpy.git"
+"Bug Tracker" = "https://github.com/bvanelli/actualpy/issues"
+
+[project.scripts]
+actualpy = "actual.cli.main:app"
+
+[tool.setuptools.packages.find]
+exclude = ["docs*", "tests*", "examples*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "actual.version.__version__" }
