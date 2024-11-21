@@ -1,4 +1,11 @@
+[![tests](https://github.com/bvanelli/actualpy/workflows/Tests/badge.svg)](https://github.com/bvanelli/actualpy/actions)
 [![codecov](https://codecov.io/github/bvanelli/actualpy/graph/badge.svg?token=N6V05MY70U)](https://codecov.io/github/bvanelli/actualpy)
+[![version](https://img.shields.io/pypi/v/actualpy.svg?color=52c72b)](https://pypi.org/project/actualpy/)
+[![pyversions](https://img.shields.io/pypi/pyversions/actualpy.svg)](https://pypi.org/project/actualpy/)
+[![docs](https://readthedocs.org/projects/actualpy/badge/?version=latest)](https://actualpy.readthedocs.io/)
+[![codestyle](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/python/black)
+[![ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+![PyPI Downloads](https://static.pepy.tech/badge/actualpy)
 
 # actualpy
 
