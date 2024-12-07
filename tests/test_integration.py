@@ -22,7 +22,7 @@ from actual.queries import (
     get_transactions,
 )
 
-VERSIONS = ["24.9.0", "24.10.0", "24.10.1", "24.11.0"]
+VERSIONS = ["24.10.0", "24.10.1", "24.11.0", "24.12.0"]
 
 
 @pytest.fixture(params=VERSIONS)  # todo: support multiple versions at once
