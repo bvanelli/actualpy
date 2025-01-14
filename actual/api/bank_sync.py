@@ -60,7 +60,7 @@ class Balance(BaseModel):
 
     balance_amount: BankSyncAmount = Field(..., alias="balanceAmount")
     balance_type: BalanceType = Field(..., alias="balanceType")
-    reference_date: Optional[str] | None = Field(None, alias="referenceDate", description="The date of the balance")
+    reference_date: Optional[str] = Field(None, alias="referenceDate", description="The date of the balance")
 
 
 class TransactionItem(BaseModel):
