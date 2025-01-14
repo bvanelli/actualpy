@@ -3,3 +3,4 @@ pytest
 pytest-cov
 testcontainers
 pre-commit
+docker>=7.1.0
