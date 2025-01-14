@@ -168,9 +168,11 @@ def test_models(actual_server):
 
 
 def test_header_login():
-    with DockerContainer(f"actualbudget/actual-server:{VERSIONS[-1]}").with_env(
-        "ACTUAL_LOGIN_METHOD", "header"
-    ).with_exposed_ports(5006) as container:
+    with (
+        DockerContainer(f"actualbudget/actual-server:{VERSIONS[-1]}")
+        .with_env("ACTUAL_LOGIN_METHOD", "header")
+        .with_exposed_ports(5006) as container
+    ):
         port = container.get_exposed_port(5006)
         wait_for_logs(container, "Listening on :::5006...")
         with Actual(f"http://localhost:{port}", password="mypass", bootstrap=True):
