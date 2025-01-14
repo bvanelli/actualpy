@@ -9,7 +9,7 @@ readme = "README.md"
 authors = [
     { name = "Brunno Vanelli", email = "brunnovanelli@gmail.com" }
 ]
-requires-python = ">=3.8.0"
+requires-python = ">=3.9.0"
 dependencies = [
     "requests>=2",
     "sqlmodel>=0.0.18",
