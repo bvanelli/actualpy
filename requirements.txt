@@ -1,4 +1,4 @@
-requests>=2,<2.32.0
+requests>=2
 sqlmodel>=0.0.18
 pydantic>=2,<3
 sqlalchemy>=2
