@@ -20,6 +20,7 @@ from actual.queries import (
     get_or_create_clock,
     get_or_create_payee,
     get_or_create_preference,
+    get_preferences,
     get_ruleset,
     get_transactions,
     normalize_payee,
@@ -308,3 +309,17 @@ def test_get_or_create_clock(session):
     clock = get_or_create_clock(session)
     assert clock.get_timestamp().ts == datetime.datetime(1970, 1, 1, 0, 0, 0)
     assert clock.get_timestamp().initial_count == 0
+
+
+def test_get_preferences(session):
+    assert len(get_preferences(session)) == 0
+    preference = get_or_create_preference(session, "foo", "bar")
+    assert preference.value == "bar"
+    preferences = get_preferences(session)
+    assert len(preferences) == 1
+    assert preferences[0] == preference
+    # update preference
+    get_or_create_preference(session, "foo", "foobar")
+    new_preferences = get_preferences(session)
+    assert len(new_preferences) == 1
+    assert new_preferences[0].value == "foobar"
