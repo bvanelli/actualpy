@@ -6,7 +6,7 @@ from datetime import date, timedelta
 import pytest
 
 from actual import Actual, ActualError, reflect_model
-from actual.database import Notes
+from actual.database import Notes, ReflectBudgets, ZeroBudgets
 from actual.queries import (
     create_account,
     create_budget,
@@ -19,6 +19,8 @@ from actual.queries import (
     get_or_create_category,
     get_or_create_clock,
     get_or_create_payee,
+    get_or_create_preference,
+    get_preferences,
     get_ruleset,
     get_transactions,
     normalize_payee,
@@ -191,7 +193,13 @@ def test_rule_insertion_method(session):
     assert str(rs) == "If all of these conditions match 'date' isapprox '2024-01-02' then set 'cleared' to 'True'"
 
 
-def test_budgets(session):
+@pytest.mark.parametrize(
+    "budget_type,budget_table",
+    [("rollover", ZeroBudgets), ("report", ReflectBudgets)],
+)
+def test_budgets(session, budget_type, budget_table):
+    # set the config
+    get_or_create_preference(session, "budgetType", budget_type)
     # insert a budget
     category = get_or_create_category(session, "Expenses")
     unrelated_category = get_or_create_category(session, "Unrelated")
@@ -202,6 +210,7 @@ def test_budgets(session):
     assert len(get_budgets(session, date(2024, 10, 1), category)) == 1
     assert len(get_budgets(session, date(2024, 9, 1))) == 0
     budget = get_budgets(session)[0]
+    assert isinstance(budget, budget_table)
     assert budget.get_amount() == 10.0
     assert budget.get_date() == date(2024, 10, 1)
     # get a budget that already exists, but re-set it
@@ -300,3 +309,17 @@ def test_get_or_create_clock(session):
     clock = get_or_create_clock(session)
     assert clock.get_timestamp().ts == datetime.datetime(1970, 1, 1, 0, 0, 0)
     assert clock.get_timestamp().initial_count == 0
+
+
+def test_get_preferences(session):
+    assert len(get_preferences(session)) == 0
+    preference = get_or_create_preference(session, "foo", "bar")
+    assert preference.value == "bar"
+    preferences = get_preferences(session)
+    assert len(preferences) == 1
+    assert preferences[0] == preference
+    # update preference
+    get_or_create_preference(session, "foo", "foobar")
+    new_preferences = get_preferences(session)
+    assert len(new_preferences) == 1
+    assert new_preferences[0].value == "foobar"

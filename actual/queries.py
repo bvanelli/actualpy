@@ -22,6 +22,8 @@ from actual.database import (
     MessagesClock,
     PayeeMapping,
     Payees,
+    Preferences,
+    ReflectBudgets,
     Rules,
     Schedules,
     Transactions,
@@ -264,9 +266,8 @@ def create_transaction(
 
 def normalize_payee(payee_name: str | None, raw_payee_name: bool = False) -> str:
     """
-    Normalizes the payees according to the source code found at:
-
-    https://github.com/actualbudget/actual/blob/f02ca4e3d26f5b91f4234317e024022fcae2c13c/packages/loot-core/src/server/accounts/sync.ts#L206-L214
+    Normalizes the payees according to the source code found at the [official source code](
+    https://github.com/actualbudget/actual/blob/f02ca4e3d26f5b91f4234317e024022fcae2c13c/packages/loot-core/src/server/accounts/sync.ts#L206-L214)
 
     This make sures that the payees are consistent across the imports, i.e. 'MY PAYEE ' turns into 'My Payee', but so
     does 'My PaYeE'.
@@ -573,11 +574,32 @@ def get_or_create_account(s: Session, name: str | Accounts) -> Accounts:
     return account
 
 
+def _get_budget_table(s: Session) -> typing.Type[typing.Union[ReflectBudgets, ZeroBudgets]]:
+    """
+    Finds out which type of budget the user uses. The types are:
+
+    - Envelope budgeting (default, recommended): `budgetType` is `rollover`, table is ZeroBudgets
+    - Tracking budgeting: `budgetType` is `report`, table is `ReflectBudgets`
+
+    :param s: session from Actual local database.
+    :return: table object for the budget type, based on the preferences.
+    """
+    budget_type = get_preference(s, "budgetType")
+    if budget_type and budget_type.value == "report":
+        return ReflectBudgets
+    else:  # budgetType is rollover
+        return ZeroBudgets
+
+
 def get_budgets(
     s: Session, month: datetime.date = None, category: str | Categories = None
-) -> typing.Sequence[ZeroBudgets]:
+) -> typing.Sequence[typing.Union[ZeroBudgets, ReflectBudgets]]:
     """
-    Returns a list of all available budgets.
+    Returns a list of all available budgets. The object type returned will be either
+    ZeroBudgets or ReflectBudgets, depending on the type of budget selected globally. The budget options are:
+
+    - Envelope budgeting (default): ZeroBudgets
+    - Tracking budgeting: ReflectBudgets
 
     :param s: session from Actual local database.
     :param month: month to get budgets for, as a date for that month. Use `datetime.date.today()` if you want the budget
@@ -585,19 +607,22 @@ def get_budgets(
     :param category: category to filter for the budget. By default, the query looks for all budgets.
     :return: list of budgets
     """
-    query = select(ZeroBudgets).options(joinedload(ZeroBudgets.category))
+    table = _get_budget_table(s)
+    query = select(table).options(joinedload(table.category))
     if month:
         month_filter = int(datetime.date.strftime(month, "%Y%m"))
-        query = query.filter(ZeroBudgets.month == month_filter)
+        query = query.filter(table.month == month_filter)
     if category:
         category = get_category(s, category)
         if not category:
             raise ActualError("Category is provided but does not exist.")
-        query = query.filter(ZeroBudgets.category_id == category.id)
+        query = query.filter(table.category_id == category.id)
     return s.exec(query).unique().all()
 
 
-def get_budget(s: Session, month: datetime.date, category: str | Categories) -> typing.Optional[ZeroBudgets]:
+def get_budget(
+    s: Session, month: datetime.date, category: str | Categories
+) -> typing.Optional[typing.Union[ZeroBudgets, ReflectBudgets]]:
     """
     Gets an existing budget by category name, returns `None` if not found.
 
@@ -613,7 +638,7 @@ def get_budget(s: Session, month: datetime.date, category: str | Categories) -> 
 
 def create_budget(
     s: Session, month: datetime.date, category: str | Categories, amount: decimal.Decimal | float | int = 0.0
-) -> ZeroBudgets:
+) -> typing.Union[ZeroBudgets, ReflectBudgets]:
     """
     Gets an existing budget based on the month and category. If it already exists, the amount will be replaced by
     the new amount.
@@ -626,12 +651,13 @@ def create_budget(
     :return: return budget matching the month and category, and assigns the amount to the budget. If not found, creates
              a new budget.
     """
+    table = _get_budget_table(s)
     budget = get_budget(s, month, category)
     if budget:
         budget.set_amount(amount)
         return budget
     category = get_category(s, category)
-    budget = ZeroBudgets(id=str(uuid.uuid4()), category_id=category.id)
+    budget = table(id=str(uuid.uuid4()), category_id=category.id)
     budget.set_date(month)
     budget.set_amount(amount)
     s.add(budget)
@@ -767,3 +793,42 @@ def get_or_create_clock(s: Session, client: HULC_Client = None) -> MessagesClock
         if client:
             clock.set_timestamp(client)
     return clock
+
+
+def get_preferences(s: Session) -> typing.Sequence[Preferences]:
+    """
+    Loads the preference list from the database.
+
+    :param s: session from Actual local database.
+    :return: List of preferences.
+    """
+    return s.exec(select(Preferences)).all()
+
+
+def get_or_create_preference(s: Session, key: str, value: str) -> Preferences:
+    """
+    Loads the preference list from the database. If the key is missing, a new one is created, otherwise it's updated.
+
+    :param s: session from Actual local database.
+    :param key: key of the preference.
+    :param value: value of the preference.
+    :return: the preference object.
+    """
+    preference = get_preference(s, key)
+    if preference is None:
+        preference = Preferences(id=key, value=value)
+        s.add(preference)
+    else:
+        preference.value = value
+    return preference
+
+
+def get_preference(s: Session, key: str, default: str = None) -> typing.Optional[Preferences]:
+    """
+    Gets an existing preference by key name, returns `None` if not found.
+
+    :param s: session from Actual local database.
+    :param key: preference name.
+    :param default: default value to be returned if key is not found.
+    :return: preference matching the key provided. If not found, returns `None`."""
+    return s.exec(select(Preferences).where(Preferences.id == key)).one_or_none() or default
