@@ -1,5 +1,5 @@
 mkdocs-material
 mkdocs
 mkdocstrings-python
-griffe-fieldz===0.2.0
+griffe-fieldz
 black

@@ -266,9 +266,8 @@ def create_transaction(
 
 def normalize_payee(payee_name: str | None, raw_payee_name: bool = False) -> str:
     """
-    Normalizes the payees according to the source code found at:
-
-    https://github.com/actualbudget/actual/blob/f02ca4e3d26f5b91f4234317e024022fcae2c13c/packages/loot-core/src/server/accounts/sync.ts#L206-L214
+    Normalizes the payees according to the source code found at the [official source code](
+    https://github.com/actualbudget/actual/blob/f02ca4e3d26f5b91f4234317e024022fcae2c13c/packages/loot-core/src/server/accounts/sync.ts#L206-L214)
 
     This make sures that the payees are consistent across the imports, i.e. 'MY PAYEE ' turns into 'My Payee', but so
     does 'My PaYeE'.
@@ -597,8 +596,7 @@ def get_budgets(
 ) -> typing.Sequence[typing.Union[ZeroBudgets, ReflectBudgets]]:
     """
     Returns a list of all available budgets. The object type returned will be either
-    [ZeroBudgets][actual.database.ZeroBudgets] or [ReflectBudgets][actual.database.ReflectBudgets], depending on the
-    type of budget selected globally. The budget options are:
+    ZeroBudgets or ReflectBudgets, depending on the type of budget selected globally. The budget options are:
 
     - Envelope budgeting (default): ZeroBudgets
     - Tracking budgeting: ReflectBudgets

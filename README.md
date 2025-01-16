@@ -87,9 +87,9 @@ The Actual budget is stored in a sqlite database hosted on the user's browser. T
 and can be encrypted with a local key, so that not even the server can read your statements.
 
 The Actual Server is a way of only hosting files and changes. Since re-uploading the full database on every single
-change is too heavy, Actual only stores one state of the database and everything added by the user via frontend
-or via the APIs are individual changes on top of the "base database" stored on the server. This means that on every
-change, done locally, a SYNC request is sent to the server with a list of the following string parameters:
+change is too heavy, Actual only stores one state of the "base database" and everything added by the user via frontend
+or via the APIs are individual changes applied on top. This means that on every change, done locally, the frontend
+does a SYNC request with a list of the following string parameters:
 
 - `dataset`: the name of the table where the change happened.
 - `row`: the row identifier for the entry that was added/update. This would be the primary key of the row (a uuid value)
@@ -97,21 +97,20 @@ change, done locally, a SYNC request is sent to the server with a list of the fo
 - `value`: the new value. Since it's a string, the values are either prefixed by `S:` to denote a string, `N:` to denote
   a numeric value and `0:` to denote a null value.
 
-All individual column changes are computed on an insert, serialized with protobuf and sent to the server to be stored.
-Null values and server defaults are not required to be present in the SYNC message, unless a column is changed to null.
-If the file is encrypted, the protobuf content will also be encrypted, so that the server does not know what was
-changed.
+All individual column changes are computed for an insert or update, serialized with protobuf and sent to the server to
+be stored. Null values and server defaults are not required to be present in the SYNC message, unless a column is
+changed to null. If the file is encrypted, the protobuf content will also be encrypted, so that the server does not know
+what was changed.
 
-New clients can use this individual changes to then sync their local copies and add the changes executed on other users.
-Whenever a SYNC request is done, the response will also contain changes that might have been done in other browsers, so
-that the user the retrieve the information and update its local copy.
+New clients can use this individual changes to then update their local copies. Whenever a SYNC request is done, the
+response will also contain changes that might have been done in other browsers, so that the user is informated about
+the latest information.
 
 But this also means that new users need to download a long list of changes, possibly making the initialization slow.
-Thankfully, user is also allowed to reset the sync. When doing a reset of the file via frontend, the browser is then
+Thankfully, the user is also allowed to reset the sync. When doing a reset of the file via frontend, the browser is then
 resetting the file completely and clearing the list of changes. This would make sure all changes are actually stored in
-the
-database. This is done on the frontend under *Settings > Reset sync*, and causes the current file to be reset (removed
-from the server) and re-uploaded again, with all changes already in place.
+the "base database". This is done on the frontend under *Settings > Reset sync*, and causes the current file to be
+reset (removed from the server) and re-uploaded again, with all changes already in place.
 
 This means that, when using this library to operate changes on the database, you have to make sure that either:
 
