@@ -65,16 +65,16 @@ class Balance(BaseModel):
 
 class TransactionItem(BaseModel):
     transaction_id: str = Field(..., alias="transactionId")
-    booking_date: str = Field(..., alias="bookingDate")
     booked: bool = True
-    value_date: str = Field(..., alias="valueDate")
     transaction_amount: BankSyncAmount = Field(..., alias="transactionAmount")
     # this field will come as either debtorName or creditorName, depending on if it's a debt or credit
     payee: str = Field(None, validation_alias=AliasChoices("debtorName", "creditorName"))
     payee_account: Optional[DebtorAccount] = Field(
         None, validation_alias=AliasChoices("debtorAccount", "creditorAccount")
     )
-    date: datetime.date
+    # 'bookingDate' and 'valueDate' can be null or not existing in some goCardless data. Actual does not use them.
+    # Therefore, we just use them as fallbacks for the date, that should theoretically always exist.
+    date: datetime.date = Field(..., validation_alias=AliasChoices("date", "bookingDate", "valueDate"))
     remittance_information_unstructured: str = Field(None, alias="remittanceInformationUnstructured")
     remittance_information_unstructured_array: List[str] = Field(
         default_factory=list, alias="remittanceInformationUnstructuredArray"
@@ -97,7 +97,7 @@ class TransactionItem(BaseModel):
         notes = self.remittance_information_unstructured or ", ".join(
             self.remittance_information_unstructured_array or []
         )
-        return notes.strip()
+        return notes.strip().replace("#", "##")
 
 
 class Transactions(BaseModel):
@@ -117,6 +117,10 @@ class BankSyncTransactionData(BaseModel):
     # goCardless specific
     iban: Optional[str] = None
     institution_id: Optional[str] = Field(None, alias="institutionId")
+
+    @property
+    def balance(self) -> decimal.Decimal:
+        return decimal.Decimal(self.starting_balance) / 100
 
 
 class BankSyncErrorData(BaseModel):
