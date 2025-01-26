@@ -118,6 +118,10 @@ class BankSyncTransactionData(BaseModel):
     iban: Optional[str] = None
     institution_id: Optional[str] = Field(None, alias="institutionId")
 
+    @property
+    def balance(self) -> decimal.Decimal:
+        return decimal.Decimal(self.starting_balance) / 100
+
 
 class BankSyncErrorData(BaseModel):
     error_type: str

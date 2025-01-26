@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import datetime
-import decimal
 import io
 import json
 import pathlib
@@ -506,17 +505,18 @@ class Actual(ActualServer):
             if reconciled.changed():
                 imported_transactions.append(reconciled)
         if is_first_sync:
-            current_balance = acct.balance * 100
+            current_balance = acct.balance
             # actual uses 'startingBalance', that already comes in cents and should be enough for our purposes
             # https://github.com/actualbudget/actual/blob/f09f4af667ddd57e031dcdb0d428ae935aa2afad/packages/loot-core/src/server/accounts/sync.ts#L740-L752
-            expected_balance = decimal.Decimal(new_transactions_data.data.starting_balance)
+            expected_balance = new_transactions_data.data.balance
             balance_to_use = expected_balance - current_balance
             if balance_to_use:
                 payee = None if acct.offbudget else get_or_create_payee(self.session, "Starting Balance")
-                # get date from oldest transaction. There seems to be a bug here, and it gets the youngest transaction.
+                # get date from the oldest transaction. There seems to be a bug here, and it gets the youngest transaction.
                 oldest_date = new_transactions[-1].date if new_transactions else datetime.date.today()
-                reconciled_transaction = create_transaction(self.session, oldest_date, acct, payee)
-                reconciled_transaction.amount = int(balance_to_use)
+                reconciled_transaction = create_transaction(
+                    self.session, oldest_date, acct, payee, amount=balance_to_use
+                )
                 imported_transactions.insert(0, reconciled_transaction)
         return imported_transactions
 
