@@ -10,13 +10,13 @@ from actual import Actual
 from actual.queries import get_accounts, get_payees, get_budgets
 
 with Actual(base_url="http://localhost:5006", password="mypass", file="My budget") as actual:
-    # Print each account balance, for the entire time
+    # Print each account balance, for the entire dataset
     for account in get_accounts(actual.session):
         print(f"Balance for account {account.name} is {account.balance}")
-    # Print each payee balance, for the entire time
+    # Print each payee balance, for the entire dataset
     for payee in get_payees(actual.session):
         print(f"Balance for payee {payee.name} is {payee.balance}")
-    # Print each leftover budget balance, for the current month
+    # Print the leftover budget balance, for each category and the current month
     for budget in get_budgets(actual.session):
         print(f"Balance for budget {budget.category.name} is {budget.balance}")
 ```
