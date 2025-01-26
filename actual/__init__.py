@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import datetime
+import decimal
 import io
 import json
 import pathlib
@@ -37,9 +38,11 @@ from actual.exceptions import (
 from actual.migrations import js_migration_statements
 from actual.protobuf_models import HULC_Client, Message, SyncRequest
 from actual.queries import (
+    create_transaction,
     get_account,
     get_accounts,
     get_or_create_clock,
+    get_or_create_payee,
     get_ruleset,
     get_transactions,
     reconcile_transaction,
@@ -469,7 +472,9 @@ class Actual(ActualServer):
         transactions = get_transactions(self.session, is_parent=True)
         ruleset.run(transactions)
 
-    def _run_bank_sync_account(self, acct: Accounts, start_date: datetime.date) -> List[Transactions]:
+    def _run_bank_sync_account(
+        self, acct: Accounts, start_date: datetime.date, is_first_sync: bool
+    ) -> List[Transactions]:
         sync_method = acct.account_sync_source
         account_id = acct.account_id
         requisition_id = acct.bank.bank_id if sync_method == "goCardless" else None
@@ -500,6 +505,19 @@ class Actual(ActualServer):
             )
             if reconciled.changed():
                 imported_transactions.append(reconciled)
+        if is_first_sync:
+            current_balance = acct.balance * 100
+            # actual uses 'startingBalance', that already comes in cents and should be enough for our purposes
+            # https://github.com/actualbudget/actual/blob/f09f4af667ddd57e031dcdb0d428ae935aa2afad/packages/loot-core/src/server/accounts/sync.ts#L740-L752
+            expected_balance = decimal.Decimal(new_transactions_data.data.starting_balance)
+            balance_to_use = expected_balance - current_balance
+            if balance_to_use:
+                payee = None if acct.offbudget else get_or_create_payee(self.session, "Starting Balance")
+                # get date from oldest transaction. There seems to be a bug here, and it gets the youngest transaction.
+                oldest_date = new_transactions[-1].date if new_transactions else datetime.date.today()
+                reconciled_transaction = create_transaction(self.session, oldest_date, acct, payee)
+                reconciled_transaction.amount = int(balance_to_use)
+                imported_transactions.insert(0, reconciled_transaction)
         return imported_transactions
 
     def run_bank_sync(
@@ -509,6 +527,10 @@ class Actual(ActualServer):
         Runs the bank synchronization for the selected account. If missing, all accounts are synchronized. If a
         start_date is provided, is used as a reference, otherwise, the last timestamp of each account will be used. If
         the account does not have any transaction, the last 90 days are considered instead.
+
+        If the `start_date` is not provided and the account does not have any transaction, a reconcile transaction will
+        be generated to match the expected balance of the account. This would correct the account balance with the
+        remote one.
         """
         # if no account is provided, sync all of them, otherwise just the account provided
         if account is None:
@@ -518,7 +540,8 @@ class Actual(ActualServer):
             accounts = [account]
         imported_transactions = []
 
-        default_start_date = start_date
+        default_start_date: datetime.date = start_date
+        is_first_sync: bool = False
         for acct in accounts:
             sync_method = acct.account_sync_source
             account_id = acct.account_id
@@ -532,7 +555,8 @@ class Actual(ActualServer):
                 if all_transactions:
                     default_start_date = all_transactions[0].get_date()
                 else:
+                    is_first_sync = True
                     default_start_date = datetime.date.today() - datetime.timedelta(days=90)
-            transactions = self._run_bank_sync_account(acct, default_start_date)
+            transactions = self._run_bank_sync_account(acct, default_start_date, is_first_sync)
             imported_transactions.extend(transactions)
         return imported_transactions

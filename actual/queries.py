@@ -605,7 +605,8 @@ def get_budgets(
     :param month: month to get budgets for, as a date for that month. Use `datetime.date.today()` if you want the budget
                   for current month
     :param category: category to filter for the budget. By default, the query looks for all budgets.
-    :return: list of budgets
+    :return: list of budgets. It's important to note that budgets will only exist if they are actively set beforehand.
+             When the frontend shows a budget as 0.00, it might not be returned by this method.
     """
     table = _get_budget_table(s)
     query = select(table).options(joinedload(table.category))
@@ -630,7 +631,8 @@ def get_budget(
     :param month: month to get budgets for, as a date for that month. Use `datetime.date.today()` if you want the budget
                   for current month.
     :param category: category to filter for the budget.
-    :return: return budget matching the month and category. If not found, returns `None`.
+    :return: returns the budget matching the month and category. If not found, returns `None`. If the budget is not
+             set via frontend, it will show as 0.00, but this function will still return `None`.
     """
     budgets = get_budgets(s, month, category)
     return budgets[0] if budgets else None
