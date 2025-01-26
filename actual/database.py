@@ -9,6 +9,9 @@ sqlacodegen --generator sqlmodels sqlite:///db.sqlite
 and patch the necessary models by merging the results. The [BaseModel][actual.database.BaseModel] defines all models
 that can be updated from the user, and must contain a unique `id`. Those models can then be converted automatically
 into a protobuf change message using [BaseModel.convert][actual.database.BaseModel.convert].
+
+It is preferred to create database entries using the [queries][actual.queries], rather than using the raw database
+model.
 """
 
 import datetime
@@ -217,6 +220,7 @@ class Accounts(BaseModel, table=True):
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
     account_id: Optional[str] = Field(default=None, sa_column=Column("account_id", Text))
     name: Optional[str] = Field(default=None, sa_column=Column("name", Text))
+    # Careful when using those balance fields, are they might be empty. Use account.balance property instead
     balance_current: Optional[int] = Field(default=None, sa_column=Column("balance_current", Integer))
     balance_available: Optional[int] = Field(default=None, sa_column=Column("balance_available", Integer))
     balance_limit: Optional[int] = Field(default=None, sa_column=Column("balance_limit", Integer))
@@ -276,6 +280,12 @@ class Banks(BaseModel, table=True):
 
 
 class Categories(BaseModel, table=True):
+    """
+    Stores the category list, which is the classification applied on top of the transaction.
+
+    Each category will belong to its own category group.
+    """
+
     hidden: bool = Field(sa_column=Column("hidden", Boolean, nullable=False, server_default=text("0")))
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
     name: Optional[str] = Field(default=None, sa_column=Column("name", Text))
@@ -329,6 +339,10 @@ class Categories(BaseModel, table=True):
 
 
 class CategoryGroups(BaseModel, table=True):
+    """
+    Stores the groups that the categories can belong to.
+    """
+
     __tablename__ = "category_groups"
 
     hidden: bool = Field(sa_column=Column("hidden", Boolean, nullable=False, server_default=text("0")))
@@ -461,6 +475,8 @@ class MessagesCrdt(SQLModel, table=True):
 
 
 class Notes(BaseModel, table=True):
+    """Stores the description of each account."""
+
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
     note: Optional[str] = Field(default=None, sa_column=Column("note", Text))
 
@@ -473,6 +489,14 @@ class PayeeMapping(BaseModel, table=True):
 
 
 class Payees(BaseModel, table=True):
+    """
+    Stores the individual payees.
+
+    Each payee is a unique identifier that can be assigned to a transaction. Certain payees have empty names and are
+    associated to the accounts themselves, representing the transfer between one account and another. These would
+    have the field `account` not set to `None`.
+    """
+
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
     name: Optional[str] = Field(default=None, sa_column=Column("name", Text))
     category: Optional[str] = Field(default=None, sa_column=Column("category", Text))
@@ -502,11 +526,20 @@ class Payees(BaseModel, table=True):
 
 
 class Preferences(BaseModel, table=True):
+    """Stores the preferences for the user, using key/value pairs."""
+
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
     value: Optional[str] = Field(default=None, sa_column=Column("value", Text))
 
 
 class Rules(BaseModel, table=True):
+    """
+    Stores all rules on the budget. The conditions and actions are stored separately using the JSON format.
+
+    The conditions are stored as a text field, but can be retrieved as a model using
+    [get_ruleset][actual.queries.get_ruleset].
+    """
+
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
     stage: Optional[str] = Field(default=None, sa_column=Column("stage", Text))
     conditions: Optional[str] = Field(default=None, sa_column=Column("conditions", Text))
@@ -519,6 +552,8 @@ class Rules(BaseModel, table=True):
 
 
 class Schedules(SQLModel, table=True):
+    """Stores the schedules defined by the user. Is also linked to a rule that executes it."""
+
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
     rule_id: Optional[str] = Field(default=None, sa_column=Column("rule", Text, ForeignKey("rules.id")))
     active: Optional[int] = Field(default=None, sa_column=Column("active", Integer, server_default=text("0")))
@@ -570,6 +605,10 @@ class TransactionFilters(BaseModel, table=True):
 
 
 class Transactions(BaseModel, table=True):
+    """
+    Contains all transactions inserted into Actual.
+    """
+
     __table_args__ = (
         Index("trans_category", "category"),
         Index("trans_category_date", "category", "date"),
@@ -634,15 +673,19 @@ class Transactions(BaseModel, table=True):
     )
 
     def get_date(self) -> datetime.date:
+        """Returns the transaction date as a datetime.date object, instead of as a string."""
         return datetime.datetime.strptime(str(self.date), "%Y%m%d").date()
 
     def set_date(self, date: datetime.date):
+        """Sets the transaction date as a datetime.date object, instead of as a string."""
         self.date = int(datetime.date.strftime(date, "%Y%m%d"))
 
     def set_amount(self, amount: Union[decimal.Decimal, int, float]):
+        """Sets the amount as a decimal.Decimal object, instead of as an integer representing the number of cents."""
         self.amount = int(round(amount * 100))
 
     def get_amount(self) -> decimal.Decimal:
+        """Returns the amount as a decimal.Decimal, instead of as an integer representing the number of cents."""
         return decimal.Decimal(self.amount) / decimal.Decimal(100)
 
 
@@ -654,27 +697,46 @@ class ZeroBudgetMonths(SQLModel, table=True):
 
 
 class BaseBudgets(BaseModel):
+    """
+    Hosts the shared code between both [ZeroBudgets][actual.database.ZeroBudgets] and
+    [ReflectBudgets][actual.database.ReflectBudgets].
+
+    The budget will represent a certain month in a certain category.
+    """
+
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
     month: Optional[int] = Field(default=None, sa_column=Column("month", Integer))
     category_id: Optional[str] = Field(default=None, sa_column=Column("category", Text))
     amount: Optional[int] = Field(default=None, sa_column=Column("amount", Integer, server_default=text("0")))
 
     def get_date(self) -> datetime.date:
+        """Returns the transaction date as a datetime.date object, instead of as a string."""
         return datetime.datetime.strptime(str(self.month), "%Y%m").date()
 
     def set_date(self, date: datetime.date):
+        """
+        Sets the transaction date as a datetime.date object, instead of as a string.
+
+        If the date value contains a day, it will be truncated and only the month and year will be inserted, as the
+        budget applies to a month.
+        """
         self.month = int(datetime.date.strftime(date, "%Y%m"))
 
     def set_amount(self, amount: Union[decimal.Decimal, int, float]):
+        """Sets the amount as a decimal.Decimal object, instead of as an integer representing the number of cents."""
         self.amount = int(round(amount * 100))
 
     def get_amount(self) -> decimal.Decimal:
+        """Returns the amount as a decimal.Decimal, instead of as an integer representing the number of cents."""
         return decimal.Decimal(self.amount) / decimal.Decimal(100)
 
     @property
     def range(self) -> Tuple[datetime.date, datetime.date]:
-        """Range of the budget as a tuple [start, end). The end date is not inclusive, as it represents the start of the
-        next month."""
+        """
+        Range of the budget as a tuple [start, end).
+
+        The end date is not inclusive, as it represents the start of the next month.
+        """
         budget_start = self.get_date().replace(day=1)
         # conversion taken from https://stackoverflow.com/a/59199379/12681470
         budget_end = (budget_start + datetime.timedelta(days=32)).replace(day=1)
@@ -682,8 +744,12 @@ class BaseBudgets(BaseModel):
 
     @property
     def balance(self) -> decimal.Decimal:
-        """Returns the current balance of the budget. The evaluation will take into account the budget month and
-        only selected transactions for the combination month and category. Deleted transactions are ignored."""
+        """
+        Returns the current balance of the budget.
+
+        The evaluation will take into account the budget month and only selected transactions for the combination month
+        and category. Deleted transactions are ignored.
+        """
         budget_start, budget_end = (int(datetime.date.strftime(d, "%Y%m%d")) for d in self.range)
         value = object_session(self).scalar(
             select(func.coalesce(func.sum(Transactions.amount), 0)).where(
@@ -698,6 +764,13 @@ class BaseBudgets(BaseModel):
 
 
 class ReflectBudgets(BaseBudgets, table=True):
+    """
+    Stores the budgets, when using tracking budget.
+
+    This table will only contain data for the entries which are created. If a combination of category and budget month
+    is not existing, it is assumed that the budget is 0.
+    """
+
     __tablename__ = "reflect_budgets"
 
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
@@ -718,6 +791,13 @@ class ReflectBudgets(BaseBudgets, table=True):
 
 
 class ZeroBudgets(BaseBudgets, table=True):
+    """
+    Stores the budgets, when using envelope budget (default).
+
+    This table will only contain data for the entries which are created. If a combination of category and budget month
+    is not existing, it is assumed that the budget is 0.
+    """
+
     __tablename__ = "zero_budgets"
 
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))

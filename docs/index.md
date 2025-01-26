@@ -1,10 +1,46 @@
 # Quickstart
 
+## Using relationships and properties
+
+The SQLAlchemy model already contains relationships to the referenced foreign keys and some properties. For example,
+it's pretty simple to get the current balances for both accounts, payees and budgets:
+
+```python
+from actual import Actual
+from actual.queries import get_accounts, get_payees, get_budgets
+
+with Actual(base_url="http://localhost:5006", password="mypass", file="My budget") as actual:
+    # Print each account balance, for the entire dataset
+    for account in get_accounts(actual.session):
+        print(f"Balance for account {account.name} is {account.balance}")
+    # Print each payee balance, for the entire dataset
+    for payee in get_payees(actual.session):
+        print(f"Balance for payee {payee.name} is {payee.balance}")
+    # Print the leftover budget balance, for each category and the current month
+    for budget in get_budgets(actual.session):
+        print(f"Balance for budget {budget.category.name} is {budget.balance}")
+```
+
+You can quickly iterate over the transactions of one specific account:
+
+```python
+from actual import Actual
+from actual.queries import get_account
+
+with Actual(base_url="http://localhost:5006", password="mypass", file="My budget") as actual:
+    account = get_account(actual.session, "Bank name")
+    for transaction in account.transactions:
+        # Get the payee, notes and amount of each transaction
+        print(f"Transaction ({transaction.payee.name}, {transaction.notes}) has a value of {transaction.get_amount()}")
+```
+
 ## Adding new transactions
 
 After you created your first budget (or when updating an existing budget), you can add new transactions by adding them
-using the `actual.session.add()` method. You cannot use the SQLAlchemy session directly because that adds the entries to your
-local database, but will not sync the results back to the server (that is only possible when re-uploading the file).
+using the [`create_transaction`][actual.queries.create_transaction] method, and commit it using
+[`actual.commit`][actual.Actual.commit]. You cannot use the SQLAlchemy session directly because that adds the entries
+to your  local database, but will not sync the results back to the server (that is only possible when re-uploading the
+file).
 
 The method will make sure the local database is updated, but will also send a SYNC request with the added data so that
 it will be immediately available on the frontend:
@@ -51,6 +87,11 @@ with Actual(base_url="http://localhost:5006", password="mypass", file="My budget
     actual.commit()
 
 ```
+
+When working with transactions, is importing to keep in mind that the value amounts are set with floating number,
+but the value stored on the database will be an integer (number of cents) instead. So instead of updating a
+transaction with [Transactions.amount][actual.database.Transactions], use the
+[Transactions.set_amount][actual.database.Transactions.set_amount] instead.
 
 !!! warning
     You can also modify the relationships, for example the `transaction.payee.name`, but you to be aware that
