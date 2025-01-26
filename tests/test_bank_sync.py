@@ -17,11 +17,11 @@ response = {
             "balanceType": "expected",
             "lastChangeDateTime": "2024-06-13T14:56:06.092039915Z",
             "referenceDate": "2024-06-13",
-            "balanceAmount": {"amount": "0.00", "currency": "EUR"},
+            "balanceAmount": {"amount": "1.49", "currency": "EUR"},
         }
     ],
     "institutionId": "My Bank",
-    "startingBalance": 0,
+    "startingBalance": 149,
     "transactions": {
         "all": [
             {
@@ -72,23 +72,35 @@ def create_accounts(session, protocol: str):
     return bank
 
 
-@pytest.fixture
-def set_mocks(mocker):
-    # call for validate
+def generate_bank_sync_data(mocker, starting_balance: int = None):
+    response_full = copy.deepcopy(response)
+    if starting_balance:
+        response_full["startingBalance"] = starting_balance
     response_empty = copy.deepcopy(response)
     response_empty["transactions"]["all"] = []
     mocker.patch.object(Session, "get").return_value = RequestsMock({"status": "ok", "data": {"validated": True}})
     main_mock = mocker.patch.object(Session, "post")
     main_mock.side_effect = [
         RequestsMock({"status": "ok", "data": {"configured": True}}),
-        RequestsMock({"status": "ok", "data": response}),
+        RequestsMock({"status": "ok", "data": response_full}),
         RequestsMock({"status": "ok", "data": {"configured": True}}),  # in case it gets called again
         RequestsMock({"status": "ok", "data": response_empty}),
     ]
     return main_mock
 
 
-def test_full_bank_sync_go_cardless(session, set_mocks):
+@pytest.fixture
+def bank_sync_data_match(mocker):
+    # call for validate
+    return generate_bank_sync_data(mocker)
+
+
+@pytest.fixture
+def bank_sync_data_no_match(mocker):
+    return generate_bank_sync_data(mocker, 2500)
+
+
+def test_full_bank_sync_go_cardless(session, bank_sync_data_match):
     with Actual(token="foo") as actual:
         actual._session = session
         create_accounts(session, "goCardless")
@@ -114,10 +126,10 @@ def test_full_bank_sync_go_cardless(session, set_mocks):
         new_imported_transactions = actual.run_bank_sync()
         assert new_imported_transactions == []
         # assert that the call date is correctly set
-        assert set_mocks.call_args_list[3][1]["json"]["startDate"] == "2024-06-13"
+        assert bank_sync_data_match.call_args_list[3][1]["json"]["startDate"] == "2024-06-13"
 
 
-def test_full_bank_sync_go_simplefin(session, set_mocks):
+def test_full_bank_sync_go_simplefin(session, bank_sync_data_match):
     with Actual(token="foo") as actual:
         actual._session = session
         create_accounts(session, "simplefin")
@@ -136,6 +148,19 @@ def test_full_bank_sync_go_simplefin(session, set_mocks):
         assert imported_transactions[1].get_amount() == decimal.Decimal("-7.77")
         assert imported_transactions[1].payee.name == "Payment"  # simplefin uses the wrong field
         assert imported_transactions[1].notes == "Payment"
+
+
+def test_bank_sync_with_starting_balance(session, bank_sync_data_no_match):
+    with Actual(token="foo") as actual:
+        actual._session = session
+        create_accounts(session, "simplefin")
+        # now try to run the bank sync
+        imported_transactions = actual.run_bank_sync("Bank")
+        assert len(imported_transactions) == 3
+        # first transaction should be the amount
+        assert imported_transactions[0].get_date() == datetime.date(2024, 6, 13)
+        # final amount is 2500 - (926 - 777) = 2351
+        assert imported_transactions[0].get_amount() == decimal.Decimal("23.51")
 
 
 def test_bank_sync_unconfigured(mocker, session):
