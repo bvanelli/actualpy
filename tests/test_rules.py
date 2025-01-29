@@ -1,6 +1,5 @@
 import datetime
 import uuid
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -24,12 +23,11 @@ from actual.rules import (
 )
 
 
-def test_category_rule():
-    mock = MagicMock()
+def test_category_rule(session):
     # create basic items
-    acct = create_account(mock, "Bank")
-    cat = create_category(mock, "Food", "Expenses")
-    payee = create_payee(mock, "My payee")
+    acct = create_account(session, "Bank")
+    cat = create_category(session, "Food", "Expenses")
+    payee = create_payee(session, "My payee")
     # create rule
     condition = Condition(field="category", op="is", value=cat)
     action = Action(field="description", value=payee)
@@ -38,7 +36,7 @@ def test_category_rule():
     assert list(rs) == []
     rs.add(rule)
     # run for one transaction
-    t = create_transaction(mock, datetime.date(2024, 1, 1), acct, "", category=cat)
+    t = create_transaction(session, datetime.date(2024, 1, 1), acct, "", category=cat)
     rs.run(t)
     # evaluate if things match
     assert t.payee_id == payee.id
@@ -51,10 +49,9 @@ def test_category_rule():
     assert condition.run(t) is False
 
 
-def test_datetime_rule():
-    mock = MagicMock()
-    acct = create_account(mock, "Bank")
-    t = create_transaction(mock, datetime.date(2024, 1, 1), acct, "")
+def test_datetime_rule(session):
+    acct = create_account(session, "Bank")
+    t = create_transaction(session, datetime.date(2024, 1, 1), acct, "")
     condition = Condition(field="date", op="isapprox", value=datetime.date(2024, 1, 2))
     action = Action(field="date", value="2024-01-30")
     rs = RuleSet(rules=[Rule(conditions=[condition], actions=[action], operation="any")])
@@ -75,10 +72,9 @@ def test_datetime_rule():
     assert Condition(field="date", op="lt", value=target_date + datetime.timedelta(days=1)).run(t) is True
 
 
-def test_string_condition():
-    mock = MagicMock()
-    acct = create_account(mock, "Bank")
-    t = create_transaction(mock, datetime.date(2024, 1, 1), acct, "", "foo")
+def test_string_condition(session):
+    acct = create_account(session, "Bank")
+    t = create_transaction(session, datetime.date(2024, 1, 1), acct, "", "foo")
     assert Condition(field="notes", op="oneOf", value=["foo", "bar"]).run(t) is True
     assert Condition(field="notes", op="notOneOf", value=["foo", "bar"]).run(t) is False
     assert Condition(field="notes", op="contains", value="fo").run(t) is True
@@ -98,10 +94,9 @@ def test_string_condition():
     assert Condition(field="notes", op="doesNotContain", value="FOOBAR").run(t) is True
 
 
-def test_has_tags():
-    mock = MagicMock()
-    acct = create_account(mock, "Bank")
-    t = create_transaction(mock, datetime.date(2024, 1, 1), acct, "", "foo #bar #✨ #🙂‍↔️")
+def test_has_tags(session):
+    acct = create_account(session, "Bank")
+    t = create_transaction(session, datetime.date(2024, 1, 1), acct, "", "foo #bar #✨ #🙂‍↔️")
     assert Condition(field="notes", op="hasTags", value="#bar").run(t) is True
     assert Condition(field="notes", op="hasTags", value="#foo").run(t) is False
     # test other unicode entries
@@ -120,15 +115,17 @@ def test_has_tags():
         ("matches", "market", "hypermarket", True),
     ],
 )
-def test_imported_payee_condition(op, condition_value, value, expected_result):
-    t = create_transaction(MagicMock(), datetime.date(2024, 1, 1), "Bank", "", amount=5, imported_payee=value)
+def test_imported_payee_condition(session, op, condition_value, value, expected_result):
+    create_account(session, "Bank")
+    t = create_transaction(session, datetime.date(2024, 1, 1), "Bank", "", amount=5, imported_payee=value)
     condition = {"field": "imported_description", "type": "imported_payee", "op": op, "value": condition_value}
     cond = Condition.model_validate(condition)
     assert cond.run(t) == expected_result
 
 
-def test_numeric_condition():
-    t = create_transaction(MagicMock(), datetime.date(2024, 1, 1), "Bank", "", amount=5)
+def test_numeric_condition(session):
+    create_account(session, "Bank")
+    t = create_transaction(session, datetime.date(2024, 1, 1), "Bank", "", amount=5)
     c1 = Condition(field="amount_inflow", op="gt", value=10.0)
     assert "inflow" in c1.options
     assert c1.run(t) is False
@@ -146,13 +143,12 @@ def test_numeric_condition():
     assert str(c4) == "'amount' isbetween (500, 1000)"  # value gets converted when input as float
 
 
-def test_complex_rule():
-    mock = MagicMock()
+def test_complex_rule(session):
     # create basic items
-    acct = create_account(mock, "Bank")
-    cat = create_category(mock, "Food", "Expenses")
-    cat_extra = create_category(mock, "Restaurants", "Expenses")
-    payee = create_payee(mock, "My payee")
+    acct = create_account(session, "Bank")
+    cat = create_category(session, "Food", "Expenses")
+    cat_extra = create_category(session, "Restaurants", "Expenses")
+    payee = create_payee(session, "My payee")
     # create rule set
     rs = RuleSet(
         rules=[
@@ -175,8 +171,8 @@ def test_complex_rule():
             )
         ]
     )
-    t_true = create_transaction(mock, datetime.date(2024, 1, 1), acct, payee, category=cat)
-    t_false = create_transaction(mock, datetime.date(2024, 1, 1), acct, payee)
+    t_true = create_transaction(session, datetime.date(2024, 1, 1), acct, payee, category=cat)
+    t_false = create_transaction(session, datetime.date(2024, 1, 1), acct, payee)
     rs.run([t_true, t_false])
     assert t_true.cleared == 1
     assert t_false.cleared == 0
@@ -376,9 +372,9 @@ def test_set_split_amount_exception(session, mocker):
         ("prepend-notes", "bar", None, "bar"),
     ],
 )
-def test_preppend_append_notes(operation, value, note, expected):
-    mock = MagicMock()
-    t = create_transaction(mock, datetime.date(2024, 1, 1), "Bank", "", notes=note)
+def test_preppend_append_notes(session, operation, value, note, expected):
+    create_account(session, "Bank")
+    t = create_transaction(session, datetime.date(2024, 1, 1), "Bank", "", notes=note)
     action = Action(field="description", op=operation, value=value)
     action.run(t)
     assert t.notes == expected
