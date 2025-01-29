@@ -432,6 +432,14 @@ class Action(pydantic.BaseModel):
             # set the value
             if self.type == ValueType.DATE:
                 transaction.set_date(value)
+            elif attr == "payee_id":
+                # this has to be handled separately since, when setting a transfer payee, a transfer transaction needs
+                # to be created
+                from actual.queries import set_transaction_payee
+
+                # get inner session from object
+                session = transaction._sa_instance_state.session  # noqa
+                set_transaction_payee(session, transaction, value)
             else:
                 setattr(transaction, attr, value)
         elif self.op == ActionType.LINK_SCHEDULE:

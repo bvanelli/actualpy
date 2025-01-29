@@ -32,5 +32,5 @@ def session():
         sqlite_url = f"sqlite:///{f.name}"
         engine = create_engine(sqlite_url, connect_args={"check_same_thread": False})
         SQLModel.metadata.create_all(engine)
-        with Session(engine) as session:
+        with Session(engine, autoflush=True) as session:
             yield strong_reference_session(session)

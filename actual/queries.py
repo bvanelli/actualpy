@@ -730,14 +730,18 @@ def create_transfer(
     :param amount: amount, as a positive decimal, to be transferred.
     :param notes: additional description for the transfer.
     :return: tuple containing both transactions, as one is created per account. The transactions would be
-    cross-referenced by their `transferred_id`.
+             cross-referenced by their `transferred_id`.
     """
     if amount <= 0:
         raise ActualError("Amount must be a positive value.")
     source: Accounts = get_account(s, source_account)
     dest: Accounts = get_account(s, dest_account)
-    source_transaction = create_transaction_from_ids(s, date, source.id, dest.payee.id, notes, None, -amount)
-    dest_transaction = create_transaction_from_ids(s, date, dest.id, source.payee.id, notes, None, amount)
+    source_transaction = create_transaction_from_ids(
+        s, date, source.id, dest.payee.id, notes, None, -amount, process_payee=False
+    )
+    dest_transaction = create_transaction_from_ids(
+        s, date, dest.id, source.payee.id, notes, None, amount, process_payee=False
+    )
     # swap the transferred ids
     source_transaction.transferred_id = dest_transaction.id
     dest_transaction.transferred_id = source_transaction.id

@@ -381,3 +381,15 @@ def test_preppend_append_notes(session, operation, value, note, expected):
     action.run(t)  # second iteration should not update the result
     assert t.notes == expected
     assert f"{operation.split('-')[0]} to notes '{value}'" in str(action)
+
+
+def test_set_transfer_payee_rule(session):
+    bank = create_account(session, "Bank")
+    t = create_transaction(session, datetime.date(2024, 1, 1), "Bank", amount=10)
+    action = Action(field="description", op="set", value=bank.payee.id)
+    action.run(t)
+    assert t.transferred_id is not None
+    assert t.transfer is not None
+    assert t.get_amount() == -t.transfer.get_amount()
+    assert t.id == t.transfer.transferred_id
+    assert t.transferred_id == t.transfer.id
