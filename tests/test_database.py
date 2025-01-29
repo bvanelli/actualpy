@@ -25,6 +25,7 @@ from actual.queries import (
     get_transactions,
     normalize_payee,
     reconcile_transaction,
+    set_transaction_payee,
 )
 from actual.rules import Action, Condition, ConditionType, Rule
 
@@ -323,3 +324,28 @@ def test_get_preferences(session):
     new_preferences = get_preferences(session)
     assert len(new_preferences) == 1
     assert new_preferences[0].value == "foobar"
+
+
+def test_set_payee_to_transfer(session):
+    wallet = create_account(session, "Wallet")
+    bank = create_account(session, "Bank")
+    session.commit()
+    # Create a transaction setting the payee
+    t = create_transaction(session, date.today(), bank, wallet.payee, amount=-50)
+    session.commit()
+    transactions = get_transactions(session)
+    assert len(transactions) == 2
+    assert transactions[0].get_amount() == -transactions[1].get_amount()
+    assert transactions[0].transferred_id == transactions[1].id
+    assert transactions[1].transferred_id == transactions[0].id
+    # Set this payee to something else, transaction should be deleted
+    set_transaction_payee(session, t, None)
+    session.commit()
+    assert len(get_transactions(session)) == 1
+    assert t.payee_id is None
+    assert t.transferred_id is None
+    # Set payee_id back, transaction should be recreated
+    set_transaction_payee(session, t, wallet.payee.id)
+    session.commit()
+    assert t.payee_id == wallet.payee.id
+    assert t.transfer.transfer == t
