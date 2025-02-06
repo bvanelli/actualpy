@@ -53,3 +53,15 @@ exclude = ["docs*", "tests*", "examples*"]
 
 [tool.setuptools.dynamic]
 version = { attr = "actual.version.__version__" }
+
+[tool.black]
+line-length = 120
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint.mccabe]
+max-complexity = 18
+
+[tool.isort]
+profile = "black"
