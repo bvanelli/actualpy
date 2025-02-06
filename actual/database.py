@@ -410,6 +410,7 @@ class CustomReports(BaseModel, table=True):
     include_current: Optional[int] = Field(
         default=None, sa_column=Column("include_current", Integer, server_default=text("0"))
     )
+    sort_by: Optional[str] = Field(default=None, sa_column=Column("sort_by", Text, server_default=text("'desc'")))
 
 
 class Dashboard(BaseModel, table=True):
@@ -505,6 +506,7 @@ class Payees(BaseModel, table=True):
         default=None, sa_column=Column("transfer_acct", Text, ForeignKey("accounts.id"))
     )
     favorite: Optional[int] = Field(default=None, sa_column=Column("favorite", Integer, server_default=text("0")))
+    learn_categories: Optional[bool] = Field(sa_column=Column("learn_categories", Boolean, server_default=text("1")))
 
     account: Optional["Accounts"] = Relationship(back_populates="payee", sa_relationship_kwargs={"uselist": False})
     transactions: List["Transactions"] = Relationship(
