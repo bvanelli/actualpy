@@ -191,6 +191,7 @@ def create_transaction_from_ids(
     imported_id: str = None,
     cleared: bool = False,
     imported_payee: str = None,
+    process_payee: bool = True,
 ) -> Transactions:
     """Internal method to generate a transaction from ids instead of objects."""
     date_int = int(datetime.date.strftime(date, "%Y%m%d"))
@@ -200,7 +201,6 @@ def create_transaction_from_ids(
         date=date_int,
         amount=int(round(amount * 100)),
         category_id=category_id,
-        payee_id=payee_id,
         notes=notes,
         reconciled=0,
         cleared=int(cleared),
@@ -209,6 +209,8 @@ def create_transaction_from_ids(
         imported_description=imported_payee,
     )
     s.add(t)
+    if process_payee:
+        set_transaction_payee(s, t, payee_id)
     return t
 
 
@@ -262,6 +264,49 @@ def create_transaction(
     return create_transaction_from_ids(
         s, date, acct.id, payee_id, notes, category_id, amount, imported_id, cleared, imported_payee
     )
+
+
+def set_transaction_payee(s: Session, transaction: Transactions, payee: typing.Union[Payees, str, None]) -> None:
+    """
+    Sets a payee safely by checking if this payee is a transfer. If it is, then the transfer will be created.
+
+    This is necessary since the payee can be set to a "transfer id", which references and account. When this happens,
+    the transaction will be marked as a transfer between the two accounts, and new transaction will need to be created
+    on the other account, with the negative amount.
+
+    :param s: session from Actual local database.
+    :param transaction: transaction to exchange the payee.
+    :param payee: object or unique id of the payee to be set. Must be existing
+    """
+    current_payee: typing.Optional[Payees] = None
+    if isinstance(payee, str):
+        payee = s.scalar(select(Payees).where(Payees.id == payee))
+    if transaction.payee_id:  # resolve based on the id, in case the relationship did not load
+        current_payee = s.scalar(select(Payees).where(Payees.id == transaction.payee_id))
+    # if old payee was a transfer, we delete that transfer based on the `transferred_id`
+    if current_payee and current_payee.transfer_acct:
+        old_tr = s.scalar(select(Transactions).where(Transactions.id == transaction.transferred_id))
+        if old_tr:  # should exist, but check for safety
+            old_tr.delete()
+            transaction.transferred_id = None
+    # if setting a transfer payee, we create a transfer
+    if payee and payee.transfer_acct:
+        transfer = create_transaction_from_ids(
+            s,
+            transaction.get_date(),
+            payee.account.id,
+            transaction.account.payee.id,
+            transaction.notes,
+            None,
+            cleared=bool(transaction.cleared),
+            amount=-transaction.get_amount(),
+            process_payee=False,
+        )
+        transaction.category_id = None
+        transfer.transferred_id, transaction.transferred_id = transaction.id, transfer.id
+
+    # finally set the payee
+    transaction.payee_id = payee.id if payee else None
 
 
 def normalize_payee(payee_name: str | None, raw_payee_name: bool = False) -> str:
@@ -685,14 +730,18 @@ def create_transfer(
     :param amount: amount, as a positive decimal, to be transferred.
     :param notes: additional description for the transfer.
     :return: tuple containing both transactions, as one is created per account. The transactions would be
-    cross-referenced by their `transferred_id`.
+             cross-referenced by their `transferred_id`.
     """
     if amount <= 0:
         raise ActualError("Amount must be a positive value.")
     source: Accounts = get_account(s, source_account)
     dest: Accounts = get_account(s, dest_account)
-    source_transaction = create_transaction_from_ids(s, date, source.id, dest.payee.id, notes, None, -amount)
-    dest_transaction = create_transaction_from_ids(s, date, dest.id, source.payee.id, notes, None, amount)
+    source_transaction = create_transaction_from_ids(
+        s, date, source.id, dest.payee.id, notes, None, -amount, process_payee=False
+    )
+    dest_transaction = create_transaction_from_ids(
+        s, date, dest.id, source.payee.id, notes, None, amount, process_payee=False
+    )
     # swap the transferred ids
     source_transaction.transferred_id = dest_transaction.id
     dest_transaction.transferred_id = source_transaction.id

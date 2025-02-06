@@ -635,7 +635,9 @@ class Transactions(BaseModel, table=True):
         default=None,
         sa_column=Column("starting_balance_flag", Integer, server_default=text("0")),
     )
-    transferred_id: Optional[str] = Field(default=None, sa_column=Column("transferred_id", Text))
+    transferred_id: Optional[str] = Field(
+        default=None, sa_column=Column("transferred_id", Text, ForeignKey("transactions.id"))
+    )
     sort_order: Optional[float] = Field(default=None, sa_column=Column("sort_order", Float))
     tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
     cleared: Optional[int] = Field(default=None, sa_column=Column("cleared", Integer, server_default=text("1")))
@@ -662,7 +664,8 @@ class Transactions(BaseModel, table=True):
         },
     )
     parent: Optional["Transactions"] = Relationship(
-        back_populates="splits", sa_relationship_kwargs={"remote_side": "Transactions.id"}
+        back_populates="splits",
+        sa_relationship_kwargs={"remote_side": "Transactions.id", "foreign_keys": "Transactions.parent_id"},
     )
     splits: List["Transactions"] = Relationship(
         back_populates="parent",
@@ -670,6 +673,12 @@ class Transactions(BaseModel, table=True):
             "primaryjoin": "and_(Transactions.id == remote(Transactions.parent_id), remote(Transactions.tombstone)==0)",
             "order_by": "remote(Transactions.sort_order.desc())",
         },
+    )
+    transfer: Optional["Transactions"] = Relationship(
+        sa_relationship_kwargs={
+            "primaryjoin": "and_(Transactions.transferred_id == remote(Transactions.id), remote(Transactions.tombstone)==0)",
+            "foreign_keys": "Transactions.transferred_id",
+        }
     )
 
     def get_date(self) -> datetime.date:
