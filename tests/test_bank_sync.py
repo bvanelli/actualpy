@@ -6,6 +6,7 @@ import pytest
 from requests import Session
 
 from actual import Actual, ActualBankSyncError
+from actual.api.bank_sync import TransactionItem
 from actual.database import Banks
 from actual.queries import create_account
 from tests.conftest import RequestsMock
@@ -30,7 +31,9 @@ response = {
                 "valueDate": "2024-06-13",
                 "date": "2024-06-13",
                 "transactionAmount": {"amount": "9.26", "currency": "EUR"},
+                "payeeName": "John Doe",
                 "debtorName": "John Doe",
+                "notes": "Transferring Money",
                 "remittanceInformationUnstructured": "Transferring Money",
                 "booked": True,
             },
@@ -43,6 +46,8 @@ response = {
                 "valueDate": "2024-06-13",
                 "date": "2024-06-13",
                 "transactionAmount": {"amount": "-7.77", "currency": "EUR"},
+                "payeeName": "Institution Gmbh (DE12 XXX 6789)",
+                "notes": "Payment",
                 "creditorName": "Institution GmbH",
                 "creditorAccount": {"iban": "DE123456789"},
                 "remittanceInformationUnstructured": "Payment",
@@ -130,6 +135,9 @@ def test_full_bank_sync_go_cardless(session, bank_sync_data_match):
         # the name of the payee was normalized (from GmbH to Gmbh) and the masked iban is included
         assert imported_transactions[1].payee.name == "Institution Gmbh (DE12 XXX 6789)"
         assert imported_transactions[1].notes == "Payment"
+        # also test the iban generation functions
+        loaded_transaction = TransactionItem.model_validate(response["transactions"]["all"][1])
+        assert imported_transactions[1].payee.name == loaded_transaction.imported_payee
 
         assert imported_transactions[2].financial_id == "208584e9-343f-4831-8095-7b9f4a34a77e"
         assert imported_transactions[2].get_date() == datetime.date(2024, 6, 13)

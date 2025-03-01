@@ -494,7 +494,7 @@ class Actual(ActualServer):
             balance_to_use = new_transactions_data.data.balance
             # For simpleFin, the startingBalance is actually the current balance, so we have to use it to deduce the
             # actual startingBalance
-            if acct.account_sync_source == "simpleFin":
+            if acct.account_sync_source and acct.account_sync_source.lower() == "simplefin":
                 current_balance = new_transactions_data.data.balance
                 balance_to_use = current_balance - sum(t.transaction_amount.amount for t in new_transactions)
             if balance_to_use:
@@ -510,7 +510,7 @@ class Actual(ActualServer):
         for transaction in new_transactions[::-1]:
             if not transaction.booked:
                 continue
-            payee = transaction.imported_payee or "" if sync_method == "goCardless" else transaction.notes
+            payee = transaction.payee_name or "" if sync_method == "goCardless" else transaction.notes
             reconciled = reconcile_transaction(
                 self.session,
                 transaction.date,
