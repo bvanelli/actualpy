@@ -32,6 +32,7 @@ response = {
                 "transactionAmount": {"amount": "9.26", "currency": "EUR"},
                 "debtorName": "John Doe",
                 "remittanceInformationUnstructured": "Transferring Money",
+                "booked": True,
             },
             # some have creditor name
             {
@@ -48,6 +49,13 @@ response = {
                 "remittanceInformationUnstructuredArray": ["Payment"],
                 "bankTransactionCode": "FOO-BAR",
                 "internalTransactionId": "6118268af4dc45039a7ca21b0fdcbe96",
+                "booked": True,
+            },
+            # ignored since booked is set to false, but all required fields are also missing
+            {
+                "date": "2024-06-13",
+                "transactionAmount": {"amount": "-7.77", "currency": "EUR"},
+                "booked": False,
             },
         ],
         "booked": [],

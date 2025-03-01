@@ -489,6 +489,8 @@ class Actual(ActualServer):
         new_transactions = new_transactions_data.data.transactions.all
         imported_transactions = []
         for transaction in new_transactions:
+            if not transaction.booked:
+                continue
             payee = transaction.imported_payee or "" if sync_method == "goCardless" else transaction.notes
             reconciled = reconcile_transaction(
                 self.session,
