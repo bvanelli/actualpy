@@ -491,10 +491,11 @@ class Actual(ActualServer):
         if self._file.group_id:  # only files with a group id can be synced
             self.sync_sync(req)
 
-    def run_rules(self):
+    def run_rules(self, transactions: Optional[List[Transactions]] = None):
         """Runs all the stored rules on the database on all transactions, without any filters."""
+        if transactions is None:
+            transactions = get_transactions(self.session, is_parent=True)
         ruleset = get_ruleset(self.session)
-        transactions = get_transactions(self.session, is_parent=True)
         ruleset.run(transactions)
 
     def _run_bank_sync_account(
@@ -554,7 +555,7 @@ class Actual(ActualServer):
         return imported_transactions
 
     def run_bank_sync(
-        self, account: str | Accounts | None = None, start_date: datetime.date | None = None
+        self, account: str | Accounts | None = None, start_date: datetime.date | None = None, run_rules: bool = False
     ) -> List[Transactions]:
         """
         Runs the bank synchronization for the selected account. If missing, all accounts are synchronized. If a
@@ -564,6 +565,10 @@ class Actual(ActualServer):
         If the `start_date` is not provided and the account does not have any transaction, a reconcile transaction will
         be generated to match the expected balance of the account. This would correct the account balance with the
         remote one.
+
+        If `run_rules` is set, the rules will be run for the imported transactions. Please note that unlike Actual,
+        the rules here are ran at the final imported objects. This is unlikely to cause data mismatches,
+        but if you find any issues feel free to report this as an issue.
         """
         # if no account is provided, sync all of them, otherwise just the account provided
         if account is None:
@@ -592,4 +597,6 @@ class Actual(ActualServer):
                     default_start_date = datetime.date.today() - datetime.timedelta(days=90)
             transactions = self._run_bank_sync_account(acct, default_start_date, is_first_sync)
             imported_transactions.extend(transactions)
+        if run_rules:
+            self.run_rules(imported_transactions)
         return imported_transactions
