@@ -178,7 +178,7 @@ def test_bank_sync_with_starting_balance(session, bank_sync_data_no_match):
         actual._session = session
         create_accounts(session, "simpleFin")
         # now try to run the bank sync
-        imported_transactions = actual.run_bank_sync("Bank")
+        imported_transactions = actual.run_bank_sync("Bank", run_rules=True)
         assert len(imported_transactions) == 3
         # first transaction should be the amount
         assert imported_transactions[0].get_date() == datetime.date(2024, 6, 13)
