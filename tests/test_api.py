@@ -4,6 +4,8 @@ import pytest
 from requests import Session
 
 from actual import Actual, reflect_model
+from actual.api import ListUserFilesDTO
+from actual.api.models import RemoteFileListDTO, StatusCode
 from actual.exceptions import ActualError, AuthorizationError, UnknownFileId
 from actual.protobuf_models import Message
 from tests.conftest import RequestsMock
@@ -48,3 +50,22 @@ def test_no_certificate(mocker):
     mocker.patch("actual.Actual.validate")
     actual = Actual(token="foo", cert=False)
     assert actual._requests_session.verify is False
+
+
+def test_set_file_exceptions(mocker):
+    mocker.patch("actual.Actual.validate")
+    list_user_files = mocker.patch(
+        "actual.Actual.list_user_files", return_value=ListUserFilesDTO(status=StatusCode.OK, data=[])
+    )
+    actual = Actual(token="foo")
+    with pytest.raises(ActualError, match="Could not find a file id or identifier 'foo'"):
+        actual.set_file("foo")
+    list_user_files.return_value = ListUserFilesDTO(
+        status=StatusCode.OK,
+        data=[
+            RemoteFileListDTO(deleted=False, fileId="foo", groupId="foo", name="foo", encryptKeyId=None),
+            RemoteFileListDTO(deleted=False, fileId="foo", groupId="foo", name="foo", encryptKeyId=None),
+        ],
+    )
+    with pytest.raises(ActualError, match="Multiple files found with identifier 'foo'"):
+        actual.set_file("foo")

@@ -130,17 +130,16 @@ class Actual(ActualServer):
         if isinstance(file_id, RemoteFileListDTO):
             self._file = file_id
             return file_id
-        else:
-            selected_files = []
-            user_files = self.list_user_files()
-            for file in user_files.data:
-                if (file.file_id == file_id or file.name == file_id or file.group_id == file_id) and file.deleted == 0:
-                    selected_files.append(file)
-            if len(selected_files) == 0:
-                raise UnknownFileId(f"Could not find a file id or identifier '{file_id}'")
-            elif len(selected_files) > 1:
-                raise UnknownFileId(f"Multiple files found with identifier '{file_id}'")
-            return self.set_file(selected_files[0])
+        selected_files = []
+        user_files = self.list_user_files()
+        for file in user_files.data:
+            if (file.file_id == file_id or file.name == file_id or file.group_id == file_id) and file.deleted == 0:
+                selected_files.append(file)
+        if len(selected_files) == 0:
+            raise UnknownFileId(f"Could not find a file id or identifier '{file_id}'")
+        elif len(selected_files) > 1:
+            raise UnknownFileId(f"Multiple files found with identifier '{file_id}'")
+        return self.set_file(selected_files[0])
 
     def run_migrations(self, migration_files: List[str]):
         """Runs the migration files, skipping the ones that have already been run. The files can be retrieved from
@@ -218,10 +217,37 @@ class Actual(ActualServer):
         # reset group id, as file cannot be synced anymore
         self._file.group_id = None
 
-    def export_data(self, output_file: str | PathLike[str] | IO[bytes] = None) -> bytes:
+    def cleanup(self):
+        """
+        Cleans up the database from all deleted transactions, message caches and runs a VACUUM. Should reduce the size
+        of the database before exporting it.
+
+        Taken from source code at
+        [actual/packages/loot-core/src/server/sync/reset.ts](https://github.com/actualbudget/actual/blob/89006275a092d2309ab03162a047e07663789198/packages/loot-core/src/server/sync/reset.ts#L37-L47)
+        """
+        with sqlite3.connect(self._data_dir / "db.sqlite") as conn:
+            conn.executescript(
+                """
+                DELETE FROM messages_crdt;
+                DELETE FROM messages_clock;
+                DELETE FROM transactions WHERE tombstone = 1;
+                DELETE FROM accounts WHERE tombstone = 1;
+                DELETE FROM payees WHERE tombstone = 1;
+                DELETE FROM categories WHERE tombstone = 1;
+                DELETE FROM category_groups WHERE tombstone = 1;
+                DELETE FROM schedules WHERE tombstone = 1;
+                DELETE FROM rules WHERE tombstone = 1;
+                ANALYZE;
+                VACUUM;
+            """
+            )
+
+    def export_data(self, output_file: str | PathLike[str] | IO[bytes] = None, cleanup: bool = True) -> bytes:
         """Export your data as a zip file containing db.sqlite and metadata.json files. It can be imported into another
         Actual instance by closing an open file (if any), then clicking the “Import file” button, then choosing
         “Actual.” Even when encryption is enabled, the exported zip file will not have any encryption."""
+        if cleanup:
+            self.cleanup()
         temp_file = io.BytesIO()
         with zipfile.ZipFile(temp_file, "a", zipfile.ZIP_DEFLATED, False) as z:
             z.write(self._data_dir / "db.sqlite", "db.sqlite")
