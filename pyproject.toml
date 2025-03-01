@@ -65,3 +65,4 @@ max-complexity = 18
 
 [tool.isort]
 profile = "black"
+line_length = 120

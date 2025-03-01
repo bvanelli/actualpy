@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import datetime
 import json
-from typing import List, Literal
+from typing import List, Literal, Union
 
 import requests
 
 from actual.api.models import (
     BankSyncAccountResponseDTO,
+    BankSyncErrorDTO,
     BankSyncResponseDTO,
     BankSyncStatusDTO,
+    BankSyncTransactionResponseDTO,
     BootstrapInfoDTO,
     Endpoints,
     GetUserFileInfoDTO,
@@ -286,7 +288,7 @@ class ActualServer:
         account_id: str,
         start_date: datetime.date,
         requisition_id: str = None,
-    ) -> BankSyncResponseDTO:
+    ) -> Union[BankSyncErrorDTO, BankSyncTransactionResponseDTO]:
         if bank_sync == "gocardless" and requisition_id is None:
             raise ActualInvalidOperationError("Retrieving transactions with goCardless requires `requisition_id`")
         endpoint = Endpoints.BANK_SYNC_TRANSACTIONS.value.format(bank_sync=bank_sync)

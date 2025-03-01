@@ -111,7 +111,7 @@ class TransactionItem(BaseModel):
 
 
 class Transactions(BaseModel):
-    all: List[TransactionItem]
+    all: List[TransactionItem] = Field(..., description="List of all transactions, from newest to oldest.")
     booked: List[TransactionItem]
     pending: List[TransactionItem]
 
@@ -130,6 +130,11 @@ class BankSyncTransactionData(BaseModel):
 
     @property
     def balance(self) -> decimal.Decimal:
+        """Starting balance of the account integration, converted to a decimal amount.
+
+        For `simpleFin`, this will represent the current amount on the account, while for `goCardless` it will
+        represent the actual initial amount before all transactions.
+        """
         return decimal.Decimal(self.starting_balance) / 100
 
 

@@ -234,6 +234,7 @@ class Accounts(BaseModel, table=True):
     sort_order: Optional[float] = Field(default=None, sa_column=Column("sort_order", Float))
     type: Optional[str] = Field(default=None, sa_column=Column("type", Text))
     account_sync_source: Optional[str] = Field(default=None, sa_column=Column("account_sync_source", Text))
+    last_sync: Optional[str] = Field(default=None, sa_column=Column("last_sync", Text))
 
     payee: "Payees" = Relationship(back_populates="account", sa_relationship_kwargs={"uselist": False})
     transactions: List["Transactions"] = Relationship(
@@ -647,6 +648,7 @@ class Transactions(BaseModel, table=True):
     parent_id: Optional[str] = Field(default=None, sa_column=Column("parent_id", Text, ForeignKey("transactions.id")))
     schedule_id: Optional[str] = Field(default=None, sa_column=Column("schedule", Text, ForeignKey("schedules.id")))
     reconciled: Optional[int] = Field(default=None, sa_column=Column("reconciled", Integer, server_default=text("0")))
+    raw_synced_data: Optional[str] = Field(default=None, sa_column=Column("raw_synced_data", Text))
 
     account: "Accounts" = Relationship(back_populates="transactions")
     category: Optional["Categories"] = Relationship(
