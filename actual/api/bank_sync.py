@@ -46,13 +46,21 @@ class DebtorAccount(BaseModel):
 
 
 class BalanceType(enum.Enum):
+    # See https://developer.gocardless.com/bank-account-data/balance#balance_type for full documentation
+    CLOSING_AVAILABLE = "closingAvailable"
     CLOSING_BOOKED = "closingBooked"
+    CLOSING_CLEARED = "closingCleared"
     EXPECTED = "expected"
     FORWARD_AVAILABLE = "forwardAvailable"
     INTERIM_AVAILABLE = "interimAvailable"
+    INTERIM_CLEARED = "interimCleared"
+    INFORMATION = "information"
     INTERIM_BOOKED = "interimBooked"
     NON_INVOICED = "nonInvoiced"
     OPENING_BOOKED = "openingBooked"
+    OPENING_AVAILABLE = "openingAvailable"
+    OPENING_CLEARED = "openingCleared"
+    PREVIOUSLY_CLOSED_BOOKED = "previouslyClosedBooked"
 
 
 class Balance(BaseModel):
@@ -64,16 +72,18 @@ class Balance(BaseModel):
 
 
 class TransactionItem(BaseModel):
-    transaction_id: str = Field(..., alias="transactionId")
-    booked: bool = True
+    transaction_id: Optional[str] = Field(None, alias="transactionId")
+    booked: Optional[bool] = False
     transaction_amount: BankSyncAmount = Field(..., alias="transactionAmount")
     # this field will come as either debtorName or creditorName, depending on if it's a debt or credit
-    payee: str = Field(None, validation_alias=AliasChoices("debtorName", "creditorName"))
+    # The field might not exist, therefore is set as optional with a default
+    payee: Optional[str] = Field(None, validation_alias=AliasChoices("debtorName", "creditorName"))
     payee_account: Optional[DebtorAccount] = Field(
         None, validation_alias=AliasChoices("debtorAccount", "creditorAccount")
     )
     # 'bookingDate' and 'valueDate' can be null or not existing in some goCardless data. Actual does not use them.
     # Therefore, we just use them as fallbacks for the date, that should theoretically always exist.
+    # if the 'bookingDate' does not exist, the 'valueDate' will according to the docs
     date: datetime.date = Field(..., validation_alias=AliasChoices("date", "bookingDate", "valueDate"))
     remittance_information_unstructured: str = Field(None, alias="remittanceInformationUnstructured")
     remittance_information_unstructured_array: List[str] = Field(
