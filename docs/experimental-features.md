@@ -66,6 +66,15 @@ with Actual(base_url="http://localhost:5006", password="mypass", file="My budget
     actual.commit()
 ```
 
+If you are running bank sync, you can also run rules directly on the imported transactions after doing the sync:
+
+```python
+from actual import Actual
+
+with Actual(base_url="http://localhost:5006", password="mypass") as actual:
+    synchronized_transactions = actual.run_bank_sync(run_rules=True)
+```
+
 You can also manipulate the rules individually, and validate each rule that runs for each transaction, allowing you
 to also debug rules. This can be useful when more than one rule is modifying the same transaction, but the order of
 operations is not correct:
