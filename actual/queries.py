@@ -204,7 +204,7 @@ def create_transaction_from_ids(
         notes=notes,
         reconciled=0,
         cleared=int(cleared),
-        sort_order=int(datetime.datetime.utcnow().timestamp()),
+        sort_order=int(datetime.datetime.now(datetime.timezone.utc).timestamp() * 1000),
         financial_id=imported_id,
         imported_description=imported_payee,
     )

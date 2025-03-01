@@ -498,9 +498,7 @@ class Rule(pydantic.BaseModel):
 
     def set_split_amount(self, transaction: Transactions) -> typing.List[Transactions]:
         """Run the rules from setting split amounts."""
-        from actual.queries import (
-            create_split,  # lazy import to prevert circular issues
-        )
+        from actual.queries import create_split  # lazy import to prevert circular issues
 
         # get actions that split the transaction
         split_amount_actions = [action for action in self.actions if action.op == ActionType.SET_SPLIT_AMOUNT]

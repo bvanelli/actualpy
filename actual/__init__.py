@@ -488,10 +488,29 @@ class Actual(ActualServer):
             )
         new_transactions = new_transactions_data.data.transactions.all
         imported_transactions = []
-        for transaction in new_transactions:
+        if is_first_sync:
+            # actual uses 'startingBalance', that already comes in cents and should be enough for our purposes
+            # https://github.com/actualbudget/actual/blob/f09f4af667ddd57e031dcdb0d428ae935aa2afad/packages/loot-core/src/server/accounts/sync.ts#L740-L752
+            balance_to_use = new_transactions_data.data.balance
+            # For simpleFin, the startingBalance is actually the current balance, so we have to use it to deduce the
+            # actual startingBalance
+            if acct.account_sync_source and acct.account_sync_source.lower() == "simplefin":
+                current_balance = new_transactions_data.data.balance
+                balance_to_use = current_balance - sum(t.transaction_amount.amount for t in new_transactions)
+            if balance_to_use:
+                payee = None if acct.offbudget else get_or_create_payee(self.session, "Starting Balance")
+                # get date from the oldest transaction. There seems to be a bug here, and it gets the youngest transaction.
+                oldest_date = new_transactions[-1].date if new_transactions else datetime.date.today()
+                reconciled_transaction = create_transaction(
+                    self.session, oldest_date, acct, payee, notes=None, amount=balance_to_use, cleared=True
+                )
+                reconciled_transaction.starting_balance_flag = 1  # to tell is a starting balance
+                imported_transactions.append(reconciled_transaction)
+        # Consume transactions in the ascending order
+        for transaction in new_transactions[::-1]:
             if not transaction.booked:
                 continue
-            payee = transaction.imported_payee or "" if sync_method == "goCardless" else transaction.notes
+            payee = transaction.payee_name or "" if sync_method == "goCardless" else transaction.notes
             reconciled = reconcile_transaction(
                 self.session,
                 transaction.date,
@@ -506,20 +525,6 @@ class Actual(ActualServer):
             )
             if reconciled.changed():
                 imported_transactions.append(reconciled)
-        if is_first_sync:
-            current_balance = acct.balance
-            # actual uses 'startingBalance', that already comes in cents and should be enough for our purposes
-            # https://github.com/actualbudget/actual/blob/f09f4af667ddd57e031dcdb0d428ae935aa2afad/packages/loot-core/src/server/accounts/sync.ts#L740-L752
-            expected_balance = new_transactions_data.data.balance
-            balance_to_use = expected_balance - current_balance
-            if balance_to_use:
-                payee = None if acct.offbudget else get_or_create_payee(self.session, "Starting Balance")
-                # get date from the oldest transaction. There seems to be a bug here, and it gets the youngest transaction.
-                oldest_date = new_transactions[-1].date if new_transactions else datetime.date.today()
-                reconciled_transaction = create_transaction(
-                    self.session, oldest_date, acct, payee, amount=balance_to_use
-                )
-                imported_transactions.insert(0, reconciled_transaction)
         return imported_transactions
 
     def run_bank_sync(

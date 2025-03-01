@@ -6,6 +6,7 @@ import pytest
 from requests import Session
 
 from actual import Actual, ActualBankSyncError
+from actual.api.bank_sync import TransactionItem
 from actual.database import Banks
 from actual.queries import create_account
 from tests.conftest import RequestsMock
@@ -30,7 +31,9 @@ response = {
                 "valueDate": "2024-06-13",
                 "date": "2024-06-13",
                 "transactionAmount": {"amount": "9.26", "currency": "EUR"},
+                "payeeName": "John Doe",
                 "debtorName": "John Doe",
+                "notes": "Transferring Money",
                 "remittanceInformationUnstructured": "Transferring Money",
                 "booked": True,
             },
@@ -43,6 +46,8 @@ response = {
                 "valueDate": "2024-06-13",
                 "date": "2024-06-13",
                 "transactionAmount": {"amount": "-7.77", "currency": "EUR"},
+                "payeeName": "Institution Gmbh (DE12 XXX 6789)",
+                "notes": "Payment",
                 "creditorName": "Institution GmbH",
                 "creditorAccount": {"iban": "DE123456789"},
                 "remittanceInformationUnstructured": "Payment",
@@ -54,7 +59,7 @@ response = {
             # ignored since booked is set to false, but all required fields are also missing
             {
                 "date": "2024-06-13",
-                "transactionAmount": {"amount": "-7.77", "currency": "EUR"},
+                "transactionAmount": {"amount": "0.00", "currency": "EUR"},
                 "booked": False,
             },
         ],
@@ -116,12 +121,13 @@ def test_full_bank_sync_go_cardless(session, bank_sync_data_match):
         # now try to run the bank sync
         imported_transactions = actual.run_bank_sync()
         session.commit()
-        assert len(imported_transactions) == 2
-        assert imported_transactions[0].financial_id == "208584e9-343f-4831-8095-7b9f4a34a77e"
+        assert len(imported_transactions) == 3
+        assert imported_transactions[0].financial_id is None
         assert imported_transactions[0].get_date() == datetime.date(2024, 6, 13)
-        assert imported_transactions[0].get_amount() == decimal.Decimal("9.26")
-        assert imported_transactions[0].payee.name == "John Doe"
-        assert imported_transactions[0].notes == "Transferring Money"
+        # goCardless provides the correct starting balance
+        assert imported_transactions[0].get_amount() == decimal.Decimal("1.49")
+        assert imported_transactions[0].payee.name == "Starting Balance"
+        assert imported_transactions[0].notes is None
 
         assert imported_transactions[1].financial_id == "a2c2fafe-334a-46a6-8d05-200c2e41397b"
         assert imported_transactions[1].get_date() == datetime.date(2024, 6, 13)
@@ -129,6 +135,15 @@ def test_full_bank_sync_go_cardless(session, bank_sync_data_match):
         # the name of the payee was normalized (from GmbH to Gmbh) and the masked iban is included
         assert imported_transactions[1].payee.name == "Institution Gmbh (DE12 XXX 6789)"
         assert imported_transactions[1].notes == "Payment"
+        # also test the iban generation functions
+        loaded_transaction = TransactionItem.model_validate(response["transactions"]["all"][1])
+        assert imported_transactions[1].payee.name == loaded_transaction.imported_payee
+
+        assert imported_transactions[2].financial_id == "208584e9-343f-4831-8095-7b9f4a34a77e"
+        assert imported_transactions[2].get_date() == datetime.date(2024, 6, 13)
+        assert imported_transactions[2].get_amount() == decimal.Decimal("9.26")
+        assert imported_transactions[2].payee.name == "John Doe"
+        assert imported_transactions[2].notes == "Transferring Money"
 
         # the next call should do nothing
         new_imported_transactions = actual.run_bank_sync()
@@ -140,28 +155,28 @@ def test_full_bank_sync_go_cardless(session, bank_sync_data_match):
 def test_full_bank_sync_go_simplefin(session, bank_sync_data_match):
     with Actual(token="foo") as actual:
         actual._session = session
-        create_accounts(session, "simplefin")
+        create_accounts(session, "simpleFin")
 
         # now try to run the bank sync
         imported_transactions = actual.run_bank_sync("Bank")
         assert len(imported_transactions) == 2
-        assert imported_transactions[0].financial_id == "208584e9-343f-4831-8095-7b9f4a34a77e"
+        assert imported_transactions[0].financial_id == "a2c2fafe-334a-46a6-8d05-200c2e41397b"
         assert imported_transactions[0].get_date() == datetime.date(2024, 6, 13)
-        assert imported_transactions[0].get_amount() == decimal.Decimal("9.26")
-        assert imported_transactions[0].payee.name == "Transferring Money"  # simplefin uses the wrong field
-        assert imported_transactions[0].notes == "Transferring Money"
+        assert imported_transactions[0].get_amount() == decimal.Decimal("-7.77")
+        assert imported_transactions[0].payee.name == "Payment"  # simplefin uses the wrong field
+        assert imported_transactions[0].notes == "Payment"
 
-        assert imported_transactions[1].financial_id == "a2c2fafe-334a-46a6-8d05-200c2e41397b"
+        assert imported_transactions[1].financial_id == "208584e9-343f-4831-8095-7b9f4a34a77e"
         assert imported_transactions[1].get_date() == datetime.date(2024, 6, 13)
-        assert imported_transactions[1].get_amount() == decimal.Decimal("-7.77")
-        assert imported_transactions[1].payee.name == "Payment"  # simplefin uses the wrong field
-        assert imported_transactions[1].notes == "Payment"
+        assert imported_transactions[1].get_amount() == decimal.Decimal("9.26")
+        assert imported_transactions[1].payee.name == "Transferring Money"  # simplefin uses the wrong field
+        assert imported_transactions[1].notes == "Transferring Money"
 
 
 def test_bank_sync_with_starting_balance(session, bank_sync_data_no_match):
     with Actual(token="foo") as actual:
         actual._session = session
-        create_accounts(session, "simplefin")
+        create_accounts(session, "simpleFin")
         # now try to run the bank sync
         imported_transactions = actual.run_bank_sync("Bank")
         assert len(imported_transactions) == 3
