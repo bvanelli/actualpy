@@ -1,3 +1,4 @@
+import zipfile
 from unittest.mock import patch
 
 import pytest
@@ -69,3 +70,15 @@ def test_set_file_exceptions(mocker):
     )
     with pytest.raises(ActualError, match="Multiple files found with identifier 'foo'"):
         actual.set_file("foo")
+
+
+def test_zip_exceptions(mocker, tmp_path):
+    mocker.patch("actual.Actual.validate")
+    mocker.patch("actual.Actual.create_engine")
+    archive = tmp_path / "file.zip"
+    with zipfile.ZipFile(archive, "w"):
+        pass
+    actual = Actual(token="foo")
+    actual.import_zip(archive)
+    # archive will use a normal temp folder since the cloudFileId is missing from metadata
+    assert actual._data_dir.name.startswith("tmp")

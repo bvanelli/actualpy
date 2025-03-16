@@ -6,7 +6,6 @@ import io
 import json
 import pathlib
 import sqlite3
-import tempfile
 import uuid
 import warnings
 import zipfile
@@ -46,6 +45,7 @@ from actual.queries import (
     get_transactions,
     reconcile_transaction,
 )
+from actual.utils.storage import get_tmp_folder
 from actual.version import __version__  # noqa: F401
 
 
@@ -172,15 +172,15 @@ class Actual(ActualServer):
         statements in those files, is not an exact match. It is preferred to create budgets via frontend instead."""
         warnings.warn("Creating budgets via actualpy is not recommended due to custom code migrations.")
         migration_files = self.data_file_index()
+        file_id = str(uuid.uuid4())
         # create folder for the files
         if not self._data_dir:
-            self._data_dir = pathlib.Path(tempfile.mkdtemp())
+            self._data_dir = get_tmp_folder(file_id)
         # first migration file is the default database
         migration = self.data_file(migration_files[0])
         (self._data_dir / "db.sqlite").write_bytes(migration)
         # also write the metadata file with default fields
         random_id = str(uuid.uuid4()).replace("-", "")[:7]
-        file_id = str(uuid.uuid4())
         self.update_metadata(
             {
                 "id": f"My-Finances-{random_id}",
@@ -431,8 +431,14 @@ class Actual(ActualServer):
             zip_file = zipfile.ZipFile(file_bytes)
         except zipfile.BadZipfile as e:
             raise InvalidZipFile(f"Invalid zip file: {e}") from None
+        # try to extract the file_id from the metadata.json
         if not self._data_dir:
-            self._data_dir = pathlib.Path(tempfile.mkdtemp())
+            try:
+                metadata = zip_file.read("metadata.json")
+                file_id = json.loads(metadata).get("cloudFileId", None)
+            except (KeyError, ValueError):
+                file_id = None  # can happen if zip does not contain the file or file is not proper JSON
+            self._data_dir = get_tmp_folder(file_id)
         # this should extract 'db.sqlite' and 'metadata.json' to the folder
         zip_file.extractall(self._data_dir)
         self.create_engine()

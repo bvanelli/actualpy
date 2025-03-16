@@ -139,10 +139,15 @@ def test_redownload_file(actual_server, tmp_path):
     with Actual(f"http://localhost:{port}", password="mypass", bootstrap=True) as actual:
         actual.create_budget("My Budget")
         actual.upload_budget()
+        file_id = actual.get_metadata()["cloudFileId"]
+    # do a normal download and see if the folder matches the fileId that was initially generated
+    with Actual(f"http://localhost:{port}", password="mypass", file="My Budget") as actual:
+        assert str(actual._data_dir).endswith(file_id)
     # download to a certain folder
     with Actual(f"http://localhost:{port}", password="mypass", file="My Budget", data_dir=tmp_path) as actual:
         get_or_create_account(actual.session, "Bank")
         actual.commit()
+        assert not str(actual._data_dir).endswith(file_id)
     # reupload the budget
     with Actual(f"http://localhost:{port}", password="mypass", file="My Budget", data_dir=tmp_path) as actual:
         actual.reupload_budget()
