@@ -654,7 +654,7 @@ def get_budgets(
              When the frontend shows a budget as 0.00, it might not be returned by this method.
     """
     table = _get_budget_table(s)
-    query = select(table).options(joinedload(table.category))
+    query = select(table).options(joinedload(table.category)).order_by(table.month.asc())
     if month:
         month_filter = int(datetime.date.strftime(month, "%Y%m"))
         query = query.filter(table.month == month_filter)
@@ -709,6 +709,58 @@ def create_budget(
     budget.set_amount(amount)
     s.add(budget)
     return budget
+
+
+def get_budgeted_balance(s: Session, month: datetime.date, category: str | Categories) -> decimal.Decimal:
+    """
+    Returns the budgeted balance as shown by the Actual UI under the category for the individual month. Does not take
+    into account previous months.
+
+    :param s: session from Actual local database.
+    :param month: month to get budgets for, as a date for that month. Use `datetime.date.today()` if you want the budget
+                  for current month.
+    :param category:  category to filter for the budget.
+    :return: A decimal representing the budget real balance for the category.
+    """
+
+    budget = get_budget(s, month, category)
+    if not budget:
+        # create a temporary budget
+        budget = create_budget(s, month, category, 0.0)
+        budget_leftover = budget.get_amount() + budget.balance  # we can sum because balance is negative
+        # prevent it from being committed by expunging it, in case it was created
+        s.expunge(budget)
+    else:
+        budget_leftover = budget.get_amount() + budget.balance
+    return budget_leftover
+
+
+def get_accumulated_budgeted_balance(s: Session, month: datetime.date, category: str | Categories) -> decimal.Decimal:
+    """
+    Returns the budgeted balance as shown by the Actual UI under the category. This is calculated by summing all
+    considered budget values and subtracting all transactions for them.
+
+    :param s: session from Actual local database.
+    :param month: month to get budgets for, as a date for that month. Use `datetime.date.today()` if you want the budget
+                  for current month.
+    :param category:  category to filter for the budget.
+    :return: A decimal representing the budget real balance for the category. This is evaluated by adding all
+             previous leftover budgets that have a value greater than 0.
+    """
+    budgets = get_budgets(s, category=category)
+    # the first ever budget is the longest we have to look for when searching for the running balance
+    if not budgets:
+        return get_budgeted_balance(s, month, category)
+    current_month = budgets[0].get_date()
+    accumulated_balance = decimal.Decimal(0)
+    while current_month <= month:
+        if accumulated_balance < 0:
+            accumulated_balance = decimal.Decimal(0)
+        current_month_balance = get_budgeted_balance(s, current_month, category)
+        accumulated_balance += current_month_balance
+        # go to the next month
+        current_month = (current_month.replace(day=1) + datetime.timedelta(days=31)).replace(day=1)
+    return accumulated_balance
 
 
 def create_transfer(
