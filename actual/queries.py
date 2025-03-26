@@ -736,6 +736,10 @@ def get_budgeted_balance(s: Session, month: datetime.date, category: str | Categ
 
 
 def _get_first_positive_transaction(s: Session, category: Categories) -> typing.Optional[Transactions]:
+    """
+    Returns the first positive transaction in a certain category. This is used to find the month to start the
+    budgeting calculation, since it makes the budget positive.
+    """
     query = select(Transactions).where(Transactions.amount > 0, Transactions.category_id == category.id)
     return s.exec(query).first()
 
