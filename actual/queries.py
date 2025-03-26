@@ -735,6 +735,11 @@ def get_budgeted_balance(s: Session, month: datetime.date, category: str | Categ
     return budget_leftover
 
 
+def _get_first_positive_transaction(s: Session, category: Categories) -> typing.Optional[Transactions]:
+    query = select(Transactions).where(Transactions.amount > 0, Transactions.category_id == category.id)
+    return s.exec(query).first()
+
+
 def get_accumulated_budgeted_balance(s: Session, month: datetime.date, category: str | Categories) -> decimal.Decimal:
     """
     Returns the budgeted balance as shown by the Actual UI under the category. This is calculated by summing all
@@ -748,10 +753,19 @@ def get_accumulated_budgeted_balance(s: Session, month: datetime.date, category:
              previous leftover budgets that have a value greater than 0.
     """
     budgets = get_budgets(s, category=category)
+    is_tracking_budget = _get_budget_table(s) is ReflectBudgets
     # the first ever budget is the longest we have to look for when searching for the running balance
-    if not budgets:
+    # If the budget is set to tracking, the accumulated value will always be the months balance
+    if not budgets or is_tracking_budget:
         return get_budgeted_balance(s, month, category)
-    current_month = budgets[0].get_date()
+    first_budget_month = budgets[0].get_date()
+    # Get first positive transaction
+    first_positive_transaction = _get_first_positive_transaction(s, category)
+    first_transaction_month = (
+        first_positive_transaction.get_date() if first_positive_transaction else first_budget_month
+    )
+    # current month is the least of those two dates
+    current_month = min(first_budget_month, first_transaction_month)
     accumulated_balance = decimal.Decimal(0)
     while current_month <= month:
         if accumulated_balance < 0:

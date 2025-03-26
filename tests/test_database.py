@@ -15,6 +15,7 @@ from actual.queries import (
     create_transaction,
     create_transfer,
     get_accounts,
+    get_accumulated_budgeted_balance,
     get_budgets,
     get_or_create_category,
     get_or_create_clock,
@@ -237,6 +238,43 @@ def test_budgets(session, budget_type, budget_table):
     # filtering by budget will raise a warning if get_transactions with budget also provides a start-end outside range
     with pytest.warns(match="Provided date filters"):
         get_transactions(session, date(2024, 9, 1), date(2024, 9, 15), budget=budget)
+
+
+@pytest.mark.parametrize(
+    "budget_type,with_reset,with_previous_value,expected_value_previous_month,expected_value_current_month",
+    [
+        ("rollover", False, False, decimal.Decimal(5), decimal.Decimal(25)),
+        ("rollover", False, True, decimal.Decimal(15), decimal.Decimal(35)),
+        ("rollover", True, True, decimal.Decimal(-5), decimal.Decimal(20)),
+        ("rollover", True, False, decimal.Decimal(-15), decimal.Decimal(20)),
+        ("report", False, True, decimal.Decimal(-5), decimal.Decimal(20)),
+    ],
+)
+def test_accumulated_budget_amount(
+    session, budget_type, with_reset, with_previous_value, expected_value_current_month, expected_value_previous_month
+):
+    get_or_create_preference(session, "budgetType", budget_type)
+
+    category = get_or_create_category(session, "Expenses")
+    bank = create_account(session, "Bank")
+
+    # create three months of budgets
+    create_budget(session, date(2025, 1, 1), category, 20.0)
+    create_budget(session, date(2025, 2, 1), category, 20.0)
+    create_budget(session, date(2025, 3, 1), category, 20.0)
+    # should be considered since is an income before the beginning of the budget period
+    if with_previous_value:
+        create_transaction(session, date(2024, 10, 1), bank, category=category, amount=10.0)
+    # other transactions
+    create_transaction(session, date(2025, 1, 1), bank, category=category, amount=-10.0)
+    create_transaction(session, date(2025, 2, 1), bank, category=category, amount=-10.0)
+    create_transaction(session, date(2025, 2, 3), bank, category=category, amount=-15.0)
+    # should reset rollover budget
+    if with_reset:
+        create_transaction(session, date(2025, 2, 4), bank, category=category, amount=-20.0)
+
+    assert get_accumulated_budgeted_balance(session, date(2025, 2, 1), category) == expected_value_previous_month
+    assert get_accumulated_budgeted_balance(session, date(2025, 3, 1), category) == expected_value_current_month
 
 
 def test_normalize_payee():

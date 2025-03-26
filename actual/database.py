@@ -758,10 +758,13 @@ class BaseBudgets(BaseModel):
     @property
     def balance(self) -> decimal.Decimal:
         """
-        Returns the current balance of the budget.
+        Returns the current **spent** balance of the budget.
 
         The evaluation will take into account the budget month and only selected transactions for the combination month
         and category. Deleted transactions are ignored.
+
+        If you want to get the balance from the frontend, take a look at the query
+        [get_accumulated_budgeted_balance][actual.queries.get_accumulated_budgeted_balance] instead.
         """
         budget_start, budget_end = (int(datetime.date.strftime(d, "%Y%m%d")) for d in self.range)
         value = object_session(self).scalar(
