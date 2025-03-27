@@ -47,6 +47,16 @@ def test_api_login_unknown_error(_post, mocker):
         actual.login("foo")
 
 
+@patch.object(Session, "post", return_value=RequestsMock({}, status_code=403))
+def test_api_login_http_error(_post, mocker):
+    mocker.patch("actual.Actual.validate")
+    actual = Actual(token="foo")
+    actual.api_url = "localhost"
+    actual.cert = False
+    with pytest.raises(AuthorizationError, match="HTTP error '403'"):
+        actual.login("foo")
+
+
 def test_no_certificate(mocker):
     mocker.patch("actual.Actual.validate")
     actual = Actual(token="foo", cert=False)

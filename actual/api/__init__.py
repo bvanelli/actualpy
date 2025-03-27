@@ -95,7 +95,7 @@ class ActualServer:
         elif response.status_code == 200 and "invalid-header" in response.text:
             # try the same login with the header
             return self.login(password, "header")
-        elif response.status_code > 300:
+        elif response.status_code > 400:
             raise AuthorizationError(f"Server returned an HTTP error '{response.status_code}': '{response.text}'")
         response_dict = response.json()
         if response_dict["status"] == "error":
