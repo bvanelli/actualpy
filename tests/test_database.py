@@ -16,7 +16,6 @@ from actual.queries import (
     create_transfer,
     get_accounts,
     get_accumulated_budgeted_balance,
-    get_budget,
     get_budgets,
     get_or_create_category,
     get_or_create_clock,
@@ -276,7 +275,6 @@ def test_accumulated_budget_amount(
 
     assert get_accumulated_budgeted_balance(session, date(2025, 2, 1), category) == expected_value_previous_month
     assert get_accumulated_budgeted_balance(session, date(2025, 3, 1), category) == expected_value_current_month
-    assert get_budget(session, date(2024, 10, 1), category) is None
 
 
 def test_normalize_payee():

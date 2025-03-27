@@ -9,6 +9,7 @@ import warnings
 
 import sqlalchemy
 from pydantic import TypeAdapter
+from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 from sqlalchemy.sql.expression import Select
 from sqlmodel import Session, select
@@ -32,6 +33,7 @@ from actual.database import (
 from actual.exceptions import ActualError
 from actual.protobuf_models import HULC_Client
 from actual.rules import Action, Condition, Rule, RuleSet
+from actual.utils.conversions import cents_to_decimal, current_timestamp, date_to_int, decimal_to_cents, month_range
 from actual.utils.title import title
 
 T = typing.TypeVar("T")
@@ -42,6 +44,7 @@ def _transactions_base_query(
     start_date: datetime.date = None,
     end_date: datetime.date = None,
     account: Accounts | str | None = None,
+    category: Categories | str | None = None,
     include_deleted: bool = False,
 ) -> Select:
     query = (
@@ -63,15 +66,43 @@ def _transactions_base_query(
         )
     )
     if start_date:
-        query = query.filter(Transactions.date >= int(datetime.date.strftime(start_date, "%Y%m%d")))
+        query = query.filter(Transactions.date >= date_to_int(start_date))
     if end_date:
-        query = query.filter(Transactions.date < int(datetime.date.strftime(end_date, "%Y%m%d")))
+        query = query.filter(Transactions.date < date_to_int(end_date))
     if not include_deleted:
         query = query.filter(sqlalchemy.func.coalesce(Transactions.tombstone, 0) == 0)
     if account:
         account = get_account(s, account)
         if account:
             query = query.filter(Transactions.acct == account.id)
+    if category:
+        category = get_category(s, category)
+        if category:
+            query = query.filter(Transactions.category_id == category.id)
+    return query
+
+
+def _balance_base_query(
+    s: Session,
+    start_date: datetime.date,
+    end_date: datetime.date,
+    account: Accounts | str | None = None,
+    category: Categories | str | None = None,
+) -> Select:
+    query = select(func.coalesce(func.sum(Transactions.amount), 0)).where(
+        Transactions.date >= date_to_int(start_date),
+        Transactions.date < date_to_int(end_date),
+        Transactions.is_parent == 0,
+        Transactions.tombstone == 0,
+    )
+    if account:
+        account = get_account(s, account)
+        if account:
+            query = query.filter(Transactions.acct == account.id)
+    if category:
+        category = get_category(s, category)
+        if category:
+            query = query.filter(Transactions.category_id == category.id)
     return query
 
 
@@ -114,7 +145,7 @@ def get_transactions(
                 f"Provided date filters [{start_date}, {end_date}) to get_transactions are outside the bounds of the "
                 f"budget range [{budget_start}, {budget_end}). Results might be empty!"
             )
-        budget_start, budget_end = (int(datetime.date.strftime(d, "%Y%m%d")) for d in budget.range)
+        budget_start, budget_end = (date_to_int(d) for d in budget.range)
         query = query.filter(
             Transactions.date >= budget_start,
             Transactions.date < budget_end,
@@ -194,17 +225,17 @@ def create_transaction_from_ids(
     process_payee: bool = True,
 ) -> Transactions:
     """Internal method to generate a transaction from ids instead of objects."""
-    date_int = int(datetime.date.strftime(date, "%Y%m%d"))
+    date_int = date_to_int(date)
     t = Transactions(
         id=str(uuid.uuid4()),
         acct=account_id,
         date=date_int,
-        amount=int(round(amount * 100)),
+        amount=decimal_to_cents(amount),
         category_id=category_id,
         notes=notes,
         reconciled=0,
         cleared=int(cleared),
-        sort_order=int(datetime.datetime.now(datetime.timezone.utc).timestamp() * 1000),
+        sort_order=current_timestamp(),
         financial_id=imported_id,
         imported_description=imported_payee,
     )
@@ -656,7 +687,7 @@ def get_budgets(
     table = _get_budget_table(s)
     query = select(table).options(joinedload(table.category)).order_by(table.month.asc())
     if month:
-        month_filter = int(datetime.date.strftime(month, "%Y%m"))
+        month_filter = date_to_int(month, month_only=True)
         query = query.filter(table.month == month_filter)
     if category:
         category = get_category(s, category)
@@ -726,12 +757,11 @@ def get_budgeted_balance(s: Session, month: datetime.date, category: str | Categ
     budget = get_budget(s, month, category)
     if not budget:
         # create a temporary budget
-        budget = create_budget(s, month, category, 0.0)
-        budget_leftover = budget.get_amount() + budget.balance  # we can sum because balance is negative
-        # prevent it from being committed by expunging it, in case it was created
-        s.expunge(budget)
+        range_start, range_end = month_range(month)
+        balance = s.scalar(_balance_base_query(s, range_start, range_end, category=category))
+        budget_leftover = cents_to_decimal(balance)
     else:
-        budget_leftover = budget.get_amount() + budget.balance
+        budget_leftover = budget.get_amount() + budget.balance  # we can sum because balance is negative
     return budget_leftover
 
 
