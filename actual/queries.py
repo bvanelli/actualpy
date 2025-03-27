@@ -9,6 +9,7 @@ import warnings
 
 import sqlalchemy
 from pydantic import TypeAdapter
+from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 from sqlalchemy.sql.expression import Select
 from sqlmodel import Session, select
@@ -32,6 +33,7 @@ from actual.database import (
 from actual.exceptions import ActualError
 from actual.protobuf_models import HULC_Client
 from actual.rules import Action, Condition, Rule, RuleSet
+from actual.utils.conversions import cents_to_decimal, current_timestamp, date_to_int, decimal_to_cents, month_range
 from actual.utils.title import title
 
 T = typing.TypeVar("T")
@@ -42,6 +44,7 @@ def _transactions_base_query(
     start_date: datetime.date = None,
     end_date: datetime.date = None,
     account: Accounts | str | None = None,
+    category: Categories | str | None = None,
     include_deleted: bool = False,
 ) -> Select:
     query = (
@@ -63,15 +66,43 @@ def _transactions_base_query(
         )
     )
     if start_date:
-        query = query.filter(Transactions.date >= int(datetime.date.strftime(start_date, "%Y%m%d")))
+        query = query.filter(Transactions.date >= date_to_int(start_date))
     if end_date:
-        query = query.filter(Transactions.date < int(datetime.date.strftime(end_date, "%Y%m%d")))
+        query = query.filter(Transactions.date < date_to_int(end_date))
     if not include_deleted:
         query = query.filter(sqlalchemy.func.coalesce(Transactions.tombstone, 0) == 0)
     if account:
         account = get_account(s, account)
         if account:
             query = query.filter(Transactions.acct == account.id)
+    if category:
+        category = get_category(s, category)
+        if category:
+            query = query.filter(Transactions.category_id == category.id)
+    return query
+
+
+def _balance_base_query(
+    s: Session,
+    start_date: datetime.date,
+    end_date: datetime.date,
+    account: Accounts | str | None = None,
+    category: Categories | str | None = None,
+) -> Select:
+    query = select(func.coalesce(func.sum(Transactions.amount), 0)).where(
+        Transactions.date >= date_to_int(start_date),
+        Transactions.date < date_to_int(end_date),
+        Transactions.is_parent == 0,
+        Transactions.tombstone == 0,
+    )
+    if account:
+        account = get_account(s, account)
+        if account:
+            query = query.filter(Transactions.acct == account.id)
+    if category:
+        category = get_category(s, category)
+        if category:
+            query = query.filter(Transactions.category_id == category.id)
     return query
 
 
@@ -81,6 +112,7 @@ def get_transactions(
     end_date: datetime.date = None,
     notes: str = None,
     account: Accounts | str | None = None,
+    category: Categories | str | None = None,
     is_parent: bool = False,
     include_deleted: bool = False,
     budget: ZeroBudgets | None = None,
@@ -94,6 +126,7 @@ def get_transactions(
     :param notes: optional notes filter for the transactions. This looks for a case-insensitive pattern rather than for
     the exact match, i.e. 'foo' would match 'Foo Bar'.
     :param account: optional account (either Account object or Account name) filter for the transactions.
+    :param category: optional category (either Category object or Category name) filter for the transactions.
     :param is_parent: optional boolean flag to indicate if a transaction is a parent. Parent transactions are either
     single transactions or the main transaction with `Transactions.splits` property. Default is to return all individual
     splits, and the parent can be retrieved by `Transactions.parent`.
@@ -103,7 +136,7 @@ def get_transactions(
                    might hide results.
     :return: list of transactions with `account`, `category` and `payee` preloaded.
     """
-    query = _transactions_base_query(s, start_date, end_date, account, include_deleted)
+    query = _transactions_base_query(s, start_date, end_date, account, category, include_deleted)
     query = query.filter(Transactions.is_parent == int(is_parent))
     if notes:
         query = query.filter(Transactions.notes.ilike(f"%{sqlalchemy.text(notes).compile()}%"))
@@ -114,7 +147,7 @@ def get_transactions(
                 f"Provided date filters [{start_date}, {end_date}) to get_transactions are outside the bounds of the "
                 f"budget range [{budget_start}, {budget_end}). Results might be empty!"
             )
-        budget_start, budget_end = (int(datetime.date.strftime(d, "%Y%m%d")) for d in budget.range)
+        budget_start, budget_end = (date_to_int(d) for d in budget.range)
         query = query.filter(
             Transactions.date >= budget_start,
             Transactions.date < budget_end,
@@ -194,17 +227,17 @@ def create_transaction_from_ids(
     process_payee: bool = True,
 ) -> Transactions:
     """Internal method to generate a transaction from ids instead of objects."""
-    date_int = int(datetime.date.strftime(date, "%Y%m%d"))
+    date_int = date_to_int(date)
     t = Transactions(
         id=str(uuid.uuid4()),
         acct=account_id,
         date=date_int,
-        amount=int(round(amount * 100)),
+        amount=decimal_to_cents(amount),
         category_id=category_id,
         notes=notes,
         reconciled=0,
         cleared=int(cleared),
-        sort_order=int(datetime.datetime.now(datetime.timezone.utc).timestamp() * 1000),
+        sort_order=current_timestamp(),
         financial_id=imported_id,
         imported_description=imported_payee,
     )
@@ -654,9 +687,9 @@ def get_budgets(
              When the frontend shows a budget as 0.00, it might not be returned by this method.
     """
     table = _get_budget_table(s)
-    query = select(table).options(joinedload(table.category))
+    query = select(table).options(joinedload(table.category)).order_by(table.month.asc())
     if month:
-        month_filter = int(datetime.date.strftime(month, "%Y%m"))
+        month_filter = date_to_int(month, month_only=True)
         query = query.filter(table.month == month_filter)
     if category:
         category = get_category(s, category)
@@ -709,6 +742,81 @@ def create_budget(
     budget.set_amount(amount)
     s.add(budget)
     return budget
+
+
+def get_budgeted_balance(s: Session, month: datetime.date, category: str | Categories) -> decimal.Decimal:
+    """
+    Returns the budgeted balance as shown by the Actual UI under the category for the individual month. Does not take
+    into account previous months.
+
+    :param s: session from Actual local database.
+    :param month: month to get budgets for, as a date for that month. Use `datetime.date.today()` if you want the budget
+                  for current month.
+    :param category:  category to filter for the budget.
+    :return: A decimal representing the budget real balance for the category.
+    """
+
+    budget = get_budget(s, month, category)
+    if not budget:
+        # create a temporary budget
+        range_start, range_end = month_range(month)
+        balance = s.scalar(_balance_base_query(s, range_start, range_end, category=category))
+        budget_leftover = cents_to_decimal(balance)
+    else:
+        budget_leftover = budget.get_amount() + budget.balance  # we can sum because balance is negative
+    return budget_leftover
+
+
+def _get_first_positive_transaction(s: Session, category: Categories) -> typing.Optional[Transactions]:
+    """
+    Returns the first positive transaction in a certain category. This is used to find the month to start the
+    budgeting calculation, since it makes the budget positive.
+    """
+    query = select(Transactions).where(Transactions.amount > 0, Transactions.category_id == category.id)
+    return s.exec(query).first()
+
+
+def get_accumulated_budgeted_balance(s: Session, month: datetime.date, category: str | Categories) -> decimal.Decimal:
+    """
+    Returns the budgeted balance as shown by the Actual UI under the category. This is calculated by summing all
+    considered budget values and subtracting all transactions for them.
+
+    When using **envelope budget**, this value will accumulate with each consecutive month that your spending is
+    greater than your budget. If this value goes under 0.00, your budget is reset for the next month.
+
+    When using **tracking budget**, only the current month is considering for savings, so no previous values will carry
+    over.
+
+    :param s: session from Actual local database.
+    :param month: month to get budgets for, as a date for that month. Use `datetime.date.today()` if you want the budget
+                  for current month.
+    :param category:  category to filter for the budget.
+    :return: A decimal representing the budget real balance for the category. This is evaluated by adding all
+             previous leftover budgets that have a value greater than 0.
+    """
+    budgets = get_budgets(s, category=category)
+    is_tracking_budget = _get_budget_table(s) is ReflectBudgets
+    # the first ever budget is the longest we have to look for when searching for the running balance
+    # If the budget is set to tracking, the accumulated value will always be the months balance
+    if not budgets or is_tracking_budget:
+        return get_budgeted_balance(s, month, category)
+    first_budget_month = budgets[0].get_date()
+    # Get first positive transaction
+    first_positive_transaction = _get_first_positive_transaction(s, category)
+    first_transaction_month = (
+        first_positive_transaction.get_date() if first_positive_transaction else first_budget_month
+    )
+    # current month is the least of those two dates
+    current_month = min(first_budget_month, first_transaction_month)
+    accumulated_balance = decimal.Decimal(0)
+    while current_month <= month:
+        if accumulated_balance < 0:
+            accumulated_balance = decimal.Decimal(0)
+        current_month_balance = get_budgeted_balance(s, current_month, category)
+        accumulated_balance += current_month_balance
+        # go to the next month
+        current_month = (current_month.replace(day=1) + datetime.timedelta(days=31)).replace(day=1)
+    return accumulated_balance
 
 
 def create_transfer(

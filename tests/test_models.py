@@ -9,6 +9,7 @@ from actual.database import (
     get_attribute_by_table_name,
     get_class_by_table_name,
 )
+from actual.utils.conversions import current_timestamp
 
 
 def test_get_class_by_table_name():
@@ -34,7 +35,7 @@ def test_conversion():
         amount=1000,
         reconciled=0,
         cleared=0,
-        sort_order=datetime.datetime.utcnow().timestamp(),
+        sort_order=current_timestamp(),
     )
     t.set_amount(10)
     t.set_date(datetime.date(2024, 3, 17))

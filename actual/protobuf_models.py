@@ -49,7 +49,7 @@ class HULC_Client:
         for reference.
         """
         if not now:
-            now = datetime.datetime.utcnow()
+            now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
         count = f"{self.initial_count:0>4X}"
         self.initial_count += 1
         return f"{now.isoformat(timespec='milliseconds')}Z-{count}-{self.client_id}"

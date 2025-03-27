@@ -42,6 +42,7 @@ from sqlmodel import (
 
 from actual.exceptions import ActualInvalidOperationError
 from actual.protobuf_models import HULC_Client, Message
+from actual.utils.conversions import cents_to_decimal, date_to_int, decimal_to_cents, int_to_date, month_range
 
 """
 This variable contains the internal model mappings for all databases. It solves a couple of issues, namely having the
@@ -263,7 +264,7 @@ class Accounts(BaseModel, table=True):
                 Transactions.tombstone == 0,
             )
         )
-        return decimal.Decimal(value) / 100
+        return cents_to_decimal(value)
 
     @property
     def notes(self) -> Optional[str]:
@@ -336,7 +337,7 @@ class Categories(BaseModel, table=True):
                 Transactions.tombstone == 0,
             )
         )
-        return decimal.Decimal(value) / 100
+        return cents_to_decimal(value)
 
 
 class CategoryGroups(BaseModel, table=True):
@@ -525,7 +526,7 @@ class Payees(BaseModel, table=True):
                 Transactions.tombstone == 0,
             )
         )
-        return decimal.Decimal(value) / 100
+        return cents_to_decimal(value)
 
 
 class Preferences(BaseModel, table=True):
@@ -687,19 +688,19 @@ class Transactions(BaseModel, table=True):
 
     def get_date(self) -> datetime.date:
         """Returns the transaction date as a datetime.date object, instead of as a string."""
-        return datetime.datetime.strptime(str(self.date), "%Y%m%d").date()
+        return int_to_date(self.date)
 
     def set_date(self, date: datetime.date):
         """Sets the transaction date as a datetime.date object, instead of as a string."""
-        self.date = int(datetime.date.strftime(date, "%Y%m%d"))
+        self.date = date_to_int(date)
 
     def set_amount(self, amount: Union[decimal.Decimal, int, float]):
         """Sets the amount as a decimal.Decimal object, instead of as an integer representing the number of cents."""
-        self.amount = int(round(amount * 100))
+        self.amount = decimal_to_cents(amount)
 
     def get_amount(self) -> decimal.Decimal:
         """Returns the amount as a decimal.Decimal, instead of as an integer representing the number of cents."""
-        return decimal.Decimal(self.amount) / decimal.Decimal(100)
+        return cents_to_decimal(self.amount)
 
 
 class ZeroBudgetMonths(SQLModel, table=True):
@@ -724,7 +725,7 @@ class BaseBudgets(BaseModel):
 
     def get_date(self) -> datetime.date:
         """Returns the transaction date as a datetime.date object, instead of as a string."""
-        return datetime.datetime.strptime(str(self.month), "%Y%m").date()
+        return int_to_date(self.month, month_only=True)
 
     def set_date(self, date: datetime.date):
         """
@@ -733,15 +734,15 @@ class BaseBudgets(BaseModel):
         If the date value contains a day, it will be truncated and only the month and year will be inserted, as the
         budget applies to a month.
         """
-        self.month = int(datetime.date.strftime(date, "%Y%m"))
+        self.month = date_to_int(date, month_only=True)
 
     def set_amount(self, amount: Union[decimal.Decimal, int, float]):
         """Sets the amount as a decimal.Decimal object, instead of as an integer representing the number of cents."""
-        self.amount = int(round(amount * 100))
+        self.amount = decimal_to_cents(amount)
 
     def get_amount(self) -> decimal.Decimal:
         """Returns the amount as a decimal.Decimal, instead of as an integer representing the number of cents."""
-        return decimal.Decimal(self.amount) / decimal.Decimal(100)
+        return cents_to_decimal(self.amount)
 
     @property
     def range(self) -> Tuple[datetime.date, datetime.date]:
@@ -750,20 +751,20 @@ class BaseBudgets(BaseModel):
 
         The end date is not inclusive, as it represents the start of the next month.
         """
-        budget_start = self.get_date().replace(day=1)
-        # conversion taken from https://stackoverflow.com/a/59199379/12681470
-        budget_end = (budget_start + datetime.timedelta(days=32)).replace(day=1)
-        return budget_start, budget_end
+        return month_range(self.get_date())
 
     @property
     def balance(self) -> decimal.Decimal:
         """
-        Returns the current balance of the budget.
+        Returns the current **spent** balance of the budget.
 
         The evaluation will take into account the budget month and only selected transactions for the combination month
         and category. Deleted transactions are ignored.
+
+        If you want to get the balance from the frontend, take a look at the query
+        [get_accumulated_budgeted_balance][actual.queries.get_accumulated_budgeted_balance] instead.
         """
-        budget_start, budget_end = (int(datetime.date.strftime(d, "%Y%m%d")) for d in self.range)
+        budget_start, budget_end = (date_to_int(d) for d in self.range)
         value = object_session(self).scalar(
             select(func.coalesce(func.sum(Transactions.amount), 0)).where(
                 Transactions.category_id == self.category_id,
@@ -773,7 +774,7 @@ class BaseBudgets(BaseModel):
                 Transactions.tombstone == 0,
             )
         )
-        return decimal.Decimal(value) / 100
+        return cents_to_decimal(value)
 
 
 class ReflectBudgets(BaseBudgets, table=True):

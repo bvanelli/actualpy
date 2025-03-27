@@ -90,13 +90,15 @@ class ActualServer:
                 json={"loginMethod": method},
                 headers={"X-ACTUAL-PASSWORD": password},
             )
-        response_dict = response.json()
         if response.status_code == 400 and "invalid-password" in response.text:
             raise AuthorizationError("Could not validate password on login.")
         elif response.status_code == 200 and "invalid-header" in response.text:
             # try the same login with the header
             return self.login(password, "header")
-        elif response_dict["status"] == "error":
+        elif response.status_code > 400:
+            raise AuthorizationError(f"Server returned an HTTP error '{response.status_code}': '{response.text}'")
+        response_dict = response.json()
+        if response_dict["status"] == "error":
             # for example, when not trusting the proxy
             raise AuthorizationError(f"Something went wrong on login: {response_dict['reason']}")
         login_response = LoginDTO.model_validate(response.json())
