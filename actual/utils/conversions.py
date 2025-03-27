@@ -40,7 +40,7 @@ def month_range(month: datetime.date) -> Tuple[datetime.date, datetime.date]:
 
 def current_timestamp() -> int:
     """Returns the current timestamp in milliseconds, using UTC time."""
-    return int(datetime.datetime.now(datetime.timezone.utc).timestamp() * 1000)
+    return int(datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).timestamp() * 1000)
 
 
 def cents_to_decimal(amount: int) -> decimal.Decimal:
