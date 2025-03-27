@@ -150,6 +150,9 @@ def test_create_splits(session):
     parents = get_transactions(session, is_parent=True)
     assert len(parents) == 1
     assert len(parents[0].splits) == 2
+    # find all with category
+    category = get_transactions(session, category="Dining")
+    assert len(category) == 1
 
 
 def test_create_splits_error(session):
