@@ -112,6 +112,7 @@ def get_transactions(
     end_date: datetime.date = None,
     notes: str = None,
     account: Accounts | str | None = None,
+    category: Categories | str | None = None,
     is_parent: bool = False,
     include_deleted: bool = False,
     budget: ZeroBudgets | None = None,
@@ -125,6 +126,7 @@ def get_transactions(
     :param notes: optional notes filter for the transactions. This looks for a case-insensitive pattern rather than for
     the exact match, i.e. 'foo' would match 'Foo Bar'.
     :param account: optional account (either Account object or Account name) filter for the transactions.
+    :param category: optional category (either Category object or Category name) filter for the transactions.
     :param is_parent: optional boolean flag to indicate if a transaction is a parent. Parent transactions are either
     single transactions or the main transaction with `Transactions.splits` property. Default is to return all individual
     splits, and the parent can be retrieved by `Transactions.parent`.
@@ -134,7 +136,7 @@ def get_transactions(
                    might hide results.
     :return: list of transactions with `account`, `category` and `payee` preloaded.
     """
-    query = _transactions_base_query(s, start_date, end_date, account, include_deleted)
+    query = _transactions_base_query(s, start_date, end_date, account, category, include_deleted)
     query = query.filter(Transactions.is_parent == int(is_parent))
     if notes:
         query = query.filter(Transactions.notes.ilike(f"%{sqlalchemy.text(notes).compile()}%"))
@@ -778,6 +780,12 @@ def get_accumulated_budgeted_balance(s: Session, month: datetime.date, category:
     """
     Returns the budgeted balance as shown by the Actual UI under the category. This is calculated by summing all
     considered budget values and subtracting all transactions for them.
+
+    When using **envelope budget**, this value will accumulate with each consecutive month that your spending is
+    greater than your budget. If this value goes under 0.00, your budget is reset for the next month.
+
+    When using **tracking budget**, only the current month is considering for savings, so no previous values will carry
+    over.
 
     :param s: session from Actual local database.
     :param month: month to get budgets for, as a date for that month. Use `datetime.date.today()` if you want the budget
