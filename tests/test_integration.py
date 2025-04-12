@@ -22,7 +22,7 @@ from actual.queries import (
     get_transactions,
 )
 
-VERSIONS = ["25.3.0"]
+VERSIONS = ["25.4.0"]
 
 
 @pytest.fixture(params=VERSIONS)  # todo: support multiple versions at once
@@ -174,8 +174,8 @@ def test_models(actual_server):
 
 def test_header_login():
     with (
-        DockerContainer(f"actualbudget/actual-server:{VERSIONS[-1]}")
-        .with_env("ACTUAL_LOGIN_METHOD", "header")
+        DockerContainer(f"actualbudget/actual-server:{VERSIONS[-1]}").with_env("ACTUAL_LOGIN_METHOD", "header")
+        # .with_env("ACTUAL_TRUSTED_PROXIES", "0.0.0.0/1")
         .with_exposed_ports(5006) as container
     ):
         port = container.get_exposed_port(5006)
