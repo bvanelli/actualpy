@@ -83,7 +83,10 @@ class ActualServer:
         if not password:
             raise AuthorizationError("Trying to login but not password was provided.")
         if method == "password":
-            response = self._requests_session.post(f"{self.api_url}/{Endpoints.LOGIN}", json={"password": password})
+            response = self._requests_session.post(
+                f"{self.api_url}/{Endpoints.LOGIN}",
+                json={"loginMethod": method, "password": password},
+            )
         else:
             response = self._requests_session.post(
                 f"{self.api_url}/{Endpoints.LOGIN}",
