@@ -2,9 +2,17 @@
 services:
   actual:
     container_name: actual
-    image: docker.io/actualbudget/actual-server:25.3.0
+    image: docker.io/actualbudget/actual-server:25.4.0
     ports:
       - '5006:5006'
     volumes:
       - ./actual-data:/data
+    restart: unless-stopped
+  homeassistant:
+    container_name: homeassistant
+    image: ghcr.io/home-assistant/home-assistant:stable
+    ports:
+      - "8123:8123"
+    volumes:
+      - ./ha-config:/config
     restart: unless-stopped
