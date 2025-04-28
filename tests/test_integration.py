@@ -173,9 +173,10 @@ def test_models(actual_server):
 
 
 def test_header_login():
+    working_version = "25.3.0"
     with (
-        DockerContainer(f"actualbudget/actual-server:{VERSIONS[-1]}").with_env("ACTUAL_LOGIN_METHOD", "header")
-        # .with_env("ACTUAL_TRUSTED_PROXIES", "0.0.0.0/1")
+        DockerContainer(f"actualbudget/actual-server:{working_version}")
+        .with_env("ACTUAL_LOGIN_METHOD", "header")
         .with_exposed_ports(5006) as container
     ):
         port = container.get_exposed_port(5006)
