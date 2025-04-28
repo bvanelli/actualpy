@@ -236,6 +236,7 @@ class Accounts(BaseModel, table=True):
     type: Optional[str] = Field(default=None, sa_column=Column("type", Text))
     account_sync_source: Optional[str] = Field(default=None, sa_column=Column("account_sync_source", Text))
     last_sync: Optional[str] = Field(default=None, sa_column=Column("last_sync", Text))
+    last_reconciled: Optional[str] = Field(default=None, sa_column=Column("last_reconciled", Text))
 
     payee: "Payees" = Relationship(back_populates="account", sa_relationship_kwargs={"uselist": False})
     transactions: List["Transactions"] = Relationship(

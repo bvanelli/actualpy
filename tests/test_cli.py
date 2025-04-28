@@ -14,7 +14,7 @@ from actual.cli.config import Config, default_config_path
 from actual.queries import create_account, create_transaction
 
 runner = CliRunner()
-server_version = "25.3.0"
+server_version = "25.4.0"
 
 
 def base_dataset(actual: Actual, budget_name: str = "Test", encryption_password: str = None):
