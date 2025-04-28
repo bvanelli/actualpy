@@ -8,11 +8,3 @@ services:
     volumes:
       - ./actual-data:/data
     restart: unless-stopped
-  homeassistant:
-    container_name: homeassistant
-    image: ghcr.io/home-assistant/home-assistant:stable
-    ports:
-      - "8123:8123"
-    volumes:
-      - ./ha-config:/config
-    restart: unless-stopped
