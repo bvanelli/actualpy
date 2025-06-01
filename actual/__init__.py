@@ -55,6 +55,7 @@ class Actual(ActualServer):
         base_url: str = "http://localhost:5006",
         token: str = None,
         password: str = None,
+        extra_headers: dict[str, str] = None,
         file: str = None,
         encryption_password: str = None,
         data_dir: Union[str, pathlib.Path] = None,
@@ -72,6 +73,7 @@ class Actual(ActualServer):
         :param base_url: url of the running Actual server
         :param token: the token for authentication, if this is available (optional)
         :param password: the password for authentication. It will be used on the .login() method to retrieve the token.
+        :param extra_headers: additional headers to be attached to each request to the Actual server
         :param file: the name or id of the file to be set
         :param encryption_password: password used to configure encryption, if existing
         :param data_dir: where to store the downloaded files from the server. If not specified, a temporary folder will
@@ -84,7 +86,7 @@ class Actual(ActualServer):
         by default), `autocommit` (disabled by default). For a list of all parameters, check the [SQLAlchemy
         documentation.](https://docs.sqlalchemy.org/en/20/orm/session_api.html#sqlalchemy.orm.Session.__init__)
         """
-        super().__init__(base_url, token, password, bootstrap, cert)
+        super().__init__(base_url, token, password, extra_headers, bootstrap, cert)
         self._file: RemoteFileListDTO | None = None
         self._data_dir = pathlib.Path(data_dir) if data_dir else None
         self.engine = None

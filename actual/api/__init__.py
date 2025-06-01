@@ -38,6 +38,7 @@ class ActualServer:
         base_url: str = "http://localhost:5006",
         token: str = None,
         password: str = None,
+        extra_headers: dict[str, str] = None,
         bootstrap: bool = False,
         cert: str | bool = None,
     ):
@@ -49,6 +50,7 @@ class ActualServer:
         :param token: the token for authentication, if this is available (optional)
         :param password: the password for authentication. It will be used on the .login() method to retrieve the token.
         be created instead.
+        :param extra_headers: additional headers to be attached to each request to the Actual server
         :param bootstrap: if the server is not bootstrapped, bootstrap it with the password.
         :param cert: if a custom certificate should be used (i.e. self-signed certificate), it's path can be provided
                      as a string. Set to `False` for no certificate check.
@@ -56,6 +58,8 @@ class ActualServer:
         self.api_url: str = base_url
         self._token: str | None = token
         self._requests_session: requests.Session = requests.Session()
+        if extra_headers:
+            self._requests_session.headers = extra_headers
         if cert is not None:
             self._requests_session.verify = cert
         if token is None and password is None:
@@ -66,7 +70,7 @@ class ActualServer:
         elif password:
             self.login(password)
         # set default headers for the connection
-        self._requests_session.headers = self.headers()
+        self._requests_session.headers.update(self.headers())
         # finally call validate
         self.validate()
 
