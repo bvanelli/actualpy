@@ -38,9 +38,9 @@ class ActualServer:
         base_url: str = "http://localhost:5006",
         token: str = None,
         password: str = None,
-        extra_headers: dict[str, str] = None,
         bootstrap: bool = False,
         cert: str | bool = None,
+        extra_headers: dict[str, str] = None,
     ):
         """
         Implements the low-level API for interacting with the Actual server by just implementing the API calls and
@@ -50,10 +50,10 @@ class ActualServer:
         :param token: the token for authentication, if this is available (optional)
         :param password: the password for authentication. It will be used on the .login() method to retrieve the token.
         be created instead.
-        :param extra_headers: additional headers to be attached to each request to the Actual server
         :param bootstrap: if the server is not bootstrapped, bootstrap it with the password.
         :param cert: if a custom certificate should be used (i.e. self-signed certificate), it's path can be provided
                      as a string. Set to `False` for no certificate check.
+        :param extra_headers: additional headers to be attached to each request to the Actual server
         """
         self.api_url: str = base_url
         self._token: str | None = token
