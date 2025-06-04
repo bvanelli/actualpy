@@ -92,3 +92,10 @@ def test_zip_exceptions(mocker, tmp_path):
     actual.import_zip(archive)
     # archive will use a normal temp folder since the cloudFileId is missing from metadata
     assert actual._data_dir.name.startswith("tmp")
+
+
+def test_api_extra_headers(mocker):
+    mocker.patch("actual.Actual.validate")
+    actual = Actual(token="foo", extra_headers={"foo": "bar"})
+    assert actual._requests_session.headers["foo"] == "bar"
+    assert actual._requests_session.headers["X-ACTUAL-TOKEN"] == "foo"
