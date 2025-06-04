@@ -61,6 +61,7 @@ class Actual(ActualServer):
         cert: str | bool = None,
         bootstrap: bool = False,
         sa_kwargs: dict = None,
+        extra_headers: dict[str, str] = None,
     ):
         """
         Implements the Python API for the Actual Server in order to be able to read and modify information on Actual
@@ -83,8 +84,9 @@ class Actual(ActualServer):
         :param sa_kwargs: additional kwargs passed to the SQLAlchemy session maker. Examples are `autoflush` (enabled
         by default), `autocommit` (disabled by default). For a list of all parameters, check the [SQLAlchemy
         documentation.](https://docs.sqlalchemy.org/en/20/orm/session_api.html#sqlalchemy.orm.Session.__init__)
+        :param extra_headers: additional headers to be attached to each request to the Actual server
         """
-        super().__init__(base_url, token, password, bootstrap, cert)
+        super().__init__(base_url, token, password, bootstrap, cert, extra_headers)
         self._file: RemoteFileListDTO | None = None
         self._data_dir = pathlib.Path(data_dir) if data_dir else None
         self.engine = None
