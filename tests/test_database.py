@@ -200,7 +200,7 @@ def test_rule_insertion_method(session):
 
 @pytest.mark.parametrize(
     "budget_type,budget_table",
-    [("rollover", ZeroBudgets), ("report", ReflectBudgets)],
+    [("rollover", ZeroBudgets), ("report", ReflectBudgets), ("envelope", ZeroBudgets), ("tracking", ReflectBudgets)],
 )
 def test_budgets(session, budget_type, budget_table):
     # set the config
@@ -246,11 +246,11 @@ def test_budgets(session, budget_type, budget_table):
 @pytest.mark.parametrize(
     "budget_type,with_reset,with_previous_value,expected_value_previous_month,expected_value_current_month",
     [
-        ("rollover", False, False, decimal.Decimal(5), decimal.Decimal(25)),
-        ("rollover", False, True, decimal.Decimal(15), decimal.Decimal(35)),
-        ("rollover", True, True, decimal.Decimal(-5), decimal.Decimal(20)),
-        ("rollover", True, False, decimal.Decimal(-15), decimal.Decimal(20)),
-        ("report", False, True, decimal.Decimal(-5), decimal.Decimal(20)),
+        ("envelope", False, False, decimal.Decimal(5), decimal.Decimal(25)),
+        ("envelope", False, True, decimal.Decimal(15), decimal.Decimal(35)),
+        ("envelope", True, True, decimal.Decimal(-5), decimal.Decimal(20)),
+        ("envelope", True, False, decimal.Decimal(-15), decimal.Decimal(20)),
+        ("tracking", False, True, decimal.Decimal(-5), decimal.Decimal(20)),
     ],
 )
 def test_accumulated_budget_amount(

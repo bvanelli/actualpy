@@ -656,16 +656,16 @@ def _get_budget_table(s: Session) -> typing.Type[typing.Union[ReflectBudgets, Ze
     """
     Finds out which type of budget the user uses. The types are:
 
-    - Envelope budgeting (default, recommended): `budgetType` is `rollover`, table is ZeroBudgets
-    - Tracking budgeting: `budgetType` is `report`, table is `ReflectBudgets`
+    - Envelope budgeting (default, recommended): `budgetType` is `rollover` or `envelope`, table is ZeroBudgets
+    - Tracking budgeting: `budgetType` is `report` or `tracking`, table is `ReflectBudgets`
 
     :param s: session from Actual local database.
     :return: table object for the budget type, based on the preferences.
     """
     budget_type = get_preference(s, "budgetType")
-    if budget_type and budget_type.value == "report":
+    if budget_type and budget_type.value in ("report", "tracking"):
         return ReflectBudgets
-    else:  # budgetType is rollover
+    else:  # budgetType is rollover or envelope
         return ZeroBudgets
 
 
