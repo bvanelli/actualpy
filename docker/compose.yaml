@@ -2,7 +2,7 @@
 services:
   actual:
     container_name: actual
-    image: docker.io/actualbudget/actual-server:25.4.0
+    image: docker.io/actualbudget/actual-server:25.7.1
     ports:
       - '5006:5006'
     volumes:
