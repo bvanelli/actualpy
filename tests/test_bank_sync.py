@@ -163,13 +163,13 @@ def test_full_bank_sync_go_simplefin(session, bank_sync_data_match):
         assert imported_transactions[0].financial_id == "a2c2fafe-334a-46a6-8d05-200c2e41397b"
         assert imported_transactions[0].get_date() == datetime.date(2024, 6, 13)
         assert imported_transactions[0].get_amount() == decimal.Decimal("-7.77")
-        assert imported_transactions[0].payee.name == "Payment"  # simplefin uses the wrong field
+        assert imported_transactions[0].payee.name == "Institution Gmbh (DE12 XXX 6789)"
         assert imported_transactions[0].notes == "Payment"
 
         assert imported_transactions[1].financial_id == "208584e9-343f-4831-8095-7b9f4a34a77e"
         assert imported_transactions[1].get_date() == datetime.date(2024, 6, 13)
         assert imported_transactions[1].get_amount() == decimal.Decimal("9.26")
-        assert imported_transactions[1].payee.name == "Transferring Money"  # simplefin uses the wrong field
+        assert imported_transactions[1].payee.name == "John Doe"
         assert imported_transactions[1].notes == "Transferring Money"
 
 

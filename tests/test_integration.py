@@ -156,6 +156,21 @@ def test_redownload_file(actual_server, tmp_path):
             pass
 
 
+def test_reset_password(actual_server):
+    port = actual_server.get_exposed_port(5006)
+    with Actual(f"http://localhost:{port}", password="mypass", bootstrap=True) as actual:
+        actual.create_budget("My Budget")
+        actual.upload_budget()
+        actual.reset_password("mynewpass")
+        response = actual.list_user_files()
+        assert len(response.data) == 1
+    with Actual(f"http://localhost:{port}", password="mynewpass"):
+        assert len(actual.list_user_files().data) == 1
+        with pytest.raises(AuthorizationError):
+            # login with old password should fail
+            actual.login("mypass")
+
+
 def test_models(actual_server):
     port = actual_server.get_exposed_port(5006)
     with Actual(f"http://localhost:{port}", password="mypass", encryption_password="mypass", bootstrap=True) as actual:
