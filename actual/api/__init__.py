@@ -74,7 +74,7 @@ class ActualServer:
         # finally call validate
         self.validate()
 
-    def login(self, password: str, method: Literal["password", "header"] = "password") -> LoginDTO:
+    def login(self, password: str, method: Literal["password", "header", "openid"] = "password") -> LoginDTO:
         """
         Logs in on the Actual server using the password provided. Raises `AuthorizationError` if it fails to
         authenticate the user.
@@ -91,12 +91,28 @@ class ActualServer:
                 f"{self.api_url}/{Endpoints.LOGIN}",
                 json={"loginMethod": method, "password": password},
             )
-        else:
+        elif method == "header":
             response = self._requests_session.post(
                 f"{self.api_url}/{Endpoints.LOGIN}",
                 json={"loginMethod": method},
                 headers={"X-ACTUAL-PASSWORD": password},
             )
+        else:  # OpenID
+            from actual.utils.openid import AuthCodeReceiver
+
+            with AuthCodeReceiver() as receiver:
+                redirect_url = f"http://localhost:{receiver.get_port()}"
+                response = self._requests_session.post(
+                    f"{self.api_url}/{Endpoints.LOGIN}",
+                    json={"loginMethod": method, "password": password, "returnUrl": redirect_url},
+                    headers={"X-ACTUAL-OPENID": password},
+                )
+                login_response = LoginDTO.model_validate(response.json())
+                auth_response = receiver.get_auth_response(auth_uri=login_response.data.return_url).get("token")
+                if not auth_response:
+                    raise AuthorizationError("Could not validate password on login.")
+                self._token = auth_response
+                return login_response
         if response.status_code == 400 and "invalid-password" in response.text:
             raise AuthorizationError("Could not validate password on login.")
         elif response.status_code == 200 and "invalid-header" in response.text:

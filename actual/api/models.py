@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import enum
-from typing import List, Optional, Union
+from typing import Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, TypeAdapter
 
@@ -38,6 +38,11 @@ class Endpoints(enum.Enum):
     BANK_SYNC_STATUS = "{bank_sync}/status"
     BANK_SYNC_ACCOUNTS = "{bank_sync}/accounts"
     BANK_SYNC_TRANSACTIONS = "{bank_sync}/transactions"
+    # OpenID related
+    OPEN_ID_OWNER_CREATED = "admin/owner-created/"  # returns a bool, no model required
+    OPEN_ID_CONFIG = "openid/config"
+    OPEN_ID_CALLBACK = "openid-cb"
+    OPEN_ID_USERS = "admin/users/"
 
     def __str__(self):
         return self.value
@@ -63,7 +68,11 @@ class ErrorStatusDTO(BaseModel):
 
 
 class TokenDTO(BaseModel):
-    token: Optional[str]
+    """Here, if you try to log in with a password, you will get a token, and if you try to log in with an OpenID,
+    you will get a return_url."""
+
+    token: Optional[str] = None
+    return_url: Optional[str] = Field(None, alias="returnUrl")
 
 
 class LoginDTO(StatusDTO):
@@ -76,6 +85,12 @@ class UploadUserFileDTO(StatusDTO):
 
 class IsValidatedDTO(BaseModel):
     validated: Optional[bool]
+    # optional OpenID fields
+    user_name: Optional[str] = Field(None, alias="userName")
+    permission: Optional[str] = None
+    user_id: Optional[str] = Field(None, alias="userId")
+    display_name: Optional[str] = Field(None, alias="displayName")
+    login_method: Optional[str] = Field(default="password", alias="loginMethod")
 
 
 class ValidateDTO(StatusDTO):
@@ -112,6 +127,9 @@ class FileDTO(BaseModel):
 
 class RemoteFileListDTO(FileDTO):
     encrypt_key_id: Optional[str] = Field(..., alias="encryptKeyId")
+    # optional OpenId fields
+    owner: Optional[str] = None
+    users_with_access: Optional[List[str]] = Field(default_factory=list, alias="usersWithAccess")
 
 
 class RemoteFileDTO(FileDTO):
@@ -140,8 +158,17 @@ class InfoDTO(BaseModel):
     build: BuildDTO
 
 
+class LoginMethodDTO(BaseModel):
+    method: str
+    active: bool
+    display_name: str = Field(..., alias="displayName")
+
+
 class IsBootstrapedDTO(BaseModel):
     bootstrapped: bool
+    login_method: Optional[str] = Field(default="password", alias="loginMethod")
+    multi_user: Optional[bool] = Field(default=False, alias="multiuser")
+    available_login_methods: Optional[List[LoginMethodDTO]] = Field(default=None, alias="availableLoginMethods")
 
 
 class BootstrapInfoDTO(StatusDTO):
@@ -166,6 +193,36 @@ class BankSyncTransactionResponseDTO(StatusDTO):
 
 class BankSyncErrorDTO(StatusDTO):
     data: BankSyncErrorData
+
+
+class IssuerConfig(BaseModel):
+    name: str = Field(..., description="Friendly name for the issuer")
+    authorization_endpoint: str = Field(..., description="Authorization endpoint URL")
+    token_endpoint: str = Field(..., description="Token endpoint URL")
+    userinfo_endpoint: str = Field(..., description="User info endpoint URL")
+
+
+class OpenIDConfigDTO(BaseModel):
+    doc: str = Field(default="OpenID authentication settings.", description="Documentation string")
+    discovery_url: Optional[str]
+    issuer: Optional[IssuerConfig]
+    client_id: str
+    client_secret: str
+    server_hostname: str
+    auth_method: Literal["openid", "oauth2"]
+
+
+class OpenIDConfigResponseDTO(StatusDTO):
+    data: Dict[str, OpenIDConfigDTO]
+
+
+class OpenIDBootstrapDTO(BaseModel):
+    client_id: str = Field(..., description="OAuth2 client ID")
+    client_secret: str = Field(..., description="OAuth2 client secret")
+    discovery_url: Optional[IssuerConfig] = Field(
+        default=None, alias="discoveryURL", description="OpenID discovery URL"
+    )
+    server_hostname: str
 
 
 BankSyncAccountResponseDTO = TypeAdapter(Union[BankSyncErrorDTO, BankSyncAccountDTO])
