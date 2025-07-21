@@ -19,6 +19,13 @@ from urllib.parse import parse_qs, urlparse
 logger = logging.getLogger(__name__)
 
 
+"""
+The following code is adapted from:
+
+https://github.com/AzureAD/microsoft-authentication-library-for-python/blob/70fd4d1599fc15c876c8eaccd29b9f7ae73fecd6/msal/oauth2cli/authcode.py#L30
+"""
+
+
 def obtain_auth_code(listen_port: int, auth_uri: str = None):
     with AuthCodeReceiver(port=listen_port) as receiver:
         return receiver.get_auth_response(

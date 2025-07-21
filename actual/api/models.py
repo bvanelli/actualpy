@@ -41,7 +41,6 @@ class Endpoints(enum.Enum):
     # OpenID related
     OPEN_ID_OWNER_CREATED = "admin/owner-created/"  # returns a bool, no model required
     OPEN_ID_CONFIG = "openid/config"
-    OPEN_ID_CALLBACK = "openid-cb"
     OPEN_ID_USERS = "admin/users/"
 
     def __str__(self):
@@ -223,6 +222,23 @@ class OpenIDBootstrapDTO(BaseModel):
         default=None, alias="discoveryURL", description="OpenID discovery URL"
     )
     server_hostname: str
+
+
+class OpenIDUserDTO(BaseModel):
+    id: str
+    user_name: str = Field(..., alias="userName")
+    display_name: str = Field(..., alias="displayName")
+    enabled: bool
+    owner: bool
+    role: str = Field(..., description="User role (ADMIN or BASIC)")
+
+
+class OpenIDDeleteUserDTO(BaseModel):
+    some_deletions_failed: bool = Field(..., alias="someDeletionsFailed")
+
+
+class OpenIDDeleteUserResponseDTO(StatusDTO):
+    data: OpenIDDeleteUserDTO
 
 
 BankSyncAccountResponseDTO = TypeAdapter(Union[BankSyncErrorDTO, BankSyncAccountDTO])

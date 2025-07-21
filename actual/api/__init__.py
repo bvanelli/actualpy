@@ -18,6 +18,9 @@ from actual.api.models import (
     InfoDTO,
     ListUserFilesDTO,
     LoginDTO,
+    OpenIDConfigDTO,
+    OpenIDDeleteUserResponseDTO,
+    OpenIDUserDTO,
     StatusDTO,
     UploadUserFileDTO,
     UserGetKeyDTO,
@@ -84,7 +87,7 @@ class ActualServer:
         https://actualbudget.org/docs/advanced/http-header-auth/) for information.
         :raises AuthorizationError: if the token is invalid.
         """
-        if not password:
+        if not password and method != "openid":
             raise AuthorizationError("Trying to login but not password was provided.")
         if method == "password":
             response = self._requests_session.post(
@@ -97,20 +100,24 @@ class ActualServer:
                 json={"loginMethod": method},
                 headers={"X-ACTUAL-PASSWORD": password},
             )
-        else:  # OpenID
+        else:  # OpenID, lazy import
             from actual.utils.openid import AuthCodeReceiver
+
+            # check first if the openid server is created
+            if not self.is_open_id_owner_created():
+                raise AuthorizationError("OpenID server is not set-up.")
 
             with AuthCodeReceiver() as receiver:
                 redirect_url = f"http://localhost:{receiver.get_port()}"
                 response = self._requests_session.post(
                     f"{self.api_url}/{Endpoints.LOGIN}",
                     json={"loginMethod": method, "password": password, "returnUrl": redirect_url},
-                    headers={"X-ACTUAL-OPENID": password},
                 )
+                response.raise_for_status()
                 login_response = LoginDTO.model_validate(response.json())
                 auth_response = receiver.get_auth_response(auth_uri=login_response.data.return_url).get("token")
                 if not auth_response:
-                    raise AuthorizationError("Could not validate password on login.")
+                    raise AuthorizationError("Could not authenticate with Open ID.")
                 self._token = auth_response
                 return login_response
         if response.status_code == 400 and "invalid-password" in response.text:
@@ -296,6 +303,86 @@ class ActualServer:
         response.raise_for_status()
         parsed_response = SyncResponse.deserialize(response.content)
         return parsed_response  # noqa
+
+    def is_open_id_owner_created(self) -> bool:
+        """Checks if the owner has been created on the OpenID server. This endpoint is non-authorized, which means
+        you can access it even if the user is not logged in."""
+        response = self._requests_session.get(f"{self.api_url}/{Endpoints.OPEN_ID_OWNER_CREATED}")
+        response.raise_for_status()
+        return response.json()
+
+    def open_id_config(self) -> OpenIDConfigDTO:
+        """Gets the OpenID configuration for the server."""
+        response = self._requests_session.get(f"{self.api_url}/{Endpoints.OPEN_ID_CONFIG}")
+        response.raise_for_status()
+        return OpenIDConfigDTO.model_validate(response.json())
+
+    def open_id_users(self) -> List[OpenIDUserDTO]:
+        """Returns the list of OpenID users on the server."""
+        response = self._requests_session.get(f"{self.api_url}/{Endpoints.OPEN_ID_USERS}")
+        response.raise_for_status()
+        return [OpenIDUserDTO.model_validate(entry) for entry in response.json()]
+
+    def create_open_id_user(
+        self,
+        user_name: str,
+        display_name: str = "",
+        enabled: bool = True,
+        owner: bool = False,
+        role: Literal["ADMIN", "BASIC"] = "BASIC",
+    ) -> OpenIDUserDTO:
+        """Creates a new user on the OpenID server, assigning it, by default, the most basic permissions."""
+        payload = {
+            "id": "",
+            "userName": user_name,
+            "displayName": display_name,
+            "enabled": enabled,
+            "owner": owner,
+            "role": role,
+        }
+        response = self._requests_session.post(f"{self.api_url}/{Endpoints.OPEN_ID_USERS}", payload)
+        response.raise_for_status()
+        model_response = OpenIDUserDTO.model_validate(payload)
+        # fill entity since the endpoint does not return a DTO
+        model_response.id = response.json()["data"]["id"]
+        return model_response
+
+    def update_open_id_user(
+        self,
+        user_id: str,
+        user_name: str = None,
+        display_name: str = None,
+        enabled: bool = None,
+        owner: bool = None,
+        role: Literal["ADMIN", "BASIC"] = None,
+    ) -> OpenIDUserDTO:
+        """Updates a user on the OpenID server."""
+        users = self.open_id_users()
+        payload = [user for user in users if user.id == user_id]
+        if not payload:
+            raise ActualInvalidOperationError(f"Could not find user with id {user_id}")
+        user = payload[0]
+        if user_name:
+            user.user_name = user_name
+        if display_name:
+            user.display_name = display_name
+        if enabled is not None:
+            user.enabled = enabled
+        if owner is not None:
+            user.owner = owner
+        if role is not None:
+            user.role = role
+        response = self._requests_session.patch(
+            f"{self.api_url}/{Endpoints.OPEN_ID_USERS}", user.model_dump(by_alias=True)
+        )
+        response.raise_for_status()
+        return user
+
+    def delete_open_id_user(self, user_id: str) -> OpenIDDeleteUserResponseDTO:
+        """Deletes a user from the OpenID server."""
+        response = self._requests_session.delete(f"{self.api_url}/{Endpoints.OPEN_ID_USERS}", data={"ids": user_id})
+        response.raise_for_status()
+        return OpenIDDeleteUserResponseDTO.model_validate(response.json())
 
     def bank_sync_status(self, bank_sync: Literal["gocardless", "simplefin"] | str) -> BankSyncStatusDTO:
         endpoint = Endpoints.BANK_SYNC_STATUS.value.format(bank_sync=bank_sync)
