@@ -267,6 +267,15 @@ class ActualServer:
         )
         return StatusDTO.model_validate(response.json())
 
+    def reset_password(self, new_password: str) -> StatusDTO:
+        """Resets the password for the user. You need to be logged in to reset your password, as the old
+        password does not need to be provided."""
+        response = self._requests_session.post(
+            f"{self.api_url}/{Endpoints.RESET_PASSWORD}",
+            json={"password": new_password, "token": self._token},
+        )
+        return StatusDTO.model_validate(response.json())
+
     def sync_sync(self, request: SyncRequest) -> SyncResponse:
         """Calls the sync endpoint with a request and returns the response. Both the request and response are
         protobuf models. The request and response are not standard REST, but rather protobuf binary serialized data.
