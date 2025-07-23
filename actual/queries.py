@@ -853,6 +853,9 @@ def create_transfer(
     # swap the transferred ids
     source_transaction.transferred_id = dest_transaction.id
     dest_transaction.transferred_id = source_transaction.id
+    # set payees
+    source_transaction.payee_id = dest.payee.id
+    dest_transaction.payee_id = source.payee.id
     # add and return objects
     s.add(source_transaction)
     s.add(dest_transaction)
