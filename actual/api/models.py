@@ -41,7 +41,9 @@ class Endpoints(enum.Enum):
     # OpenID related
     OPEN_ID_OWNER_CREATED = "admin/owner-created/"  # returns a bool, no model required
     OPEN_ID_CONFIG = "openid/config"
-    OPEN_ID_USERS = "admin/users/"
+    OPEN_ID_USERS = "admin/users"
+    OPEN_ID_ACCESS_USERS = "admin/access/users"
+    OPEN_ID_DISABLE = "openid/disable"
 
     def __str__(self):
         return self.value
@@ -128,7 +130,9 @@ class RemoteFileListDTO(FileDTO):
     encrypt_key_id: Optional[str] = Field(..., alias="encryptKeyId")
     # optional OpenId fields
     owner: Optional[str] = None
-    users_with_access: Optional[List[str]] = Field(default_factory=list, alias="usersWithAccess")
+    users_with_access: Optional[List[BaseOpenIDUserFileAccessDTO]] = Field(
+        default_factory=list, alias="usersWithAccess"
+    )
 
 
 class RemoteFileDTO(FileDTO):
@@ -203,12 +207,12 @@ class IssuerConfig(BaseModel):
 
 class OpenIDConfigDTO(BaseModel):
     doc: str = Field(default="OpenID authentication settings.", description="Documentation string")
-    discovery_url: Optional[str]
+    discovery_url: Optional[str] = Field(alias="discoveryURL")
     issuer: Optional[IssuerConfig]
     client_id: str
     client_secret: str
     server_hostname: str
-    auth_method: Literal["openid", "oauth2"]
+    auth_method: Literal["openid", "oauth2"] = Field(alias="authMethod")
 
 
 class OpenIDConfigResponseDTO(StatusDTO):
@@ -239,6 +243,17 @@ class OpenIDDeleteUserDTO(BaseModel):
 
 class OpenIDDeleteUserResponseDTO(StatusDTO):
     data: OpenIDDeleteUserDTO
+
+
+class BaseOpenIDUserFileAccessDTO(BaseModel):
+    user_id: str = Field(..., alias="userId")
+    user_name: str = Field(..., alias="userName")
+    display_name: str = Field(..., alias="displayName")
+    owner: bool
+
+
+class OpenIDUserFileAccessDTO(BaseOpenIDUserFileAccessDTO):
+    have_access: bool = Field(..., alias="haveAccess")
 
 
 BankSyncAccountResponseDTO = TypeAdapter(Union[BankSyncErrorDTO, BankSyncAccountDTO])

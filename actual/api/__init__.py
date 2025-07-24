@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime
 import json
-from typing import List, Literal, Union
+from typing import List, Literal, Optional, Union
 
 import requests
 
@@ -18,9 +18,10 @@ from actual.api.models import (
     InfoDTO,
     ListUserFilesDTO,
     LoginDTO,
-    OpenIDConfigDTO,
+    OpenIDConfigResponseDTO,
     OpenIDDeleteUserResponseDTO,
     OpenIDUserDTO,
+    OpenIDUserFileAccessDTO,
     StatusDTO,
     UploadUserFileDTO,
     UserGetKeyDTO,
@@ -65,26 +66,29 @@ class ActualServer:
             self._requests_session.headers = extra_headers
         if cert is not None:
             self._requests_session.verify = cert
-        if token is None and password is None:
+        if token is None and password is None and not self.is_open_id_owner_created():
             raise ValueError("Either provide a valid token or a password.")
         # already try to log-in if password was provided
         if password and bootstrap and not self.needs_bootstrap().data.bootstrapped:
             self.bootstrap(password)
         elif password:
             self.login(password)
+        elif self.is_open_id_owner_created():
+            self.login(None, method="openid")
         # set default headers for the connection
         self._requests_session.headers.update(self.headers())
         # finally call validate
         self.validate()
 
-    def login(self, password: str, method: Literal["password", "header", "openid"] = "password") -> LoginDTO:
+    def login(self, password: Optional[str], method: Literal["password", "header", "openid"] = "password") -> LoginDTO:
         """
         Logs in on the Actual server using the password provided. Raises `AuthorizationError` if it fails to
         authenticate the user.
 
-        :param password: password of the Actual server.
+        :param password: password of the Actual server. If missing, OpenID authentication will be attempted.
         :param method: the method used to authenticate with the server. Check the [official auth header documentation](
-        https://actualbudget.org/docs/advanced/http-header-auth/) for information.
+        https://actualbudget.org/docs/advanced/http-header-auth/) for information. Here, the appropriate method will
+        be chosen even if this option is missing.
         :raises AuthorizationError: if the token is invalid.
         """
         if not password and method != "openid":
@@ -115,10 +119,10 @@ class ActualServer:
                 )
                 response.raise_for_status()
                 login_response = LoginDTO.model_validate(response.json())
-                auth_response = receiver.get_auth_response(auth_uri=login_response.data.return_url).get("token")
+                auth_response = receiver.get_auth_response(auth_uri=login_response.data.return_url, timeout=60)
                 if not auth_response:
                     raise AuthorizationError("Could not authenticate with Open ID.")
-                self._token = auth_response
+                self._token = auth_response.get("token")
                 return login_response
         if response.status_code == 400 and "invalid-password" in response.text:
             raise AuthorizationError("Could not validate password on login.")
@@ -308,14 +312,17 @@ class ActualServer:
         """Checks if the owner has been created on the OpenID server. This endpoint is non-authorized, which means
         you can access it even if the user is not logged in."""
         response = self._requests_session.get(f"{self.api_url}/{Endpoints.OPEN_ID_OWNER_CREATED}")
-        response.raise_for_status()
+        if response.status_code > 400:
+            # here, it could be that the method returns 404 for an older version
+            return False
         return response.json()
 
-    def open_id_config(self) -> OpenIDConfigDTO:
-        """Gets the OpenID configuration for the server."""
-        response = self._requests_session.get(f"{self.api_url}/{Endpoints.OPEN_ID_CONFIG}")
+    def open_id_config(self, password: str) -> OpenIDConfigResponseDTO:
+        """Gets the OpenID configuration for the server. You will need to provide the main password to access this
+        config."""
+        response = self._requests_session.post(f"{self.api_url}/{Endpoints.OPEN_ID_CONFIG}", {"password": password})
         response.raise_for_status()
-        return OpenIDConfigDTO.model_validate(response.json())
+        return OpenIDConfigResponseDTO.model_validate(response.json())
 
     def open_id_users(self) -> List[OpenIDUserDTO]:
         """Returns the list of OpenID users on the server."""
@@ -379,10 +386,18 @@ class ActualServer:
         return user
 
     def delete_open_id_user(self, user_id: str) -> OpenIDDeleteUserResponseDTO:
-        """Deletes a user from the OpenID server."""
-        response = self._requests_session.delete(f"{self.api_url}/{Endpoints.OPEN_ID_USERS}", data={"ids": user_id})
+        """Deletes a user from the OpenID server. Will raise an exception with 404 if the user does not exist."""
+        response = self._requests_session.delete(f"{self.api_url}/{Endpoints.OPEN_ID_USERS}", json={"ids": [user_id]})
         response.raise_for_status()
         return OpenIDDeleteUserResponseDTO.model_validate(response.json())
+
+    def list_file_users_allowed(self, file_id: str) -> List[OpenIDUserFileAccessDTO]:
+        """Lists all users allowed to access a certain file. Also returns if the user owns the file or not."""
+        response = self._requests_session.get(
+            f"{self.api_url}/{Endpoints.OPEN_ID_ACCESS_USERS}", params={"fileId": file_id}
+        )
+        response.raise_for_status()
+        return [OpenIDUserFileAccessDTO.model_validate(entry) for entry in response.json()]
 
     def bank_sync_status(self, bank_sync: Literal["gocardless", "simplefin"] | str) -> BankSyncStatusDTO:
         endpoint = Endpoints.BANK_SYNC_STATUS.value.format(bank_sync=bank_sync)
