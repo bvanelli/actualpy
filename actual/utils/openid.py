@@ -23,6 +23,9 @@ logger = logging.getLogger(__name__)
 The following code is adapted from:
 
 https://github.com/AzureAD/microsoft-authentication-library-for-python/blob/70fd4d1599fc15c876c8eaccd29b9f7ae73fecd6/msal/oauth2cli/authcode.py#L30
+
+The file was left in the original state, so it was not adapted to fit the repository coding style. In the future,
+it might be worthwhile to include the library `msal-python` as a real dependency.
 """
 
 
