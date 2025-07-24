@@ -302,7 +302,7 @@ class AuthCodeReceiver(object):
             browser_opened = False
             try:
                 browser_opened = _browse(_uri, browser_name=browser_name)
-            except:  # noqa: E722. Had to use broad except, because the potential
+            except:  # noqa: E722
                 # webbrowser.Error is purposely undefined outside of _browse().
                 # Absorb and proceed. Because browser could be manually run elsewhere.
                 logger.exception("_browse(...) unsuccessful")
