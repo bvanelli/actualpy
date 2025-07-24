@@ -73,7 +73,7 @@ class ActualServer:
             self.bootstrap(password)
         elif password:
             self.login(password)
-        elif self.is_open_id_owner_created():
+        elif not token and self.is_open_id_owner_created():
             self.login(None, method="openid")
         # set default headers for the connection
         self._requests_session.headers.update(self.headers())
