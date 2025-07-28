@@ -89,6 +89,16 @@ def test_transaction_without_payee(session):
     assert tr.payee_id is None
 
 
+def test_transfer(session):
+    bank = create_account(session, "Bank", 200)
+    savings = create_account(session, "Savings")
+    origin, dst = create_transfer(session, date.today(), "Bank", "Savings", 200, "Saving money")
+    assert origin.payee_id == savings.payee.id
+    assert dst.payee_id == bank.payee.id
+    assert bank.balance == decimal.Decimal(0.0)
+    assert savings.balance == decimal.Decimal(200.0)
+
+
 def test_reconcile_transaction(session):
     today = date.today()
     create_account(session, "Bank")

@@ -19,6 +19,7 @@ class Endpoints(enum.Enum):
     NEEDS_BOOTSTRAP = "account/needs-bootstrap"
     BOOTSTRAP = "account/bootstrap"
     LOGIN_METHODS = "account/login-methods"
+    RESET_PASSWORD = "account/change-password"
     SYNC = "sync/sync"
     LIST_USER_FILES = "sync/list-user-files"
     GET_USER_FILE_INFO = "sync/get-user-file-info"
