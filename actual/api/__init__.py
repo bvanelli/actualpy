@@ -106,7 +106,7 @@ class ActualServer:
                 json={"loginMethod": method},
                 headers={"X-ACTUAL-PASSWORD": password},
             )
-        else:
+        else:  # openid
             # check first if the openid server is created
             if not self.is_open_id_owner_created():
                 raise AuthorizationError("OpenID server is not set-up.")
