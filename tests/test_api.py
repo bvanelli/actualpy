@@ -12,8 +12,13 @@ from actual.protobuf_models import Message
 from tests.conftest import RequestsMock
 
 
-def test_api_apply(mocker, session):
+@pytest.fixture
+def login_mocks(mocker):
     mocker.patch("actual.Actual.validate")
+    mocker.patch("actual.Actual.is_open_id_owner_created", return_value=False)
+
+
+def test_api_apply(login_mocks, session):
     actual = Actual(token="foo")
     actual.engine = session.bind
     actual._meta = reflect_model(session.bind)
@@ -27,8 +32,7 @@ def test_api_apply(mocker, session):
         actual.apply_changes([m])
 
 
-def test_rename_delete_budget_without_file(mocker):
-    mocker.patch("actual.Actual.validate")
+def test_rename_delete_budget_without_file(login_mocks):
     actual = Actual(token="foo")
     actual._file = None
     with pytest.raises(UnknownFileId, match="No current file loaded"):
@@ -38,8 +42,7 @@ def test_rename_delete_budget_without_file(mocker):
 
 
 @patch.object(Session, "post", return_value=RequestsMock({"status": "error", "reason": "proxy-not-trusted"}))
-def test_api_login_unknown_error(_post, mocker):
-    mocker.patch("actual.Actual.validate")
+def test_api_login_unknown_error(_post, login_mocks):
     actual = Actual(token="foo")
     actual.api_url = "localhost"
     actual.cert = False
@@ -48,8 +51,7 @@ def test_api_login_unknown_error(_post, mocker):
 
 
 @patch.object(Session, "post", return_value=RequestsMock({}, status_code=403))
-def test_api_login_http_error(_post, mocker):
-    mocker.patch("actual.Actual.validate")
+def test_api_login_http_error(_post, login_mocks):
     actual = Actual(token="foo")
     actual.api_url = "localhost"
     actual.cert = False
@@ -57,14 +59,12 @@ def test_api_login_http_error(_post, mocker):
         actual.login("foo")
 
 
-def test_no_certificate(mocker):
-    mocker.patch("actual.Actual.validate")
+def test_no_certificate(login_mocks):
     actual = Actual(token="foo", cert=False)
     assert actual._requests_session.verify is False
 
 
-def test_set_file_exceptions(mocker):
-    mocker.patch("actual.Actual.validate")
+def test_set_file_exceptions(login_mocks, mocker):
     list_user_files = mocker.patch(
         "actual.Actual.list_user_files", return_value=ListUserFilesDTO(status=StatusCode.OK, data=[])
     )
@@ -82,8 +82,7 @@ def test_set_file_exceptions(mocker):
         actual.set_file("foo")
 
 
-def test_zip_exceptions(mocker, tmp_path):
-    mocker.patch("actual.Actual.validate")
+def test_zip_exceptions(login_mocks, mocker, tmp_path):
     mocker.patch("actual.Actual.create_engine")
     archive = tmp_path / "file.zip"
     with zipfile.ZipFile(archive, "w"):
@@ -94,8 +93,7 @@ def test_zip_exceptions(mocker, tmp_path):
     assert actual._data_dir.name.startswith("tmp")
 
 
-def test_api_extra_headers(mocker):
-    mocker.patch("actual.Actual.validate")
+def test_api_extra_headers(login_mocks):
     actual = Actual(token="foo", extra_headers={"foo": "bar"})
     assert actual._requests_session.headers["foo"] == "bar"
     assert actual._requests_session.headers["X-ACTUAL-TOKEN"] == "foo"
