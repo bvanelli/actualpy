@@ -35,6 +35,7 @@ from actual.exceptions import (
     UnknownFileId,
 )
 from actual.protobuf_models import SyncRequest, SyncResponse
+from actual.utils.openid import AuthCodeReceiver
 
 
 class ActualServer:
@@ -105,9 +106,7 @@ class ActualServer:
                 json={"loginMethod": method},
                 headers={"X-ACTUAL-PASSWORD": password},
             )
-        else:  # OpenID, lazy import
-            from actual.utils.openid import AuthCodeReceiver
-
+        else:
             # check first if the openid server is created
             if not self.is_open_id_owner_created():
                 raise AuthorizationError("OpenID server is not set-up.")
