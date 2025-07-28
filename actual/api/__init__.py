@@ -18,6 +18,7 @@ from actual.api.models import (
     InfoDTO,
     ListUserFilesDTO,
     LoginDTO,
+    LoginMethodsDTO,
     OpenIDConfigResponseDTO,
     OpenIDDeleteUserResponseDTO,
     OpenIDUserDTO,
@@ -308,6 +309,12 @@ class ActualServer:
         parsed_response = SyncResponse.deserialize(response.content)
         return parsed_response  # noqa
 
+    def login_methods(self) -> LoginMethodsDTO:
+        """Returns login methods available for the user."""
+        response = self._requests_session.get(f"{self.api_url}/{Endpoints.LOGIN_METHODS}")
+        response.raise_for_status()
+        return LoginMethodsDTO.model_validate(response.json())
+
     def is_open_id_owner_created(self) -> bool:
         """Checks if the owner has been created on the OpenID server. This endpoint is non-authorized, which means
         you can access it even if the user is not logged in."""
@@ -379,6 +386,8 @@ class ActualServer:
             user.owner = owner
         if role is not None:
             user.role = role
+        elif user.role is None:
+            user.role = "BASIC"  # seems like a bug from actual
         response = self._requests_session.patch(
             f"{self.api_url}/{Endpoints.OPEN_ID_USERS}", user.model_dump(by_alias=True)
         )

@@ -18,6 +18,7 @@ class Endpoints(enum.Enum):
     ACCOUNT_VALIDATE = "account/validate"
     NEEDS_BOOTSTRAP = "account/needs-bootstrap"
     BOOTSTRAP = "account/bootstrap"
+    LOGIN_METHODS = "account/login-methods"
     SYNC = "sync/sync"
     LIST_USER_FILES = "sync/list-user-files"
     GET_USER_FILE_INFO = "sync/get-user-file-info"
@@ -43,6 +44,7 @@ class Endpoints(enum.Enum):
     OPEN_ID_CONFIG = "openid/config"
     OPEN_ID_USERS = "admin/users"
     OPEN_ID_ACCESS_USERS = "admin/access/users"
+    OPEN_ID_ENABLE = "openid/enable"
     OPEN_ID_DISABLE = "openid/disable"
 
     def __str__(self):
@@ -174,6 +176,10 @@ class IsBootstrapedDTO(BaseModel):
     available_login_methods: Optional[List[LoginMethodDTO]] = Field(default=None, alias="availableLoginMethods")
 
 
+class LoginMethodsDTO(StatusDTO):
+    methods: List[LoginMethodDTO]
+
+
 class BootstrapInfoDTO(StatusDTO):
     data: IsBootstrapedDTO
 
@@ -231,10 +237,10 @@ class OpenIDBootstrapDTO(BaseModel):
 class OpenIDUserDTO(BaseModel):
     id: str
     user_name: str = Field(..., alias="userName")
-    display_name: str = Field(..., alias="displayName")
+    display_name: Optional[str] = Field(..., alias="displayName")
     enabled: bool
     owner: bool
-    role: str = Field(..., description="User role (ADMIN or BASIC)")
+    role: Optional[str] = Field(..., description="User role (ADMIN or BASIC)")
 
 
 class OpenIDDeleteUserDTO(BaseModel):
@@ -248,7 +254,7 @@ class OpenIDDeleteUserResponseDTO(StatusDTO):
 class BaseOpenIDUserFileAccessDTO(BaseModel):
     user_id: str = Field(..., alias="userId")
     user_name: str = Field(..., alias="userName")
-    display_name: str = Field(..., alias="displayName")
+    display_name: Optional[str] = Field(..., alias="displayName")
     owner: bool
 
 
