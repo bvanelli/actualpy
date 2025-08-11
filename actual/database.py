@@ -116,14 +116,14 @@ def get_attribute_by_table_name(table_name: str, column_name: str, reverse: bool
 
 
 def apply_change(
-    session: Session, table: Table, table_id: str, values: Dict[Column, Union[str, int, float, None]]
+    session: Session, table: Type[Table], table_id: str, values: Dict[Column, Union[str, int, float, None]]
 ) -> None:
     """This function upserts multiple changes into a table based on the `table_id` as primary key. All the `values`
     will be inserted as a new row, and if the id already exists, the values will be updated."""
     insert_stmt = (
         insert(table).values({"id": table_id, **values}).on_conflict_do_update(index_elements=["id"], set_=values)
     )
-    session.exec(insert_stmt)  # noqa: Insert type here is correct
+    session.exec(insert_stmt)  # type: ignore - the insert type here is correct
 
 
 def strong_reference_session(session: Session):
