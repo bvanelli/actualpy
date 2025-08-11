@@ -17,7 +17,7 @@ model.
 import datetime
 import decimal
 import json
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Type, Union
 
 from sqlalchemy import MetaData, Table, engine, event, inspect
 from sqlalchemy.dialects.sqlite import insert
@@ -71,7 +71,7 @@ def reflect_model(eng: engine.Engine) -> MetaData:
     return local_meta
 
 
-def get_class_from_reflected_table_name(metadata: MetaData, table_name: str) -> Union[Table, None]:
+def get_class_from_reflected_table_name(metadata: MetaData, table_name: str) -> Union[Type[Table], None]:
     """
     Returns, based on the defined tables on the reflected model the corresponding SQLAlchemy table.
     If not found, returns `None`.
@@ -89,7 +89,7 @@ def get_attribute_from_reflected_table_name(
     return table.columns.get(column_name, None)
 
 
-def get_class_by_table_name(table_name: str) -> Union[SQLModel, None]:
+def get_class_by_table_name(table_name: str) -> Union[Type[SQLModel], None]:
     """
     Returns, based on the defined tables `__tablename__` the corresponding SQLModel object. If not found, returns
     `None`.

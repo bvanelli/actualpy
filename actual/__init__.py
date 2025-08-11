@@ -22,6 +22,7 @@ from actual.database import (
     Transactions,
     apply_change,
     get_attribute_from_reflected_table_name,
+    get_class_by_table_name,
     get_class_from_reflected_table_name,
     reflect_model,
     strong_reference_session,
@@ -45,8 +46,9 @@ from actual.queries import (
     get_transactions,
     reconcile_transaction,
 )
+from actual.utils.changeset import Changeset
 from actual.utils.storage import get_tmp_folder
-from actual.version import __version__  # noqa: F401
+from actual.version import __version__ as __version__
 
 
 class Actual(ActualServer):
@@ -318,11 +320,12 @@ class Actual(ActualServer):
         self.update_metadata({"groupId": None})  # since we don't know what the new group id will be
         self.upload_budget()
 
-    def apply_changes(self, messages: List[Message]):
+    def apply_changes(self, messages: List[Message]) -> list[Changeset]:
         """Applies a list of sync changes, based on what the sync method returned on the remote."""
         if not self.engine:
             raise UnknownFileId("No valid file available, download one with download_budget()")
         with Session(self.engine) as s:
+            changes = []
             # use the current value to group updates together to the same row
             current_table, current_id, current_value = None, None, {}
             for message in messages:
@@ -352,7 +355,12 @@ class Actual(ActualServer):
             # if after finishing all values there is a value left, update it too
             if current_table is not None and current_id is not None and current_value is not None:
                 apply_change(s, current_table, current_id, current_value)
+                # return a list of changes on this endpoint
+                table_obj = get_class_by_table_name(str(current_table.name))
+                change = Changeset(table_obj, current_id, current_value)
+                changes.append(change)
             s.commit()
+            return changes
 
     def get_metadata(self) -> dict:
         """Gets the content of metadata.json."""
@@ -453,9 +461,14 @@ class Actual(ActualServer):
             clock = get_or_create_clock(session)
             self._client = clock.get_timestamp()
 
-    def sync(self):
-        """Does a sync request and applies all changes that are stored on the server on the local copy of the database.
+    def sync(self) -> list[Changeset]:
+        """
+        Does a sync request and applies all changes that are stored on the server on the local copy of the database.
         Since all changes are retrieved, this function cannot be used for partial changes (since the budget is online).
+
+        Returns a list of changes that were applied to the local database, so you can also use this method to retrieve
+        all changes that were made to the budget. See [Changeset][actual.utils.changeset.Changeset] for more
+        information.
         """
         # after downloading the budget, some pending transactions still need to be retrieved using sync
         request = SyncRequest(
@@ -466,15 +479,20 @@ class Actual(ActualServer):
                 "keyId": self._file.encrypt_key_id,
             }
         )
-        request.set_timestamp(client_id=self._client.client_id, now=self._client.ts)
+        request.set_timestamp(
+            client_id=self._client.client_id, now=self._client.ts, initial_count=self._client.initial_count
+        )
         changes = self.sync_sync(request)
-        self.apply_changes(changes.get_messages(self._master_key))
+        messages = changes.get_messages(self._master_key)
+        changeset = self.apply_changes(messages)
         # after receiving changes, update the client clock with the latest value
-        if changes.messages:
+        if messages:
             self._client = HULC_Client.from_timestamp(changes.messages[-1].timestamp)
             # store timestamp also inside database. Session might not be available here, so we create one
             with Session(self.engine) as session:
                 get_or_create_clock(session, self._client)
+                session.commit()
+        return changeset
 
     def commit(self):
         """Adds all pending entries to the local database, and sends a sync request to the remote server to synchronize
