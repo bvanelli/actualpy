@@ -6,7 +6,7 @@ from datetime import date, timedelta
 import pytest
 
 from actual import Actual, ActualError, reflect_model
-from actual.database import Notes, ReflectBudgets, ZeroBudgets
+from actual.database import Notes, ReflectBudgets, Transactions, ZeroBudgets
 from actual.queries import (
     create_account,
     create_budget,
@@ -343,7 +343,7 @@ def test_apply_changes(session, mocker):
     messages = session.info["messages"]
     # undo all changes, but apply via database
     session.rollback()
-    actual.apply_changes(messages)
+    changes = actual.apply_changes(messages)
     # make sure elements got committed correctly
     accounts = get_accounts(session, "Bank")
     assert len(accounts) == 1
@@ -355,6 +355,11 @@ def test_apply_changes(session, mocker):
     assert transactions[0].notes == transaction.notes
     assert transactions[0].get_date() == transaction.get_date()
     assert transactions[0].get_amount() == transaction.get_amount()
+    # make sure the changes are correct: 1 account, 1 payee, 1 payee mapping, 1 transaction
+    # the transaction update will be grouped together even though it is a different changeset
+    assert len(changes) == 4
+    assert changes[-1].table is Transactions
+    assert changes[-1].from_orm(session) == transactions[0]
 
 
 def test_get_or_create_clock(session):

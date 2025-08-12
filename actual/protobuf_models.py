@@ -106,8 +106,8 @@ class MessageEnvelope(proto.Message):
     isEncrypted = proto.Field(proto.BOOL, number=2)
     content = proto.Field(proto.BYTES, number=3)
 
-    def set_timestamp(self, client_id: str = None, now: datetime.datetime = None) -> str:
-        self.timestamp = HULC_Client(client_id).timestamp(now)
+    def set_timestamp(self, client_id: str = None, now: datetime.datetime = None, initial_count: int = 0) -> str:
+        self.timestamp = HULC_Client(client_id, initial_count).timestamp(now)
         return self.timestamp
 
 
@@ -118,8 +118,8 @@ class SyncRequest(proto.Message):
     keyId = proto.Field(proto.STRING, number=5)
     since = proto.Field(proto.STRING, number=6)
 
-    def set_timestamp(self, client_id: str = None, now: datetime.datetime = None) -> str:
-        self.since = HULC_Client(client_id).timestamp(now)
+    def set_timestamp(self, client_id: str = None, now: datetime.datetime = None, initial_count: int = 0) -> str:
+        self.since = HULC_Client(client_id, initial_count).timestamp(now)
         return self.since
 
     def set_null_timestamp(self, client_id: str = None) -> str:
