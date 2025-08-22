@@ -13,21 +13,25 @@ from actual.exceptions import ActualDecryptionError
 
 
 def random_bytes(size: int = 12) -> str:
+    """Generates a random string of specified length (this is **not** cryptographically secure!)"""
     return str(os.urandom(size))
 
 
 def make_salt(length: int = 32) -> str:
+    """Generates a random salt with a specified length."""
     # reference generates 32 bytes of random data
     # github.com/actualbudget/actual/blob/70e37c0119f4ba95ccf6549f0df4aac770f1bb8f/packages/loot-core/src/server/main.ts#L1489
     return base64.b64encode(os.urandom(length)).decode()
 
 
 def create_key_buffer(password: str, key_salt: str) -> bytes:
+    """Generates a key from a password and salt using PBKDF2HMAC."""
     kdf = PBKDF2HMAC(algorithm=hashes.SHA512(), length=32, salt=key_salt.encode(), iterations=10_000)
     return kdf.derive(password.encode())
 
 
 def encrypt(key_id: str, master_key: bytes, plaintext: bytes) -> dict:
+    """Encrypts a plaintext (actual database) using AES-GCM."""
     iv = os.urandom(12)
     encryptor = Cipher(algorithms.AES(master_key), modes.GCM(iv)).encryptor()
     value = encryptor.update(plaintext) + encryptor.finalize()
@@ -44,6 +48,7 @@ def encrypt(key_id: str, master_key: bytes, plaintext: bytes) -> dict:
 
 
 def decrypt(master_key: bytes, iv: bytes, ciphertext: bytes, auth_tag: bytes = None) -> bytes:
+    """Decrypts a cyphertext (actual database) using AES-GCM."""
     decryptor = Cipher(algorithms.AES(master_key), modes.GCM(iv, auth_tag)).decryptor()
     try:
         return decryptor.update(ciphertext) + decryptor.finalize()
@@ -52,6 +57,7 @@ def decrypt(master_key: bytes, iv: bytes, ciphertext: bytes, auth_tag: bytes = N
 
 
 def decrypt_from_meta(master_key: bytes, ciphertext: bytes, encrypt_meta) -> bytes:
+    """Decrypts a cyphertext (actual database) using AES-GCM using the provided metadata."""
     iv = base64.b64decode(encrypt_meta.iv)
     auth_tag = base64.b64decode(encrypt_meta.auth_tag)
     return decrypt(master_key, iv, ciphertext, auth_tag)
@@ -81,7 +87,7 @@ def is_uuid(text: str, version: int = 4):
     False
 
     :param text: UUID string to test
-    :param version: expected version for the UUID
+    :param version: The expected version for the UUID
     :return: `True` if `text` is a valid UUID, otherwise `False`.
     """
     try:

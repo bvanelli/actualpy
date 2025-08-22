@@ -596,9 +596,11 @@ class RuleSet(pydantic.BaseModel):
     rules: typing.List[Rule] = pydantic.Field(..., description="List of rules to be evaluated on run.")
 
     def __str__(self):
+        """Returns a readable string representation of the ruleset."""
         return "\n".join([str(r) for r in self.rules])
 
     def __iter__(self) -> typing.Iterator[Rule]:
+        """Returns an iterator over the rules in the ruleset."""
         return self.rules.__iter__()
 
     def _run(
@@ -619,8 +621,10 @@ class RuleSet(pydantic.BaseModel):
         stage: typing.Literal["all", "pre", "post", None] = "all",
     ):
         """
-        Runs the rules for each and every transaction on the list. If stage is 'all' (default), all rules are run in
-        the order `pre` -> `None` -> `post`. You can provide a value to run only a certain stage of rules.
+        Runs the rules of the Ruleset for every transaction on the list.
+
+        If `stage` is set to 'all' (default), all rules are run in the order `pre` -> `None` -> `post`.
+        You can provide a value to run only a certain stage of rules.
 
         If necessary, you can also individually select the rules you want to run by initializing a new ruleset from
         the original one, or select individual rules from, by using the list of rules `RuleSet.rules`.

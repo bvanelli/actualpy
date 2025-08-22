@@ -52,6 +52,10 @@ from actual.version import __version__ as __version__
 
 
 class Actual(ActualServer):
+    """
+    Implements the Python API for the Actual Server to be able to read and modify information on Actual using Python.
+    """
+
     def __init__(
         self,
         base_url: str = "http://localhost:5006",
@@ -66,27 +70,54 @@ class Actual(ActualServer):
         extra_headers: dict[str, str] = None,
     ):
         """
-        Implements the Python API for the Actual Server in order to be able to read and modify information on Actual
-        books using Python.
-
         Parts of the implementation are [available at the following file.](
         https://github.com/actualbudget/actual/blob/2178da0414958064337b2c53efc95ff1d3abf98a/packages/loot-core/src/server/cloud-storage.ts)
 
-        :param base_url: url of the running Actual server
-        :param token: the token for authentication, if this is available (optional)
-        :param password: the password for authentication. It will be used on the .login() method to retrieve the token.
-        :param file: the name or id of the file to be set
-        :param encryption_password: password used to configure encryption, if existing
-        :param data_dir: where to store the downloaded files from the server. If not specified, a temporary folder will
-                         be created instead. If database files are already present on the path, the library will try to
-                         reuse them by re-computing the sync request.
-        :param cert: if a custom certificate should be used (i.e. self-signed certificate), it's path can be provided
+        The client is expected to be used as a context manager, just like the following:
+
+        ```python
+        from actual import Actual
+        from actual.queries import get_transactions
+
+        with Actual(
+                # Url of the Actual Server
+                base_url="http://localhost:5006",
+                # Password for authentication
+                password="<your_password>",
+                # Set the file to work with.
+                # Can be either the file id or file name, if the name is unique
+                file="<file_id_or_name>",
+                # Optional: Password for the file encryption.
+                # Will not use it if set to None.
+                encryption_password=None,
+                # Optional: Directory to store downloaded files.
+                # Will use a temporary if not provided
+                data_dir="<path_to_data_directory>",
+                # Optional: Path to the certificate file to use for the connection.
+                # Can be set to False to disable SSL verification
+                cert="<path_to_cert_file>"
+        ) as actual:
+            transactions = get_transactions(actual.session)
+        ```
+
+        :param base_url: Url of the running Actual server
+        :param token: The token for authentication, if this is available (optional)
+        :param password: The password for authentication. It will be used on the .login() method to retrieve the token.
+        :param file: The name or id of the file to be set
+        :param encryption_password: Password used to configure encryption, if existing. Will raise an exception if
+                                    it is not set but is required.
+        :param data_dir: Path where to store the downloaded files from the server. If not specified, a temporary folder
+                         will be created instead. If database files are already present on the path, the library will
+                         try to reuse them by re-computing the sync request. **Providing a path should speed up
+                         the download process considerably on the next call**.
+        :param cert: If a custom certificate should be used (i.e., self-signed certificate), its path can be provided
                      as a string. Set to `False` for no certificate check.
-        :param bootstrap: if the server is not bootstrapped, bootstrap it with the password.
-        :param sa_kwargs: additional kwargs passed to the SQLAlchemy session maker. Examples are `autoflush` (enabled
-        by default), `autocommit` (disabled by default). For a list of all parameters, check the [SQLAlchemy
-        documentation.](https://docs.sqlalchemy.org/en/20/orm/session_api.html#sqlalchemy.orm.Session.__init__)
-        :param extra_headers: additional headers to be attached to each request to the Actual server
+        :param bootstrap: If the server is not bootstrapped, bootstrap it with the password.
+        :param sa_kwargs: Additional `kwargs` passed to the SQLAlchemy session maker. Examples are `autoflush` (enabled
+                          by default), `autocommit` (disabled by default). For a list of all parameters, check the
+                          [SQLAlchemy documentation.](
+                          https://docs.sqlalchemy.org/en/20/orm/session_api.html#sqlalchemy.orm.Session.__init__)
+        :param extra_headers: Additional headers to be attached to each request to the Actual server
         """
         super().__init__(base_url, token, password, bootstrap, cert, extra_headers)
         self._file: RemoteFileListDTO | None = None
@@ -118,6 +149,7 @@ class Actual(ActualServer):
 
     @property
     def session(self) -> Session:
+        """Returns a session for using with the [queries][actual.queries]."""
         if not self._session:
             raise ActualError(
                 "No session defined. Use `with Actual() as actual:` construct to generate one.\n"
@@ -127,9 +159,10 @@ class Actual(ActualServer):
 
     def set_file(self, file_id: Union[str, RemoteFileListDTO]) -> RemoteFileListDTO:
         """
-        Sets the file id for the class for further requests. The file_id argument can be either the name, the remote
-        id or the group id (also known as sync_id) from the file. If there are duplicates for the name, this method
-        will raise `UnknownFileId`.
+        Sets the file id for the class for further requests.
+
+        The file_id argument can be either the name, the remote id or the group id (also known as sync_id) from the
+        file. If there are duplicates for the name, this method will raise `UnknownFileId`.
         """
         if isinstance(file_id, RemoteFileListDTO):
             self._file = file_id
@@ -146,9 +179,13 @@ class Actual(ActualServer):
         return self.set_file(selected_files[0])
 
     def run_migrations(self, migration_files: List[str]):
-        """Runs the migration files, skipping the ones that have already been run. The files can be retrieved from
-        .data_file_index() method. This first file is the base database, and the following files are migrations.
-        Migrations can also be .js files. In this case, we have to extract and execute queries from the standard JS."""
+        """
+        Runs the migration files, skipping the ones that have already been run.
+
+        The files can be retrieved from [data_file_index][actual.Actual.data_file_index] method. This first file is
+        the base database, and the following files are migrations. Migrations can also be `.js` files. In this case,
+        we have to extract and execute queries from the standard JS.
+        """
         conn = sqlite3.connect(self._data_dir / "db.sqlite")
         for file in migration_files:
             if not file.startswith("migrations"):
@@ -170,10 +207,14 @@ class Actual(ActualServer):
         self._meta = reflect_model(self.engine)
 
     def create_budget(self, budget_name: str):
-        """Creates a budget using the remote server default database and migrations. If password is provided, the
-        budget will be encrypted. It's important to note that `create_budget` depends on the migration files from the
-        Actual server, and those could be written in Javascript. Event though the library tries to execute all
-        statements in those files, is not an exact match. It is preferred to create budgets via frontend instead."""
+        """
+        Creates a budget using the remote server default database and migrations.
+
+        If a password is provided, the budget will be encrypted. It's important to note that `create_budget`
+        depends on the migration files from the Actual server, and those could be written in Javascript. Event though
+        the library tries to execute all statements in those files, is not an exact match. It is preferred to create
+        budgets via frontend instead.
+        """
         warnings.warn("Creating budgets via actualpy is not recommended due to custom code migrations.")
         migration_files = self.data_file_index()
         file_id = str(uuid.uuid4())
@@ -223,11 +264,12 @@ class Actual(ActualServer):
 
     def cleanup(self):
         """
-        Cleans up the database from all deleted transactions, message caches and runs a VACUUM. Should reduce the size
-        of the database before exporting it.
+        Cleans up the database from all deleted transactions, message caches and runs a `VACUUM`.
 
-        Taken from source code at
-        [actual/packages/loot-core/src/server/sync/reset.ts](https://github.com/actualbudget/actual/blob/89006275a092d2309ab03162a047e07663789198/packages/loot-core/src/server/sync/reset.ts#L37-L47)
+        Useful to reduce the size of the database before exporting it.
+
+        Taken from source code at [actual/packages/loot-core/src/server/sync/reset.ts]
+        (https://github.com/actualbudget/actual/blob/89006275a092d2309ab03162a047e07663789198/packages/loot-core/src/server/sync/reset.ts#L37-L47)
         """
         with sqlite3.connect(self._data_dir / "db.sqlite") as conn:
             conn.executescript(
@@ -247,9 +289,13 @@ class Actual(ActualServer):
             )
 
     def export_data(self, output_file: str | PathLike[str] | IO[bytes] = None, cleanup: bool = True) -> bytes:
-        """Export your data as a zip file containing db.sqlite and metadata.json files. It can be imported into another
-        Actual instance by closing an open file (if any), then clicking the “Import file” button, then choosing
-        “Actual.” Even when encryption is enabled, the exported zip file will not have any encryption."""
+        """
+        Export your data as a zip file containing db.sqlite and metadata.json files.
+
+        It can be imported into another Actual instance by closing an open file (if any), then clicking the
+        _“Import file”_ button, then choosing _“Actual”_. Even when encryption is enabled, the exported zip file
+        **will not have any encryption**.
+        """
         if cleanup:
             self.cleanup()
         temp_file = io.BytesIO()
@@ -263,7 +309,8 @@ class Actual(ActualServer):
         return content
 
     def encrypt(self, encryption_password: str):
-        """Encrypts the local database using a new key, and re-uploads to the server.
+        """
+        Encrypts the local database using a new key, and re-uploads to the server.
 
         WARNING: this resets the file on the server. Make sure you have a copy of the database before attempting this
         operation.
@@ -290,8 +337,11 @@ class Actual(ActualServer):
         self.set_file(self._file.file_id)
 
     def upload_budget(self):
-        """Uploads the current file to the Actual server. If attempting to upload your first budget, make sure you use
-        [Actual.create_budget][actual.Actual.create_budget] first.
+        """
+        Uploads the current file to the Actual server.
+
+        If attempting to upload your first budget, make sure you use [Actual.create_budget][actual.Actual.create_budget]
+        first.
         """
         if not self._data_dir:
             raise UnknownFileId("No current file loaded.")
@@ -313,9 +363,14 @@ class Actual(ActualServer):
             self.encrypt(self._encryption_password)
 
     def reupload_budget(self):
-        """Similar to the reset sync option from the frontend, resets the user file on the backend and re-uploads the
-        current copy instead. **This operation can be destructive**, so make sure you generate a copy before
-        attempting to re-upload your budget."""
+        """
+        Resets the user file on the backend and re-uploads the current copy instead.
+
+        Works similar to the reset sync option from the frontend.
+
+        **This operation can be destructive**, so make sure you generate a copy before attempting to re-upload
+        your budget.
+        """
         self.reset_user_file(self._file.file_id)
         self.update_metadata({"groupId": None})  # since we don't know what the new group id will be
         self.upload_budget()
@@ -366,13 +421,16 @@ class Actual(ActualServer):
             return changes
 
     def get_metadata(self) -> dict:
-        """Gets the content of metadata.json."""
+        """Gets the content of the `metadata.json` file."""
         metadata_file = self._data_dir / "metadata.json"
         return json.loads(metadata_file.read_text())
 
     def update_metadata(self, patch: dict):
-        """Updates the metadata.json from the Actual file with the patch fields. The patch is a dictionary that will
-        then be merged on the metadata and written again to a file."""
+        """
+        Updates the `metadata.json` from the Actual file with the patch fields.
+
+        The patch is a dictionary that will then be merged on the metadata and written again to a file.
+        """
         metadata_file = self._data_dir / "metadata.json"
         if metadata_file.is_file():
             config = self.get_metadata()
@@ -382,12 +440,15 @@ class Actual(ActualServer):
         metadata_file.write_text(json.dumps(config, separators=(",", ":")))
 
     def download_budget(self, encryption_password: str = None):
-        """Downloads the budget file from the remote. After the file is downloaded, the sync endpoint is queries
-        for the list of pending changes. The changes are individual row updates, that are then applied on by one to
-        the downloaded database state.
+        """
+        Downloads the budget file from the remote, applying all following changes required by the server.
 
-        If the budget is password protected, the password needs to be present to download the budget, otherwise it will
-        fail.
+        After the file is downloaded, the sync endpoint queries for the list of pending changes. The changes are
+        individual row updates that are then applied one by one to the downloaded database state. See the
+        [sync method][actual.Actual.sync] for more information.
+
+        If the budget is password-protected, the password needs to be present to download the budget. Otherwise, the
+        budget download will fail with [ActualDecryptionError][actual.exceptions.ActualDecryptionError].
 
         When a `data_dir` was provided, the method will try to use the local downloaded copy by first checking if the
         sync id (named group id) remains the same. If it does, then the sync is executed using the stored files.
@@ -427,9 +488,12 @@ class Actual(ActualServer):
             self._session = strong_reference_session(Session(self.engine, **self._sa_kwargs))
 
     def download_master_encryption_key(self, encryption_password: str) -> Optional[bytes]:
-        """Downloads and assembles the key for decrypting the budget based on the provided encryption password.
+        """
+        Downloads and assembles the key for decrypting the budget based on the provided encryption password.
+
         If the user file is not encryption, no key will be returned. If the file was encrypted, the key is assembled
-        using the key salt and the password with the PBKDF2HMAC algorithm."""
+        using the key salt and the password with the PBKDF2HMAC algorithm.
+        """
         if self._file.encrypt_key_id and encryption_password is None:
             raise ActualDecryptionError("File is encrypted but no encryption password was provided.")
         if encryption_password is not None and self._file.encrypt_key_id:
@@ -438,8 +502,11 @@ class Actual(ActualServer):
         return self._master_key
 
     def import_zip(self, file_bytes: str | PathLike[str] | IO[bytes]):
-        """Imports a zip file as the current database, as well as generating the local reflected session. Enables you
-        to inspect backups by loading them directly, instead of unzipping the contents."""
+        """
+        Imports a zip file as the current database, as well as generating the local reflected session.
+
+        This function enables you to inspect backups by loading them directly, instead of unzipping the contents.
+        """
         try:
             zip_file = zipfile.ZipFile(file_bytes)
         except zipfile.BadZipfile as e:
@@ -457,6 +524,7 @@ class Actual(ActualServer):
         self.create_engine()
 
     def create_engine(self):
+        """Internally creates the engine for the database, and loads the reflected metadata."""
         self.engine = create_engine(f"sqlite:///{self._data_dir}/db.sqlite")
         self._meta = reflect_model(self.engine)
         # load the client id
@@ -467,7 +535,6 @@ class Actual(ActualServer):
     def sync(self) -> list[Changeset]:
         """
         Does a sync request and applies all changes that are stored on the server on the local copy of the database.
-        Since all changes are retrieved, this function cannot be used for partial changes (since the budget is online).
 
         Returns a list of changes that were applied to the local database, so you can also use this method to retrieve
         all changes that were made to the budget. See [Changeset][actual.utils.changeset.Changeset] for more
@@ -498,8 +565,12 @@ class Actual(ActualServer):
         return changeset
 
     def commit(self):
-        """Adds all pending entries to the local database, and sends a sync request to the remote server to synchronize
-        the local changes. It's important to note that this process is not atomic, so if the process is interrupted
+        """
+        Adds all pending entries done to the local database, and sends a sync request to the remote server.
+
+        Only **after** a commit operation will the remote frontend show the new data.
+
+        It's important to note that this process is not atomic, so if the process is interrupted
         before it completes successfully, the files would end up in a unknown state, leading you to have to redo
         the budget download."""
         if not self._session:
@@ -587,17 +658,18 @@ class Actual(ActualServer):
         self, account: str | Accounts | None = None, start_date: datetime.date | None = None, run_rules: bool = False
     ) -> List[Transactions]:
         """
-        Runs the bank synchronization for the selected account. If missing, all accounts are synchronized. If a
-        start_date is provided, is used as a reference, otherwise, the last timestamp of each account will be used. If
-        the account does not have any transaction, the last 90 days are considered instead.
+        Runs the bank synchronization for the selected account. If missing, all accounts are synchronized.
 
-        If the `start_date` is not provided and the account does not have any transaction, a reconcile transaction will
+        If a `start_date` is provided, is used as a reference, otherwise, the last timestamp of each account will be
+        used. If the account does not have any transaction, the last 90 days are considered instead.
+
+        If the `start_date` is not provided and the account does not have any transaction, a reconciled transaction will
         be generated to match the expected balance of the account. This would correct the account balance with the
         remote one.
 
         If `run_rules` is set, the rules will be run for the imported transactions. Please note that unlike Actual,
-        the rules here are ran at the final imported objects. This is unlikely to cause data mismatches,
-        but if you find any issues feel free to report this as an issue.
+        the rules here are run at the final imported objects. This is unlikely to cause data mismatches,
+        but if you find any issue, feel free to report it on the Github repository.
         """
         # if no account is provided, sync all of them, otherwise just the account provided
         if account is None:

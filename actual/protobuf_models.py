@@ -20,6 +20,13 @@ https://github.com/actualbudget/actual-server/blob/master/src/app-sync.js#L32).
 
 
 class HULC_Client:
+    """
+    A Hybrid Unique Logical Clock (HULC) timestamp generator.
+
+    The generator makes sure that change timestamps are consistent across multiple clients that could have different
+    clocks.
+    """
+
     def __init__(self, client_id: str = None, initial_count: int = 0, ts: datetime.datetime = None):
         self.client_id = client_id or self.random_client_id()
         self.initial_count = initial_count
@@ -27,6 +34,7 @@ class HULC_Client:
 
     @classmethod
     def from_timestamp(cls, ts: str) -> HULC_Client:
+        """Generates a HULC_Client from a timestamp string."""
         ts_string, _, rest = ts.partition("Z")
         segments = rest.split("-")
         ts = datetime.datetime.fromisoformat(ts_string)
@@ -56,26 +64,34 @@ class HULC_Client:
 
     @staticmethod
     def random_client_id():
-        """Creates a client id for the HULC request. Implementation copied [from the source code](
-        https://github.com/actualbudget/actual/blob/a9362cc6f9b974140a760ad05816cac51c849769/packages/crdt/src/crdt/timestamp.ts#L80)
+        """Creates a client id for the HULC request.
+
+        Implementation copied [from the source code](
+        https://github.com/actualbudget/actual/blob/a9362cc6f9b974140a760ad05816cac51c849769/packages/crdt/src/crdt/timestamp.ts#L80).
         """
         return str(uuid.uuid4()).replace("-", "")[-16:]
 
 
 class EncryptedData(proto.Message):
+    """The encrypted data information, namely the iv, authTag and data."""
+
     iv = proto.Field(proto.BYTES, number=1)
     authTag = proto.Field(proto.BYTES, number=2)
     data = proto.Field(proto.BYTES, number=3)
 
 
 class Message(proto.Message):
+    """A change message from Actual, containing the dataset (table), row (primary key), column and value."""
+
     dataset = proto.Field(proto.STRING, number=1)
     row = proto.Field(proto.STRING, number=2)
     column = proto.Field(proto.STRING, number=3)
     value = proto.Field(proto.STRING, number=4)
 
     def get_value(self) -> str | int | float | None:
-        """Serialization types from Actual. [Original source code](
+        """Serialization types from Actual.
+
+        [Original source code](
         https://github.com/actualbudget/actual/blob/998efb9447da6f8ce97956cbe83d6e8a3c18cf53/packages/loot-core/src/server/sync/index.ts#L154-L160)
         """
         datatype, _, value = self.value.partition(":")
@@ -89,6 +105,12 @@ class Message(proto.Message):
             raise ValueError(f"Conversion not supported for datatype '{datatype}'")
 
     def set_value(self, value: str | int | float | None) -> str:
+        """
+        Sets the value of the message based on the Actual spec for datatypes.
+
+        [Original source code](
+        https://github.com/actualbudget/actual/blob/998efb9447da6f8ce97956cbe83d6e8a3c18cf53/packages/loot-core/src/server/sync/index.ts#L154-L160)
+        """
         if isinstance(value, str):
             datatype = "S"
         elif isinstance(value, int) or isinstance(value, float):
@@ -102,6 +124,8 @@ class Message(proto.Message):
 
 
 class MessageEnvelope(proto.Message):
+    """Envelopes a message while including the timestamp and if the message is encrypted or not."""
+
     timestamp = proto.Field(proto.STRING, number=1)
     isEncrypted = proto.Field(proto.BOOL, number=2)
     content = proto.Field(proto.BYTES, number=3)
@@ -112,6 +136,8 @@ class MessageEnvelope(proto.Message):
 
 
 class SyncRequest(proto.Message):
+    """Sync request message that is sent to the server for retrieving new messages since the last synchronization."""
+
     messages = proto.RepeatedField(MessageEnvelope, number=1)
     fileId = proto.Field(proto.STRING, number=2)
     groupId = proto.Field(proto.STRING, number=3)
@@ -148,6 +174,8 @@ class SyncRequest(proto.Message):
 
 
 class SyncResponse(proto.Message):
+    """Sync response that is sent to the client with the new messages."""
+
     messages = proto.RepeatedField(MessageEnvelope, number=1)
     merkle = proto.Field(proto.STRING, number=2)
 

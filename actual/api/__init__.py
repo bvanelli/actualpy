@@ -39,6 +39,11 @@ from actual.utils.openid import AuthCodeReceiver
 
 
 class ActualServer:
+    """
+    Implements the low-level API for interacting with the Actual server by just implementing the API calls and
+    response models.
+    """
+
     def __init__(
         self,
         base_url: str = "http://localhost:5006",
@@ -49,9 +54,6 @@ class ActualServer:
         extra_headers: dict[str, str] = None,
     ):
         """
-        Implements the low-level API for interacting with the Actual server by just implementing the API calls and
-        response models.
-
         :param base_url: url of the running Actual server
         :param token: the token for authentication, if this is available (optional)
         :param password: the password for authentication. It will be used on the .login() method to retrieve the token.
@@ -143,9 +145,11 @@ class ActualServer:
         return login_response
 
     def headers(self, file_id: str = None, extra_headers: dict = None) -> dict:
-        """Generates a header based on the stored token for the connection. If a `file_id` is provided, it would be
-        used as the `X-ACTUAL-FILE-ID` header. Extra headers will be included as they are provided on the final
-        dictionary."""
+        """
+        Generates a header based on the stored token for the connection.
+
+        If a `file_id` is provided, it would be used as the `X-ACTUAL-FILE-ID` header. Extra headers will be
+        included as they are provided on the final dictionary."""
         if not self._token:
             raise AuthorizationError("Token not available for requests. Use the login() method or provide a token.")
         headers = {"X-ACTUAL-TOKEN": self._token}

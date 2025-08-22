@@ -65,7 +65,7 @@ __TABLE_COLUMNS_MAP__ = dict()
 
 
 def reflect_model(eng: engine.Engine) -> MetaData:
-    """Reflects the current state of the database."""
+    """Reflects the current state of the database, containing the state of all remote tables and columns."""
     local_meta = MetaData()
     local_meta.reflect(bind=eng)
     return local_meta
@@ -74,6 +74,7 @@ def reflect_model(eng: engine.Engine) -> MetaData:
 def get_class_from_reflected_table_name(metadata: MetaData, table_name: str) -> Union[Type[Table], None]:
     """
     Returns, based on the defined tables on the reflected model the corresponding SQLAlchemy table.
+
     If not found, returns `None`.
     """
     return metadata.tables.get(table_name, None)
@@ -83,7 +84,9 @@ def get_attribute_from_reflected_table_name(
     metadata: MetaData, table_name: str, column_name: str
 ) -> Union[Column, None]:
     """
-    Returns, based, on the defined reflected model the corresponding and the SAColumn. If not found, returns `None`.
+    Returns, based on the defined reflected model the corresponding and the SAColumn.
+
+    If not found, returns `None`.
     """
     table = get_class_from_reflected_table_name(metadata, table_name)
     return table.columns.get(column_name, None)
@@ -91,17 +94,18 @@ def get_attribute_from_reflected_table_name(
 
 def get_class_by_table_name(table_name: str) -> Union[Type[SQLModel], None]:
     """
-    Returns, based on the defined tables `__tablename__` the corresponding SQLModel object. If not found, returns
-    `None`.
+    Returns, based on the defined tables `__tablename__` the corresponding SQLModel object.
+
+    If not found, returns `None`.
     """
     return __TABLE_COLUMNS_MAP__.get(table_name, {}).get("entity", None)
 
 
 def get_attribute_by_table_name(table_name: str, column_name: str, reverse: bool = False) -> Union[str, None]:
     """
-    Returns, based, on the defined tables `__tablename__` and the SAColumn name, the correct pydantic attribute. Search
-    can be reversed by setting the `reverse` flag to `True`.
-    If not found, returns `None`.
+    Returns, based on the defined tables `__tablename__` and the SAColumn name, the correct pydantic attribute.
+
+    The search can be reversed by setting the `reverse` flag to `True`. If not found, returns `None`.
 
     :param table_name: SQL table name.
     :param column_name: SQL column name.
@@ -118,8 +122,13 @@ def get_attribute_by_table_name(table_name: str, column_name: str, reverse: bool
 def apply_change(
     session: Session, table: Type[Table], table_id: str, values: Dict[Column, Union[str, int, float, None]]
 ) -> None:
-    """This function upserts multiple changes into a table based on the `table_id` as primary key. All the `values`
-    will be inserted as a new row, and if the id already exists, the values will be updated."""
+    """
+    This function upserts multiple changes into a table based on the `table_id` as the primary key.
+
+    All the `values` will be inserted as a new row, and if the `id` already exists, the values will be updated.
+
+    This function has no return value, as the insert statement was crafter to execute as quick as possible.
+    """
     insert_stmt = (
         insert(table).values({"id": table_id, **values}).on_conflict_do_update(index_elements=["id"], set_=values)
     )
@@ -127,6 +136,13 @@ def apply_change(
 
 
 def strong_reference_session(session: Session):
+    """
+    References a session so that all object instances created on the session can be tracked.
+
+    This is used to make sure that every update on the budget via the library can be converted to a sync request that
+    will be sent to the Actual server.
+    """
+
     @event.listens_for(session, "before_flush")
     def before_flush(sess, flush_context, instances):
         if len(sess.deleted):
@@ -183,7 +199,7 @@ class BaseModel(SQLModel):
         return changes
 
     def changed(self) -> List[str]:
-        """Returns list of model changed attributes."""
+        """Returns a list of attributes changed."""
         changed_attributes = []
         inspr = inspect(self)
         attrs = class_mapper(self.__class__).column_attrs  # exclude relationships
@@ -218,6 +234,14 @@ class Migrations(SQLModel, table=True):
 
 
 class Accounts(BaseModel, table=True):
+    """
+    Represents an account entity with detailed attributes describing account properties, transactions, and
+    relationships.
+
+    This class is used to model financial accounts, and it includes methods and attributes necessary
+    for managing and interacting with account-related data.
+    """
+
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
     account_id: Optional[str] = Field(default=None, sa_column=Column("account_id", Text))
     name: Optional[str] = Field(default=None, sa_column=Column("name", Text))
@@ -377,6 +401,8 @@ class CreatedBudgets(SQLModel, table=True):
 
 
 class CustomReports(BaseModel, table=True):
+    """Metadata for all the custom reports available on the Actual frontend."""
+
     __tablename__ = "custom_reports"
 
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
@@ -713,10 +739,10 @@ class ZeroBudgetMonths(SQLModel, table=True):
 
 class BaseBudgets(BaseModel):
     """
-    Hosts the shared code between both [ZeroBudgets][actual.database.ZeroBudgets] and
-    [ReflectBudgets][actual.database.ReflectBudgets].
+    Hosts the shared code between both [ZeroBudgets][actual.database.ZeroBudgets] and [ReflectBudgets][actual.database.ReflectBudgets].
 
-    The budget will represent a certain month in a certain category.
+    Each budget will represent a certain month in a certain category. When a budget is missing on the frontend,
+    frontend will assume this value is zero, but the entity will be missing from the database.
     """
 
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))

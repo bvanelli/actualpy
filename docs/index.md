@@ -1,5 +1,11 @@
 # Quickstart
 
+You can install actualpy using your package manager of choice:
+
+```bash
+pip install actualpy
+```
+
 ## Using relationships and properties
 
 The SQLAlchemy model already contains relationships to the referenced foreign keys and some properties. For example,
