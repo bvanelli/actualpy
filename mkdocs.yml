@@ -45,8 +45,6 @@ plugins:
             - https://docs.python.org/3/objects.inv
             options:
               docstring_style: sphinx
-              docstring_options:
-                ignore_init_summary: true
               docstring_section_style: list
               filters:
                 - "!^_[^_]"
