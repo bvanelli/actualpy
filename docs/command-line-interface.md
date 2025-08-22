@@ -1,6 +1,6 @@
 # Command line interface
 
-You can try out `actualpy` directly without the need if writing a custom script. All you need to do is install the
+You can try out `actualpy` directly without the need of writing a custom script. All you need to do is install the
 command line interface with:
 
 ```bash

@@ -12,10 +12,18 @@ Python API implementation for Actual server.
 
 [Actual Budget](https://actualbudget.org/) is a superfast and privacy-focused app for managing your finances.
 
-> [!WARNING]
-> The [Javascript API](https://actualbudget.org/docs/api/) to interact with Actual server already exists,
-> and is battle-tested as it is the core of the Actual frontend libraries. If you intend to use a reliable and well
-> tested library, that is the way to go.
+This library is a re-implementation for the Node.js version of the npm package
+[@actual-app/api](https://actualbudget.org/docs/api/).
+It implements a different approach, offering a more pythonic way to deal with the database objects using the SQLAlchemy
+ORM. This means that you can use the full power of SQLAlchemy to query the database and build your own queries. This
+is useful if you want to build a custom tool to manage your budget, or to export your data to another format. All the
+useful relationships between the objects are also available to facilitate handling the dtata.
+
+If you find any issue with the library, please open an issue on the
+[GitHub repository](https://github.com/bvanelli/actualpy/issues).
+
+If you have a question, you can also open a new discussion on the
+[GitHub repository](https://github.com/bvanelli/actualpy/discussions/new/choose).
 
 # Installation
 

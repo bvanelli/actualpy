@@ -19,6 +19,11 @@ dependencies = [
     "protobuf>=4",
     "cryptography>=42",
     "python-dateutil>=2.9.0",
+    "mkdocs-material>=9.6.18",
+    "mkdocstrings>=0.30.0",
+    "mkdocstrings-python>=1.17.0",
+    "griffe>=1.12.1",
+    "griffe-fieldz>=0.3.0",
 ]
 classifiers = [
     "Programming Language :: Python",

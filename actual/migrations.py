@@ -5,6 +5,15 @@ from typing import List
 
 
 def js_migration_statements(js_file: str) -> List[str]:
+    """
+    Extracts all relevant SQL queries from a JavaScript migration file to make them run locally.
+
+    This function is required because the actual-js package provides some of the migration files as JavaScript files,
+    that cannot easily be executed on Python. This function is our best effort to extract the SQL queries from the
+    migration file.
+
+    A warning is displayed when finding queries that cannot be converted to raw SQL.
+    """
     queries = []
     matches = re.finditer(r"db\.(execQuery|runQuery)", js_file)
     for match in matches:
