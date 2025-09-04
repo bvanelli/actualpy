@@ -1,5 +1,5 @@
 site_name: actualpy Documentation
-strict: false
+strict: true
 site_description: A Python re-implementation of the NodeJS API for Actual Budget
 repo_name: bvanelli/actualpy
 repo_url: https://github.com/bvanelli/actualpy

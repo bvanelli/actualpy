@@ -13,6 +13,8 @@ from actual.api.bank_sync import (
 
 
 class Endpoints(enum.Enum):
+    """List of all endpoints mapped by the Actualpy API."""
+
     LOGIN = "account/login"
     INFO = "info"
     ACCOUNT_VALIDATE = "account/validate"
@@ -53,16 +55,32 @@ class Endpoints(enum.Enum):
 
 
 class BankSyncs(enum.Enum):
+    """Types of bank sync supported by the library."""
+
     GOCARDLESS = "gocardless"
+    """GoCardless integration. See [how to set it up](https://actualbudget.org/docs/advanced/bank-sync/gocardless/)"""
+
     SIMPLEFIN = "simplefin"
+    """Simplefin integration. See [how to set it up](https://actualbudget.org/docs/advanced/bank-sync/simplefin/)"""
 
 
 class StatusCode(enum.Enum):
+    """Status code of the request response."""
+
     OK = "ok"
+    """Ok response code."""
+
     ERROR = "error"
+    """Error response code."""
 
 
 class StatusDTO(BaseModel):
+    """
+    Base class for all status responses.
+
+    The general classes will contain the status code and the data model under `data` property.
+    """
+
     status: StatusCode
 
 
@@ -72,22 +90,32 @@ class ErrorStatusDTO(BaseModel):
 
 
 class TokenDTO(BaseModel):
-    """Here, if you try to log in with a password, you will get a token, and if you try to log in with an OpenID,
-    you will get a return_url."""
+    """
+    Response model for the token on login.
+
+    Here, if you try to log in with a password, you will get a token, and if you try to log in with an OpenID,
+    you will get a return_url.
+    """
 
     token: Optional[str] = None
     return_url: Optional[str] = Field(None, alias="returnUrl")
 
 
 class LoginDTO(StatusDTO):
+    """Login response model."""
+
     data: TokenDTO
 
 
 class UploadUserFileDTO(StatusDTO):
+    """Upload user file response model."""
+
     group_id: str = Field(..., alias="groupId")
 
 
 class IsValidatedDTO(BaseModel):
+    """Response model for the validation of a budget file."""
+
     validated: Optional[bool]
     # optional OpenID fields
     user_name: Optional[str] = Field(None, alias="userName")
@@ -98,10 +126,14 @@ class IsValidatedDTO(BaseModel):
 
 
 class ValidateDTO(StatusDTO):
+    """Validate budget response model."""
+
     data: IsValidatedDTO
 
 
 class EncryptMetaDTO(BaseModel):
+    """Encryption metadata."""
+
     key_id: Optional[str] = Field(..., alias="keyId")
     algorithm: Optional[str]
     iv: Optional[str]
@@ -109,20 +141,26 @@ class EncryptMetaDTO(BaseModel):
 
 
 class EncryptionTestDTO(BaseModel):
+    """Encryption test data including the encryption metadata."""
+
     value: str
     meta: EncryptMetaDTO
 
 
 class EncryptionDTO(BaseModel):
+    """Encryption information including the salt and test data (with encryption metadata)."""
+
     id: Optional[str]
     salt: Optional[str]
     test: Optional[str]
 
     def meta(self) -> EncryptionTestDTO:
-        return EncryptionTestDTO.parse_raw(self.test)
+        return EncryptionTestDTO.model_validate_json(self.test)
 
 
 class FileDTO(BaseModel):
+    """Base file model."""
+
     deleted: Optional[int]
     file_id: Optional[str] = Field(..., alias="fileId")
     group_id: Optional[str] = Field(..., alias="groupId")
@@ -130,6 +168,14 @@ class FileDTO(BaseModel):
 
 
 class RemoteFileListDTO(FileDTO):
+    """
+    Remote file model.
+
+    If the file is encrypted, the `encrypt_key_id` field will be present.
+
+    If OpenID is enabled and the file is owned by certain users, the `owner` field will be present.
+    """
+
     encrypt_key_id: Optional[str] = Field(..., alias="encryptKeyId")
     # optional OpenId fields
     owner: Optional[str] = None
@@ -139,38 +185,54 @@ class RemoteFileListDTO(FileDTO):
 
 
 class RemoteFileDTO(FileDTO):
+    """Remote file model (including encryption metadata)."""
+
     encrypt_meta: Optional[EncryptMetaDTO] = Field(..., alias="encryptMeta")
 
 
 class GetUserFileInfoDTO(StatusDTO):
+    """Get user file info response model."""
+
     data: RemoteFileDTO
 
 
 class ListUserFilesDTO(StatusDTO):
+    """List user files response model."""
+
     data: List[RemoteFileListDTO]
 
 
 class UserGetKeyDTO(StatusDTO):
+    """User key response model."""
+
     data: EncryptionDTO
 
 
 class BuildDTO(BaseModel):
+    """Build information from the Actual server, including the name, version and description."""
+
     name: str
     description: Optional[str]
     version: Optional[str]
 
 
 class InfoDTO(BaseModel):
+    """Information response model."""
+
     build: BuildDTO
 
 
 class LoginMethodDTO(BaseModel):
+    """Login method information."""
+
     method: str
     active: bool
     display_name: str = Field(..., alias="displayName")
 
 
 class IsBootstrapedDTO(BaseModel):
+    """Bootstrap information, including available login methods and whether multi-user is enabled."""
+
     bootstrapped: bool
     login_method: Optional[str] = Field(default="password", alias="loginMethod")
     multi_user: Optional[bool] = Field(default=False, alias="multiuser")
@@ -178,34 +240,50 @@ class IsBootstrapedDTO(BaseModel):
 
 
 class LoginMethodsDTO(StatusDTO):
+    """Login methods response model."""
+
     methods: List[LoginMethodDTO]
 
 
 class BootstrapInfoDTO(StatusDTO):
+    """Bootstrap information response model."""
+
     data: IsBootstrapedDTO
 
 
 class IsConfiguredDTO(BaseModel):
+    """Bank status configuration status (`configured` is `True` if configured)."""
+
     configured: bool
 
 
 class BankSyncStatusDTO(StatusDTO):
+    """Bank sync status response model."""
+
     data: IsConfiguredDTO
 
 
 class BankSyncAccountDTO(StatusDTO):
+    """Bank sync account response model."""
+
     data: BankSyncAccountData
 
 
 class BankSyncTransactionResponseDTO(StatusDTO):
+    """Bank sync transaction response model."""
+
     data: BankSyncTransactionData
 
 
 class BankSyncErrorDTO(StatusDTO):
+    """Bank sync error response model."""
+
     data: BankSyncErrorData
 
 
 class IssuerConfig(BaseModel):
+    """OpenID issuer configuration."""
+
     name: str = Field(..., description="Friendly name for the issuer")
     authorization_endpoint: str = Field(..., description="Authorization endpoint URL")
     token_endpoint: str = Field(..., description="Token endpoint URL")
@@ -213,6 +291,8 @@ class IssuerConfig(BaseModel):
 
 
 class OpenIDConfigDTO(BaseModel):
+    """OpenID configuration."""
+
     doc: str = Field(default="OpenID authentication settings.", description="Documentation string")
     discovery_url: Optional[str] = Field(alias="discoveryURL")
     issuer: Optional[IssuerConfig]
@@ -223,10 +303,14 @@ class OpenIDConfigDTO(BaseModel):
 
 
 class OpenIDConfigResponseDTO(StatusDTO):
+    """OpenID configuration response model."""
+
     data: Dict[str, OpenIDConfigDTO]
 
 
 class OpenIDBootstrapDTO(BaseModel):
+    """OpenID bootstrap configuration."""
+
     client_id: str = Field(..., description="OAuth2 client ID")
     client_secret: str = Field(..., description="OAuth2 client secret")
     discovery_url: Optional[IssuerConfig] = Field(
@@ -236,6 +320,8 @@ class OpenIDBootstrapDTO(BaseModel):
 
 
 class OpenIDUserDTO(BaseModel):
+    """OpenID user information."""
+
     id: str
     user_name: str = Field(..., alias="userName")
     display_name: Optional[str] = Field(..., alias="displayName")
@@ -245,14 +331,20 @@ class OpenIDUserDTO(BaseModel):
 
 
 class OpenIDDeleteUserDTO(BaseModel):
+    """OpenID user deletion information."""
+
     some_deletions_failed: bool = Field(..., alias="someDeletionsFailed")
 
 
 class OpenIDDeleteUserResponseDTO(StatusDTO):
+    """OpenID user deletion response model."""
+
     data: OpenIDDeleteUserDTO
 
 
 class BaseOpenIDUserFileAccessDTO(BaseModel):
+    """Base OpenID user file access information."""
+
     user_id: str = Field(..., alias="userId")
     user_name: str = Field(..., alias="userName")
     display_name: Optional[str] = Field(..., alias="displayName")
@@ -260,8 +352,11 @@ class BaseOpenIDUserFileAccessDTO(BaseModel):
 
 
 class OpenIDUserFileAccessDTO(BaseOpenIDUserFileAccessDTO):
+    """OpenID user file access information."""
+
     have_access: bool = Field(..., alias="haveAccess")
 
 
+"""Type adapters for the response models."""
 BankSyncAccountResponseDTO = TypeAdapter(Union[BankSyncErrorDTO, BankSyncAccountDTO])
 BankSyncResponseDTO = TypeAdapter(Union[BankSyncErrorDTO, BankSyncTransactionResponseDTO])
