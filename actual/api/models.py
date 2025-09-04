@@ -155,7 +155,7 @@ class EncryptionDTO(BaseModel):
     test: Optional[str]
 
     def meta(self) -> EncryptionTestDTO:
-        return EncryptionTestDTO.model_validate(self.test)
+        return EncryptionTestDTO.model_validate_json(self.test)
 
 
 class FileDTO(BaseModel):
