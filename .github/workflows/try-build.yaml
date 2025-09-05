@@ -13,6 +13,6 @@ jobs:
         with:
           python-version: 3.13
       - name: Install locally
-        run: uv sync
+        run: uv pip install --system -e .
       - name: Test library import
         run: cd / && python3 -c "from actual import Actual"
