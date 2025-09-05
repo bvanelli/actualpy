@@ -413,11 +413,11 @@ def test_set_payee_to_transfer(session):
 def test_tags(session):
     today = date.today()
     create_account(session, "Wallet")
-    tag = create_tag(session, "#happy")
+    tag = create_tag(session, "#happy", "For the happy moments in life")
     coffee = create_transaction(session, date=today, account="Wallet", notes="Coffee #happy", amount=float(-4.50))
     session.commit()
     tags = get_tags(session)
     assert tags == [tag]
     assert tags[0].transactions == [coffee]
     assert tags[0] == get_tag(session, "#happy")
-    assert get_tags(session, "#foobar") == []
+    assert get_tags(session, "#foobar", "moments") == []
