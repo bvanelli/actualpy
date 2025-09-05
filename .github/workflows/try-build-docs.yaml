@@ -13,6 +13,6 @@ jobs:
       with:
         python-version: 3.13
     - name: Install project dependencies
-      run: uv sync --extra docs
+      run: uv sync --group docs
     - name: Try building the documentation
       run: uv run mkdocs build
