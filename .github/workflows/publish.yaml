@@ -16,14 +16,12 @@ jobs:
     steps:
       # taken from https://packaging.python.org/en/latest/guides/publishing-package-distribution-releases-using-github-actions-ci-cd-workflows/
       - uses: actions/checkout@v3
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Install uv and set the python version
+        uses: astral-sh/setup-uv@v6
         with:
-            python-version: "3.11"
-      - name: Install pypa/build
-        run: python3 -m pip install build --user
+          python-version: 3.13
       - name: Build a binary wheel and a source tarball
-        run: python3 -m build --sdist --wheel --outdir dist/ .
+        run: uv build
       # retrieve your distributions here
       - name: Publish Python 🐍 distribution 📦 to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
