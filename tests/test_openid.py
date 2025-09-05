@@ -8,7 +8,9 @@ from testcontainers.core.waiting_utils import wait_for_logs
 
 from actual import Actual
 from actual.exceptions import ActualInvalidOperationError, AuthorizationError
-from tests.conftest import RequestsMock
+from tests.conftest import ACTUAL_SERVER_INTEGRATION_VERSIONS, RequestsMock
+
+server_version = ACTUAL_SERVER_INTEGRATION_VERSIONS[-1]  # use latest version
 
 
 @pytest.fixture()

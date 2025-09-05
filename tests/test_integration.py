@@ -21,11 +21,10 @@ from actual.queries import (
     get_schedules,
     get_transactions,
 )
+from tests.conftest import ACTUAL_SERVER_INTEGRATION_VERSIONS
 
-VERSIONS = ["25.9.0"]
 
-
-@pytest.fixture(params=VERSIONS)  # todo: support multiple versions at once
+@pytest.fixture(params=ACTUAL_SERVER_INTEGRATION_VERSIONS)  # todo: support multiple versions at once
 def actual_server(request):
     # we test integration with the 5 latest versions of actual server
     with DockerContainer(f"actualbudget/actual-server:{request.param}").with_exposed_ports(5006) as container:
@@ -207,7 +206,9 @@ def test_header_login():
 
 
 def test_session_reflection_after_migrations():
-    with DockerContainer(f"actualbudget/actual-server:{VERSIONS[-1]}").with_exposed_ports(5006) as container:
+    with DockerContainer(f"actualbudget/actual-server:{ACTUAL_SERVER_INTEGRATION_VERSIONS[-1]}").with_exposed_ports(
+        5006
+    ) as container:
         port = container.get_exposed_port(5006)
         wait_for_logs(container, "Listening on :::5006...")
         with Actual(f"http://localhost:{port}", password="mypass", bootstrap=True) as actual:

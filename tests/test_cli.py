@@ -12,9 +12,10 @@ from typer.testing import CliRunner
 from actual import Actual, __version__
 from actual.cli.config import Config, default_config_path
 from actual.queries import create_account, create_transaction
+from tests.conftest import ACTUAL_SERVER_INTEGRATION_VERSIONS
 
 runner = CliRunner()
-server_version = "25.4.0"
+server_version = ACTUAL_SERVER_INTEGRATION_VERSIONS[-1]  # use latest version
 
 
 def base_dataset(actual: Actual, budget_name: str = "Test", encryption_password: str = None):
