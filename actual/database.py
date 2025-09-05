@@ -23,6 +23,7 @@ from sqlalchemy import MetaData, Table, engine, event, inspect
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import class_mapper, object_session
 from sqlmodel import (
+    JSON,
     Boolean,
     Column,
     Field,
@@ -323,6 +324,7 @@ class Categories(BaseModel, table=True):
     sort_order: Optional[float] = Field(default=None, sa_column=Column("sort_order", Float))
     tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
     goal_def: Optional[str] = Field(default=None, sa_column=Column("goal_def", Text, server_default=text("null")))
+    template_settings: Optional[dict] = Field(default=None, sa_column=Column("template_settings", JSON))
 
     zero_budgets: "ZeroBudgets" = Relationship(
         back_populates="category",
@@ -619,6 +621,13 @@ class SchedulesNextDate(SQLModel, table=True):
     local_next_date_ts: Optional[int] = Field(default=None, sa_column=Column("local_next_date_ts", Integer))
     base_next_date: Optional[int] = Field(default=None, sa_column=Column("base_next_date", Integer))
     base_next_date_ts: Optional[int] = Field(default=None, sa_column=Column("base_next_date_ts", Integer))
+    tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
+
+
+class Tags(BaseModel, table=True):
+    tag: Optional[str] = Field(default=None, sa_column=Column("tag", Text, unique=True))
+    color: Optional[str] = Field(default=None, sa_column=Column("color", Text))
+    description: Optional[str] = Field(default=None, sa_column=Column("description", Text))
     tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
 
 
