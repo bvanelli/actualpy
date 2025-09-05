@@ -8,6 +8,8 @@ from sqlmodel import Session, create_engine
 
 from actual.database import SQLModel, strong_reference_session
 
+ACTUAL_SERVER_INTEGRATION_VERSIONS = ["25.9.0"]
+
 
 class RequestsMock:
     def __init__(self, json_data: dict | list, status_code: int = 200):
