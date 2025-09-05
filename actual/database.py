@@ -17,7 +17,7 @@ model.
 import datetime
 import decimal
 import json
-from typing import Dict, List, Optional, Tuple, Type, Union
+from typing import Dict, List, Optional, Sequence, Tuple, Type, Union
 
 from sqlalchemy import MetaData, Table, engine, event, inspect
 from sqlalchemy.dialects.sqlite import insert
@@ -37,6 +37,7 @@ from sqlmodel import (
     SQLModel,
     Text,
     func,
+    or_,
     select,
     text,
 )
@@ -626,9 +627,31 @@ class SchedulesNextDate(SQLModel, table=True):
 
 class Tags(BaseModel, table=True):
     tag: Optional[str] = Field(default=None, sa_column=Column("tag", Text, unique=True))
-    color: Optional[str] = Field(default=None, sa_column=Column("color", Text))
+    color: Optional[str] = Field(
+        default=None, sa_column=Column("color", Text), description="Color in hex format (i.e. '#690CB0')"
+    )
     description: Optional[str] = Field(default=None, sa_column=Column("description", Text))
     tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
+
+    @property
+    def transactions(self) -> Sequence["Transactions"]:
+        """Returns all transactions with this tag associated to them."""
+        return (
+            object_session(self)
+            .execute(
+                select(Transactions).where(
+                    Transactions.is_parent == 0,
+                    Transactions.tombstone == 0,
+                    or_(
+                        # Either it has a space or is finishing the sentence
+                        Transactions.notes.like(f"%#{self.tag} %"),
+                        Transactions.notes.like(f"%#{self.tag}"),
+                    ),
+                )
+            )
+            .scalars()
+            .all()
+        )
 
 
 class TransactionFilters(BaseModel, table=True):

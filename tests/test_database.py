@@ -12,6 +12,7 @@ from actual.queries import (
     create_budget,
     create_rule,
     create_splits,
+    create_tag,
     create_transaction,
     create_transfer,
     get_accounts,
@@ -23,6 +24,7 @@ from actual.queries import (
     get_or_create_preference,
     get_preferences,
     get_ruleset,
+    get_tags,
     get_transactions,
     normalize_payee,
     reconcile_transaction,
@@ -405,3 +407,15 @@ def test_set_payee_to_transfer(session):
     session.commit()
     assert t.payee_id == wallet.payee.id
     assert t.transfer.transfer == t
+
+
+def test_tags(session):
+    today = date.today()
+    create_account(session, "Wallet")
+    tag = create_tag(session, "happy")
+    coffee = create_transaction(session, date=today, account="Wallet", notes="Coffee #happy", amount=float(-4.50))
+    session.commit()
+    tags = get_tags(session)
+    assert tags == [tag]
+    assert tags[0].transactions == [coffee]
+    assert get_tags(session, "foobar") == []

@@ -14,7 +14,7 @@ from tests.conftest import RequestsMock
 @pytest.fixture()
 def actual_server(request):
     # we test integration with the 5 latest versions of actual server
-    with DockerContainer("actualbudget/actual-server:25.7.1").with_exposed_ports(5006) as container:
+    with DockerContainer("actualbudget/actual-server:25.9.0").with_exposed_ports(5006) as container:
         wait_for_logs(container, "Listening on :::5006...")
         yield container
 

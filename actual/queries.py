@@ -27,6 +27,7 @@ from actual.database import (
     ReflectBudgets,
     Rules,
     Schedules,
+    Tags,
     Transactions,
     ZeroBudgets,
 )
@@ -530,6 +531,28 @@ def create_category(
     s.add(category)
     s.add(category_mapping)
     return category
+
+
+def get_tags(s: Session, name: str = None, include_deleted: bool = False) -> typing.Sequence[Tags]:
+    """Get all tags stored on the Actual database based on their names."""
+    query = _base_query(Tags, None, include_deleted)
+    if name:
+        query = query.filter(Tags.tag.ilike(f"%{sqlalchemy.text(name).compile()}%"))
+    return s.exec(query).unique().all()
+
+
+def create_tag(s: Session, name: str, description: str = None, color: str = "#690CB0") -> Tags:
+    """
+    Creates a new tag with the `name` and `description`. Name **should not** be provided with the hashtag.
+
+    The name will be the tag used inside the transaction. You can use this tag afterward by setting the
+    notes of a transaction. If your tag is called `'foo'`, you can append `'#foo'` to the transaction notes.
+
+    The color of the tag can be provided as hexadecimal (i.e. `'#690CB0'` for purple or `'#1976D2'` for blue).
+    """
+    tag = Tags(id=str(uuid.uuid4()), tag=name, description=description, color=color)
+    s.add(tag)
+    return tag
 
 
 def get_category(
