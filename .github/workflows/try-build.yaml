@@ -7,12 +7,12 @@ jobs:
     name: Tries to build the package and import it
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - uses: actions/checkout@v5
+      - name: Install uv and set the python version
+        uses: astral-sh/setup-uv@v6
         with:
-            python-version: "3.11"
+          python-version: 3.13
       - name: Install locally
-        run: python3 -m pip install .
+        run: uv sync
       - name: Test library import
         run: cd / && python3 -c "from actual import Actual"
