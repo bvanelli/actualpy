@@ -59,15 +59,15 @@ class Actual(ActualServer):
     def __init__(
         self,
         base_url: str = "http://localhost:5006",
-        token: str = None,
-        password: str = None,
-        file: str = None,
-        encryption_password: str = None,
-        data_dir: Union[str, pathlib.Path] = None,
-        cert: str | bool = None,
+        token: str | None = None,
+        password: str | None = None,
+        file: str | None = None,
+        encryption_password: str | None = None,
+        data_dir: str | pathlib.Path | None = None,
+        cert: str | bool | None = None,
         bootstrap: bool = False,
-        sa_kwargs: dict = None,
-        extra_headers: dict[str, str] = None,
+        sa_kwargs: dict | None = None,
+        extra_headers: dict[str, str] | None = None,
     ):
         """
         Parts of the implementation are [available at the following file.](
@@ -288,7 +288,7 @@ class Actual(ActualServer):
             """
             )
 
-    def export_data(self, output_file: str | PathLike[str] | IO[bytes] = None, cleanup: bool = True) -> bytes:
+    def export_data(self, output_file: str | PathLike[str] | IO[bytes] | None = None, cleanup: bool = True) -> bytes:
         """
         Export your data as a zip file containing db.sqlite and metadata.json files.
 
@@ -439,7 +439,7 @@ class Actual(ActualServer):
             config = patch
         metadata_file.write_text(json.dumps(config, separators=(",", ":")))
 
-    def download_budget(self, encryption_password: str = None):
+    def download_budget(self, encryption_password: str | None = None):
         """
         Downloads the budget file from the remote, applying all following changes required by the server.
 

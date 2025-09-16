@@ -47,11 +47,11 @@ class ActualServer:
     def __init__(
         self,
         base_url: str = "http://localhost:5006",
-        token: str = None,
-        password: str = None,
+        token: str | None = None,
+        password: str | None = None,
         bootstrap: bool = False,
-        cert: str | bool = None,
-        extra_headers: dict[str, str] = None,
+        cert: str | bool | None = None,
+        extra_headers: dict[str, str] | None = None,
     ):
         """
         :param base_url: url of the running Actual server
@@ -144,7 +144,7 @@ class ActualServer:
         self._token = login_response.data.token
         return login_response
 
-    def headers(self, file_id: str = None, extra_headers: dict = None) -> dict:
+    def headers(self, file_id: str | None = None, extra_headers: dict = None) -> dict:
         """
         Generates a header based on the stored token for the connection.
 
@@ -216,7 +216,7 @@ class ActualServer:
         return db.content
 
     def upload_user_file(
-        self, binary_data: bytes, file_id: str, file_name: str = "My Finances", encryption_meta: dict = None
+        self, binary_data: bytes, file_id: str, file_name: str = "My Finances", encryption_meta: dict | None = None
     ) -> UploadUserFileDTO:
         """Uploads the binary data, which is a zip folder containing the `db.sqlite` and the `metadata.json`. If the
         file is encrypted, the encryption_meta has to be provided with fields `keyId`, `algorithm`, `iv` and `authTag`
@@ -376,11 +376,11 @@ class ActualServer:
     def update_open_id_user(
         self,
         user_id: str,
-        user_name: str = None,
-        display_name: str = None,
-        enabled: bool = None,
-        owner: bool = None,
-        role: Literal["ADMIN", "BASIC"] = None,
+        user_name: str | None = None,
+        display_name: str | None = None,
+        enabled: bool | None = None,
+        owner: bool | None = None,
+        role: Literal["ADMIN", "BASIC"] | None = None,
     ) -> OpenIDUserDTO:
         """Updates a user on the OpenID server."""
         users = self.open_id_users()
@@ -435,7 +435,7 @@ class ActualServer:
         bank_sync: Literal["gocardless", "simplefin"] | str,
         account_id: str,
         start_date: datetime.date,
-        requisition_id: str = None,
+        requisition_id: str | None = None,
     ) -> Union[BankSyncErrorDTO, BankSyncTransactionResponseDTO]:
         if bank_sync == "gocardless" and requisition_id is None:
             raise ActualInvalidOperationError("Retrieving transactions with goCardless requires `requisition_id`")

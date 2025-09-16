@@ -224,7 +224,7 @@ class Schedule(pydantic.BaseModel):
                 value = value_before
         return value
 
-    def before(self, date: datetime.date = None) -> typing.Optional[datetime.date]:
+    def before(self, date: datetime.date | None = None) -> typing.Optional[datetime.date]:
         if not date:
             date = datetime.date.today()
         dt_start = date_to_datetime(date)
@@ -238,7 +238,7 @@ class Schedule(pydantic.BaseModel):
             return None
         return with_weekend_skip.date()
 
-    def xafter(self, date: datetime.date = None, count: int = 1) -> typing.List[datetime.date]:
+    def xafter(self, date: datetime.date | None = None, count: int = 1) -> typing.List[datetime.date]:
         if not date:
             date = datetime.date.today()
         # dateutils only accepts datetime for evaluation
