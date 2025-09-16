@@ -49,9 +49,9 @@ T = typing.TypeVar("T")
 
 def _transactions_base_query(
     s: Session,
-    start_date: datetime.date = None,
-    end_date: datetime.date = None,
-    account: Accounts | str | None = None,
+    start_date: datetime.date | None = None,
+    end_date: datetime.date | None = None,
+    account: Accounts | str | None | None = None,
     category: Categories | str | None = None,
     include_deleted: bool = False,
 ) -> Select:
@@ -116,9 +116,9 @@ def _balance_base_query(
 
 def get_transactions(
     s: Session,
-    start_date: datetime.date = None,
-    end_date: datetime.date = None,
-    notes: str = None,
+    start_date: datetime.date | None = None,
+    end_date: datetime.date | None = None,
+    notes: str | None = None,
     account: Accounts | str | None = None,
     category: Categories | str | None = None,
     is_parent: bool = False,
@@ -172,8 +172,8 @@ def match_transaction(
     payee: str | Payees = "",
     amount: decimal.Decimal | float | int = 0,
     imported_id: str | None = None,
-    already_matched: list[Transactions] = None,
-) -> typing.Optional[Transactions]:
+    already_matched: list[Transactions] | None = None,
+) -> Transactions | None:
     """Matches a transaction with another transaction based on the fuzzy matching.
 
     Described at [reconcileTransactions](
@@ -228,11 +228,11 @@ def create_transaction_from_ids(
     account_id: str,
     payee_id: typing.Optional[str],
     notes: str,
-    category_id: str = None,
+    category_id: str | None = None,
     amount: decimal.Decimal = 0,
-    imported_id: str = None,
+    imported_id: str | None = None,
     cleared: bool = False,
-    imported_payee: str = None,
+    imported_payee: str | None = None,
     process_payee: bool = True,
 ) -> Transactions:
     """Internal method to generate a transaction from ids instead of objects."""
@@ -266,7 +266,7 @@ def create_transaction(
     amount: decimal.Decimal | float | int = 0,
     imported_id: str | None = None,
     cleared: bool = False,
-    imported_payee: str = None,
+    imported_payee: str | None = None,
 ) -> Transactions:
     """
     Creates a transaction from the provided input.
@@ -386,9 +386,9 @@ def reconcile_transaction(
     amount: decimal.Decimal | float | int = 0,
     imported_id: str | None = None,
     cleared: bool = False,
-    imported_payee: str = None,
+    imported_payee: str | None = None,
     update_existing: bool = True,
-    already_matched: list[Transactions] = None,
+    already_matched: list[Transactions] | None = None,
 ) -> Transactions:
     """Matches the transaction to an existing transaction using fuzzy matching.
 
@@ -476,7 +476,7 @@ def create_split(s: Session, transaction: Transactions, amount: float | decimal.
     return split
 
 
-def _base_query(instance: typing.Type[T], name: str = None, include_deleted: bool = False) -> Select:
+def _base_query(instance: typing.Type[T], name: str | None = None, include_deleted: bool = False) -> Select:
     """Internal method to reduce querying complexity on sub-functions."""
     query = select(instance)
     if not include_deleted:
@@ -512,7 +512,7 @@ def get_or_create_category_group(s: Session, name: str) -> CategoryGroups:
     return category_group
 
 
-def get_categories(s: Session, name: str = None, include_deleted: bool = False) -> typing.Sequence[Categories]:
+def get_categories(s: Session, name: str | None = None, include_deleted: bool = False) -> typing.Sequence[Categories]:
     """
     Returns a list of all available categories.
 
@@ -528,7 +528,7 @@ def get_categories(s: Session, name: str = None, include_deleted: bool = False) 
 def create_category(
     s: Session,
     name: str,
-    group_name: str = None,
+    group_name: str | None = None,
 ) -> Categories:
     """
     Creates a new category with the `name` and `group_name`. If the group is not existing, it will also be created.
@@ -555,7 +555,7 @@ def get_tag(s: Session, name: str) -> typing.Optional[Tags]:
 
 
 def get_tags(
-    s: Session, name: str = None, description: str = None, include_deleted: bool = False
+    s: Session, name: str | None = None, description: str | None = None, include_deleted: bool = False
 ) -> typing.Sequence[Tags]:
     """Get all tags stored on the Actual database using a name or description pattern.
 
@@ -572,7 +572,7 @@ def get_tags(
     return s.exec(query).unique().all()
 
 
-def create_tag(s: Session, name: str, description: str = None, color: str = "#690CB0") -> Tags:
+def create_tag(s: Session, name: str, description: str | None = None, color: str = "#690CB0") -> Tags:
     """
     Creates a new tag with the `name` and `description`. Name **should not** be provided with the hashtag.
 
@@ -587,7 +587,7 @@ def create_tag(s: Session, name: str, description: str = None, color: str = "#69
 
 
 def get_category(
-    s: Session, name: str | Categories, group_name: str = None, strict_group: bool = False
+    s: Session, name: str | Categories, group_name: str | None = None, strict_group: bool = False
 ) -> typing.Optional[Categories]:
     """Gets an existing category by name, returns `None` if not found. Deleted payees are excluded from the search."""
     if isinstance(name, Categories):
@@ -604,7 +604,7 @@ def get_category(
 
 
 def get_or_create_category(
-    s: Session, name: str | Categories, group_name: str = None, strict_group: bool = False
+    s: Session, name: str | Categories, group_name: str | None = None, strict_group: bool = False
 ) -> Categories:
     """
     Gets or create the category, if not found with `name`.
@@ -620,7 +620,7 @@ def get_or_create_category(
     return category
 
 
-def get_accounts(s: Session, name: str = None, include_deleted: bool = False) -> typing.Sequence[Accounts]:
+def get_accounts(s: Session, name: str | None = None, include_deleted: bool = False) -> typing.Sequence[Accounts]:
     """
     Returns a list of all available accounts.
 
@@ -633,7 +633,7 @@ def get_accounts(s: Session, name: str = None, include_deleted: bool = False) ->
     return s.exec(query).unique().all()
 
 
-def get_payees(s: Session, name: str = None, include_deleted: bool = False) -> typing.Sequence[Payees]:
+def get_payees(s: Session, name: str | None = None, include_deleted: bool = False) -> typing.Sequence[Payees]:
     """
     Returns a list of all available payees.
 
@@ -743,7 +743,7 @@ def _get_budget_table(s: Session) -> typing.Type[typing.Union[ReflectBudgets, Ze
 
 
 def get_budgets(
-    s: Session, month: datetime.date = None, category: str | Categories = None
+    s: Session, month: datetime.date | None = None, category: str | Categories | None = None
 ) -> typing.Sequence[typing.Union[ZeroBudgets, ReflectBudgets]]:
     """
     Returns a list of all available budgets.
@@ -905,7 +905,7 @@ def create_transfer(
     source_account: str | Accounts,
     dest_account: str | Accounts,
     amount: decimal.Decimal | int | float,
-    notes: str = None,
+    notes: str | None = None,
 ) -> typing.Tuple[Transactions, Transactions]:
     """
     Creates a transfer of money between two accounts. The amount is provided as a positive value.
@@ -998,7 +998,7 @@ def create_rule(
 
 def get_schedules(
     s: Session,
-    name: str = None,
+    name: str | None = None,
     include_deleted: bool = False,
     include_completed: bool = False,
 ) -> typing.Sequence[Schedules]:
@@ -1023,7 +1023,7 @@ def create_schedule(
     date: datetime.date | datetime.datetime | Schedule,
     amount: decimal.Decimal | float | tuple[decimal.Decimal, decimal.Decimal] | tuple[float, float],
     amount_operation: typing.Literal["is", "isapprox", "isbetween"] = "isapprox",
-    name: str = None,
+    name: str | None = None,
     payee: str | Payees | None = None,
     account: str | Accounts | None = None,
     posts_transaction: bool = False,
@@ -1111,7 +1111,7 @@ def create_schedule_config(
     end_date: datetime.date | datetime.datetime | None = None,
     interval: int = 1,
     frequency: Frequency | typing.Literal["daily", "weekly", "monthly", "yearly"] | str = Frequency.MONTHLY,
-    patterns: list[Pattern] = None,
+    patterns: list[Pattern] | None = None,
     skip_weekend: bool = False,
     weekend_solve_mode: WeekendSolveMode | typing.Literal["before", "after"] | str = WeekendSolveMode.AFTER,
 ) -> Schedule:
@@ -1168,7 +1168,7 @@ def create_schedule_config(
     )
 
 
-def get_or_create_clock(s: Session, client: HULC_Client = None) -> MessagesClock:
+def get_or_create_clock(s: Session, client: HULC_Client | None = None) -> MessagesClock:
     """
     Loads the HULC Clock from the database that tells the client from when the messages should be retrieved.
 
@@ -1225,7 +1225,7 @@ def get_or_create_preference(s: Session, key: str, value: str) -> Preferences:
     return preference
 
 
-def get_preference(s: Session, key: str, default: str = None) -> typing.Optional[Preferences]:
+def get_preference(s: Session, key: str, default: str | None = None) -> typing.Optional[Preferences]:
     """
     Gets an existing preference by key name, returns `None` if not found.
 

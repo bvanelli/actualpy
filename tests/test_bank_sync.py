@@ -85,7 +85,7 @@ def create_accounts(session, protocol: str):
     return bank
 
 
-def generate_bank_sync_data(mocker, starting_balance: int = None):
+def generate_bank_sync_data(mocker, starting_balance: int | None = None):
     response_full = copy.deepcopy(response)
     if starting_balance:
         response_full["startingBalance"] = starting_balance

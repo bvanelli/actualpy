@@ -105,7 +105,7 @@ class ValueType(enum.Enum):
             # must be BOOLEAN
             return operation.value in ("is",)
 
-    def validate(self, value: typing.Union[int, list[str], str, None], operation: ConditionType = None) -> bool:
+    def validate(self, value: int | list[str] | str | None, operation: ConditionType | None = None) -> bool:
         if isinstance(value, list) and operation in (ConditionType.ONE_OF, ConditionType.NOT_ONE_OF):
             return all(self.validate(v, None) for v in value)
         if value is None:
@@ -169,9 +169,9 @@ def get_value(
 
 def condition_evaluation(
     op: ConditionType,
-    true_value: typing.Union[int, list[str], str, datetime.date, None],
-    self_value: typing.Union[int, list[str], str, datetime.date, BetweenValue, None],
-    options: dict = None,
+    true_value: int | list[str] | str | datetime.date | None,
+    self_value: int | list[str] | str | datetime.date | BetweenValue | None,
+    options: dict | None = None,
 ) -> bool:
     """Helper function to evaluate the condition based on the true_value, value found on the transaction, and the
     self_value, value defined on rule condition."""
@@ -365,7 +365,7 @@ class Action(pydantic.BaseModel):
     op: ActionType = pydantic.Field(ActionType.SET, description="Action type to apply (default changes a column).")
     value: typing.Union[str, bool, int, float, pydantic.BaseModel, None]
     type: typing.Optional[ValueType] = None
-    options: typing.Dict[str, typing.Union[str, int]] = None
+    options: typing.Dict[str, typing.Union[str, int]] | None = None
 
     def __str__(self) -> str:
         if self.op in (ActionType.SET, ActionType.LINK_SCHEDULE):
@@ -478,9 +478,7 @@ class Rule(pydantic.BaseModel):
         "and", description="Operation to apply for the rule evaluation. If 'all' or 'any' need to be evaluated."
     )
     actions: list[Action] = pydantic.Field(..., description="List of actions to apply to the transaction.")
-    stage: typing.Literal["pre", "post", None] = pydantic.Field(
-        None, description="Stage in which the rule will be evaluated (default None)"
-    )
+    stage: typing.Literal["pre", "post", None] = pydantic.Field()
 
     @pydantic.model_validator(mode="before")
     def correct_operation(cls, value):
