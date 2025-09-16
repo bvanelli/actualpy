@@ -47,7 +47,7 @@ def encrypt(key_id: str, master_key: bytes, plaintext: bytes) -> dict:
     }
 
 
-def decrypt(master_key: bytes, iv: bytes, ciphertext: bytes, auth_tag: bytes = None) -> bytes:
+def decrypt(master_key: bytes, iv: bytes, ciphertext: bytes, auth_tag: bytes | None = None) -> bytes:
     """Decrypts a cyphertext (actual database) using AES-GCM."""
     decryptor = Cipher(algorithms.AES(master_key), modes.GCM(iv, auth_tag)).decryptor()
     try:

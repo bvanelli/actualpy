@@ -19,6 +19,7 @@ dependencies = [
     "protobuf>=4",
     "cryptography>=42",
     "python-dateutil>=2.9.0",
+    "typer>=0.17.4",
 ]
 classifiers = [
     "Programming Language :: Python",
@@ -48,6 +49,7 @@ dev = [
     "testcontainers",
     "pre-commit",
     "docker>=7.1.0",
+    "click>=8.1.8",
 ]
 docs = [
     "mkdocs==1.6.1",

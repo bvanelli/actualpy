@@ -185,7 +185,7 @@ def replace_func(m: re.Match):
     return (lead or "") + (lower or forced or "").upper() + (rest or "")
 
 
-def title(title_str: str, custom_specials: List[str] = None):
+def title(title_str: str, custom_specials: List[str] | None = None):
     title_str = title_str.lower()
     title_str = regex.sub(replace_func, title_str)
 
