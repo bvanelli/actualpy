@@ -107,7 +107,7 @@ class Pattern(pydantic.BaseModel):
     def __init__(
         self,
         value: int,
-        type: PatternType | typing.Literal["SU", "MO", "TU", "WE", "TH", "FR", "SA", "day"] | str,
+        type: typing.Union[PatternType, typing.Literal["SU", "MO", "TU", "WE", "TH", "FR", "SA", "day"], str],
     ):
         if isinstance(type, str):
             type = PatternType(type)
@@ -159,10 +159,10 @@ class Schedule(pydantic.BaseModel):
         alias="endMode",
         description="If the schedule should run forever or end at a certain date or number of occurrences.",
     )
-    end_occurrences: int | None = pydantic.Field(
+    end_occurrences: typing.Optional[int] = pydantic.Field(
         1, alias="endOccurrences", description="Number of occurrences before the schedule ends."
     )
-    end_date: datetime.date | None = pydantic.Field(None, alias="endDate")
+    end_date: typing.Optional[datetime.date] = pydantic.Field(None, alias="endDate")
 
     def __str__(self) -> str:
         # evaluate frequency: handle the case where DAILY convert to 'dai' instead of 'day'
