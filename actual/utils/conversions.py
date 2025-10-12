@@ -29,6 +29,11 @@ def int_to_date(date: int | str, month_only: bool = False) -> datetime.date:
     return datetime.datetime.strptime(str(date), date_format).date()
 
 
+def date_to_string(date: datetime.date) -> str:
+    """Converts a date object to a string representation YYYY-MM-DD."""
+    return date.strftime("%Y-%m-%d")
+
+
 def month_range(month: datetime.date) -> Tuple[datetime.date, datetime.date]:
     """
     Range of the provided `month` as a tuple `[start, end)`.

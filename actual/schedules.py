@@ -13,6 +13,7 @@ from dateutil.rrule import (
     weekday,
     weekdays,
 )
+from pydantic import model_serializer
 
 
 def date_to_datetime(date: typing.Optional[datetime.date]) -> typing.Optional[datetime.datetime]:
@@ -69,10 +70,48 @@ class PatternType(enum.Enum):
 
 
 class Pattern(pydantic.BaseModel):
+    """
+    Implements a single pattern for a schedule.
+
+    The pattern controls individual inclusions on the schedule. For example, if you want to make a schedule that runs
+    every month, you could additionally add the pattern that it happens on the 15th of the month. This translates to:
+
+    ```python
+    p = Pattern(15, PatternType.DAY)
+    # print will display the friendly string for the pattern
+    print(p)
+    ```
+
+    You may also provide the pattern as in days of the week. For the first Tuesday, you would use:
+
+    ```python
+    Pattern(1, PatternType.TUESDAY)
+    # is also equivalent to
+    Pattern(1, "TU")
+    ```
+
+    If you want to indicate the `last` day, you can use -1 for the value:
+
+    ```
+    last_day = Pattern(-1, PatternType.DAY)
+    # last day of the schedule period
+    print(last_day)
+    ```
+    """
+
     model_config = pydantic.ConfigDict(validate_assignment=True)
 
     value: int
     type: PatternType
+
+    def __init__(
+        self,
+        value: int,
+        type: PatternType | typing.Literal["SU", "MO", "TU", "WE", "TH", "FR", "SA", "day"] | str,
+    ):
+        if isinstance(type, str):
+            type = PatternType(type)
+        super().__init__(value=value, type=type)
 
     def __str__(self) -> str:
         if self.value == -1:
@@ -89,11 +128,16 @@ class Pattern(pydantic.BaseModel):
 
 class Schedule(pydantic.BaseModel):
     """
-    Implements basic schedules. They are described in https://actualbudget.org/docs/budgeting/schedules/
+    Implements [schedules](https://actualbudget.org/docs/schedules), a way to define recurring transactions in your
+    budget.
 
-    Schedules are part of a rule which then compares if the date found would fit within the schedule by the .is_approx()
-    method. If it does, and the other conditions match, the transaction will then be linked with the schedule id
-    (stored in the database).
+    On the database level, schedules are stored as part of a [Rule][actual.rules.Rule], which then compares if the
+    date found fits within the schedule by using the [is_approx][actual.schedules.Schedule.is_approx] method.
+    If it does fit, and the other conditions match (extra conditions are only available via the custom rule edit), the
+    transaction will then be linked with the schedule id (stored in the database for the transaction).
+
+    This object **is not a database level object**, meaning that it needs to be converted first using
+    [create_schedule][actual.queries.create_schedule], that will create the correct rule.
     """
 
     model_config = pydantic.ConfigDict(validate_assignment=True)
@@ -115,10 +159,10 @@ class Schedule(pydantic.BaseModel):
         alias="endMode",
         description="If the schedule should run forever or end at a certain date or number of occurrences.",
     )
-    end_occurrences: int = pydantic.Field(
+    end_occurrences: int | None = pydantic.Field(
         1, alias="endOccurrences", description="Number of occurrences before the schedule ends."
     )
-    end_date: datetime.date = pydantic.Field(None, alias="endDate")
+    end_date: datetime.date | None = pydantic.Field(None, alias="endDate")
 
     def __str__(self) -> str:
         # evaluate frequency: handle the case where DAILY convert to 'dai' instead of 'day'
@@ -149,6 +193,23 @@ class Schedule(pydantic.BaseModel):
         # weekend skips
         move = f" ({self.weekend_solve_mode.value} weekend)" if self.skip_weekend else ""
         return f"Every {frequency}{target}{end}{move}"
+
+    @model_serializer(mode="wrap")
+    def serialize_model(self, handler) -> dict:
+        """Converts a schedule to a dict that can be used in a rule."""
+        ret = handler(self)
+        if not self.skip_weekend:
+            ret.pop("skipWeekend", None)
+            ret.pop("weekendSolveMode", None)
+        if self.end_mode == EndMode.NEVER:
+            ret.pop("endMode", None)
+        if self.end_mode != EndMode.ON_DATE:
+            ret.pop("endDate", None)
+        if self.end_mode != EndMode.AFTER_N_OCCURRENCES:
+            ret.pop("endOccurrences", None)
+        if not self.patterns:
+            ret.pop("patterns", None)
+        return ret
 
     @pydantic.model_validator(mode="after")
     def validate_end_date(self):

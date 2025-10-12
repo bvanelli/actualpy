@@ -33,8 +33,15 @@ from actual.database import (
 )
 from actual.exceptions import ActualError
 from actual.protobuf_models import HULC_Client
-from actual.rules import Action, Condition, Rule, RuleSet
-from actual.utils.conversions import cents_to_decimal, current_timestamp, date_to_int, decimal_to_cents, month_range
+from actual.rules import Action, ActionType, BetweenValue, Condition, ConditionType, Rule, RuleSet
+from actual.schedules import EndMode, Frequency, Pattern, Schedule, WeekendSolveMode
+from actual.utils.conversions import (
+    cents_to_decimal,
+    current_timestamp,
+    date_to_int,
+    decimal_to_cents,
+    month_range,
+)
 from actual.utils.title import title
 
 T = typing.TypeVar("T")
@@ -964,8 +971,8 @@ def create_rule(
     :param run_immediately: If the run should run for all transactions on insert, defaults to `False`.
     :return: Rule database object created.
     """
-    conditions = json.dumps([c.as_dict() for c in rule.conditions])
-    actions = json.dumps([a.as_dict() for a in rule.actions])
+    conditions = json.dumps([c.model_dump(mode="json", by_alias=True) for c in rule.conditions])
+    actions = json.dumps([a.model_dump(mode="json", by_alias=True) for a in rule.actions])
     database_rule = Rules(
         id=str(uuid.uuid4()), stage=rule.stage, conditions_op=rule.operation, conditions=conditions, actions=actions
     )
@@ -977,17 +984,170 @@ def create_rule(
     return database_rule
 
 
-def get_schedules(s: Session, name: str = None, include_deleted: bool = False) -> typing.Sequence[Schedules]:
+def get_schedules(
+    s: Session,
+    name: str = None,
+    include_deleted: bool = False,
+    include_completed: bool = False,
+) -> typing.Sequence[Schedules]:
     """
-    Returns a list of all available schedules.
+    Returns a list of all available schedules, automatically filtering completed schedules.
 
     :param s: Session from Actual local database.
     :param name: Pattern name of the payee, case-insensitive.
     :param include_deleted: Includes all payees deleted via frontend. They would not show normally.
+    :param include_completed: Includes all schedules that have been completed. They are also shown as hidden on the
+           frontend.
     :return: List of schedules.
     """
     query = _base_query(Schedules, name, include_deleted)
+    if not include_completed:
+        query = query.filter(Schedules.completed == 0)
     return s.exec(query).all()
+
+
+def create_schedule(
+    s: Session,
+    date: datetime.date | datetime.datetime | Schedule,
+    amount: decimal.Decimal | float | tuple[decimal.Decimal, decimal.Decimal] | tuple[float, float],
+    amount_operation: typing.Literal["is", "isapprox", "isbetween"] = "isapprox",
+    name: str = None,
+    payee: str | Payees | None = None,
+    account: str | Accounts | None = None,
+    posts_transaction: bool = False,
+) -> Schedules:
+    """
+    Create a schedule database object based on the parameters.
+
+    :param s: Session from Actual local database.
+    :param date: Date of the schedule (if it only happens once) or [Schedule][actual.schedules.Schedule] object, that
+                 can be initialized more easily with the helper
+                 [create_schedule_config][actual.queries.create_schedule_config].
+    :param amount: Amount that the scheduled transaction will have. Provide only one number, except if the amount uses
+                   an `isbetween` in `amount_operation`, in this case num1 and 2 should be provided as a tuple
+                   `(num1, num2)`, where `num1 < num2`.
+    :param amount_operation: Controls how amount is interpreted. Set this value to `is` when your schedule always
+                             matches a fixed amount. By default, `isapprox` will be used, and the amount will be
+                             treated as an estimate and will match transactions that are plus/minus 7.5% of the
+                             amount entered. When using `isbetween`, make sure that the amount is provided as a
+                             tuple (num1, num2), where `num1 < num2`.
+    :param name: Not mandatory. Schedule names must be unique.
+    :param payee: Optional; will default to `None`.
+    :param account: Optional; will default to `None`.
+    :param posts_transaction: Whether the schedule should auto-post transactions on your behalf. Defaults to false.
+    :return: Rule database object created.
+    """
+    if amount_operation == "isbetween" and not isinstance(amount, tuple):
+        raise ActualError("When using 'isbetween', amount must be a tuple (num1, num2), where num1 < num2.")
+
+    schedule_id = str(uuid.uuid4())
+    conditions = []
+    # Handle the payee condition
+    if payee := get_payee(s, payee):
+        conditions.append(
+            Condition(field="description", op=ConditionType.IS, value=payee.id),
+        )
+    else:
+        # payees specifically have a fallback case, to look for only entries without payee
+        conditions.append(
+            Condition(field="description", op=ConditionType.IS, value=None),
+        )
+    # Handle the account condition
+    if account := get_account(s, account):
+        conditions.append(
+            Condition(field="acct", op=ConditionType.IS, value=account.id),
+        )
+    # Handle the date condition
+    conditions.append(
+        Condition(field="date", op=ConditionType.IS_APPROX, value=date),
+    )
+    # Handle the amount condition
+    if amount_operation == "isbetween":
+        conditions.append(
+            Condition(
+                field="amount",
+                op=ConditionType(amount_operation),
+                value=BetweenValue(num1=decimal_to_cents(amount[0]), num2=decimal_to_cents(amount[1])),
+            )
+        )
+    else:
+        conditions.append(Condition(field="amount", op=ConditionType(amount_operation), value=decimal_to_cents(amount)))
+
+    actions = [
+        Action(op=ActionType.LINK_SCHEDULE, value=schedule_id),
+    ]
+    rule_obj = Rule(conditions=conditions, operation="and", actions=actions, stage=None)
+    rule = create_rule(s, rule_obj, run_immediately=False)
+    schedule = Schedules(
+        id=schedule_id,
+        rule_id=rule.id,
+        active=0,
+        completed=0,
+        posts_transaction=int(posts_transaction),
+        tombstone=0,
+        name=name,
+        rule=rule,
+    )
+    s.add(schedule)
+    return schedule
+
+
+def create_schedule_config(
+    start: datetime.date | datetime.datetime,
+    end_mode: EndMode | typing.Literal["never", "on_date", "after_n_occurrences"] | str = EndMode.NEVER,
+    end_occurrences: int = None,
+    end_date: datetime.date | datetime.datetime | None = None,
+    interval: int = 1,
+    frequency: Frequency | typing.Literal["daily", "weekly", "monthly", "yearly"] | str = Frequency.MONTHLY,
+    patterns: list[Pattern] = None,
+    skip_weekend: bool = False,
+    weekend_solve_mode: WeekendSolveMode | typing.Literal["before", "after"] | str = WeekendSolveMode.AFTER,
+) -> Schedule:
+    """
+    Created a recurring config for the schedule.
+
+    This configuration indicates how the schedule runs. It is an alternative way of creating a schedule (instead of
+    the simple start date and frequency option) that can be configured quite
+
+    For the date fields, if a datetime is provided, only the truncated value will be used.
+
+    :param start: The date string indicating the start date of the recurrence.
+    :param end_mode: Specifies how the recurrence ends: never ends, after a number of occurrences,
+                     or on a specific date.
+    :param end_occurrences: Used when `end_mode` is `'after_n_occurrences'`. Indicates how many times it should repeat.
+    :param end_date: Used when `end_mode` is `'on_date'`. The date object indicating when the recurrence should end.
+    :param interval: The interval at which the recurrence happens. Defaults to `1` if omitted.
+    :param frequency: How often the schedule repeats.
+    :param patterns: Optional patterns to control specific dates for recurrence (e.g., certain weekdays or month days).
+    :param skip_weekend: If true, skips weekends when calculating recurrence dates. This option can be further
+                         configured with the `weekend_solve_mode` parameter.
+    :param weekend_solve_mode: If a calculated date falls on a weekend and `skip_weekend` is true, this controls whether
+                               the date moves to the before or after weekday.
+    :return: Schedule object (not database object) that can be used to create a schedule via
+             [create_schedule][actual.queries.create_schedule].
+    """
+    if isinstance(frequency, str):
+        frequency = Frequency(frequency)
+    if isinstance(weekend_solve_mode, str):
+        weekend_solve_mode = WeekendSolveMode(weekend_solve_mode)
+    if isinstance(end_mode, str):
+        end_mode = EndMode(end_mode)
+    if end_mode == EndMode.ON_DATE and end_date is None:
+        raise ActualError("When using end_mode 'on_date', the end_date must be provided.")
+    if end_mode == EndMode.AFTER_N_OCCURRENCES and end_occurrences is None:
+        raise ActualError("When using end_mode 'after_n_occurrences', the end_occurrences must be provided.")
+
+    return Schedule(
+        start=start,
+        interval=interval,
+        frequency=frequency,
+        patterns=patterns or [],
+        skipWeekend=skip_weekend,
+        weekendSolveMode=weekend_solve_mode,
+        endMode=end_mode,
+        endOccurrences=end_occurrences,
+        endDate=end_date,
+    )
 
 
 def get_or_create_clock(s: Session, client: HULC_Client = None) -> MessagesClock:

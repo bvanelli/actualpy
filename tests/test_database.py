@@ -11,6 +11,8 @@ from actual.queries import (
     create_account,
     create_budget,
     create_rule,
+    create_schedule,
+    create_schedule_config,
     create_splits,
     create_tag,
     create_transaction,
@@ -24,6 +26,7 @@ from actual.queries import (
     get_or_create_preference,
     get_preferences,
     get_ruleset,
+    get_schedules,
     get_tag,
     get_tags,
     get_transactions,
@@ -193,14 +196,24 @@ def test_rule_insertion_method(session):
     session.commit()
     # create and run rule
     action = Action(field="cleared", value=1)
-    assert action.as_dict() == {"field": "cleared", "op": "set", "type": "boolean", "value": True}
+    assert action.model_dump(mode="json", by_alias=True) == {
+        "field": "cleared",
+        "op": "set",
+        "type": "boolean",
+        "value": True,
+    }
     condition = Condition(field="date", op=ConditionType.IS_APPROX, value=date(2024, 1, 2))
-    assert condition.as_dict() == {"field": "date", "op": "isapprox", "type": "date", "value": "2024-01-02"}
+    assert condition.model_dump(mode="json", by_alias=True) == {
+        "field": "date",
+        "op": "isapprox",
+        "type": "date",
+        "value": "2024-01-02",
+    }
     # test full rule
     rule = Rule(conditions=[condition], actions=[action], operation="all", stage="pre")
     created_rule = create_rule(session, rule, run_immediately=True)
-    assert [condition.as_dict()] == json.loads(created_rule.conditions)
-    assert [action.as_dict()] == json.loads(created_rule.actions)
+    assert [condition.model_dump(mode="json", by_alias=True)] == json.loads(created_rule.conditions)
+    assert [action.model_dump(mode="json", by_alias=True)] == json.loads(created_rule.actions)
     assert created_rule.conditions_op == "and"
     assert created_rule.stage == "pre"
     trs = get_transactions(session)
@@ -421,3 +434,27 @@ def test_tags(session):
     assert tags[0].transactions == [coffee]
     assert tags[0] == get_tag(session, "#happy")
     assert get_tags(session, "#foobar", "moments") == []
+
+
+def test_schedules(session):
+    config = create_schedule_config(datetime.date(2025, 10, 11))
+    schedule_created = create_schedule(session, config, 500.0, name="foobar")
+    session.commit()
+
+    schedules = get_schedules(session)
+    assert len(schedules) == 1
+    cond = json.loads(schedules[0].rule.conditions)
+    assert cond[1] == {
+        "op": "isapprox",
+        "field": "date",
+        "type": "date",
+        "value": {
+            "start": "2025-10-11",
+            "interval": 1,
+            "frequency": "monthly",
+        },
+    }
+    assert schedule_created == schedules[0]
+    # change to complete and requery
+    schedule_created.completed = 1
+    assert len(get_schedules(session)) == 0
