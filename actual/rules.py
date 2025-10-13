@@ -8,6 +8,7 @@ import typing
 import unicodedata
 
 import pydantic
+from pydantic import model_serializer
 
 from actual import ActualError
 from actual.crypto import is_uuid
@@ -288,9 +289,10 @@ class Condition(pydantic.BaseModel):
         v = f"'{self.value}'" if isinstance(self.value, str) or isinstance(self.value, Schedule) else str(self.value)
         return f"'{self.field}' {self.op.value} {v}"
 
-    def as_dict(self):
+    @model_serializer(mode="wrap")
+    def serialize_model(self, handler) -> dict:
         """Returns valid dict for database insertion."""
-        ret = self.model_dump(mode="json")
+        ret = handler(self)
         if not self.options:
             ret.pop("options", None)
         return ret
@@ -383,9 +385,10 @@ class Action(pydantic.BaseModel):
                 else f"prepend to notes '{self.value}'"
             )
 
-    def as_dict(self):
+    @model_serializer(mode="wrap")
+    def serialize_model(self, handler) -> dict:
         """Returns valid dict for database insertion."""
-        ret = self.model_dump(mode="json")
+        ret = handler(self)
         if not self.options:
             ret.pop("options", None)
         return ret
