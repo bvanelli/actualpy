@@ -1111,7 +1111,7 @@ def create_schedule_config(
 
     For the date fields, if a datetime is provided, only the truncated value will be used.
 
-    :param start: The date string indicating the start date of the recurrence.
+    :param start: The date indicating the start date of the recurrence.
     :param end_mode: Specifies how the recurrence ends: never ends, after a number of occurrences,
                      or on a specific date.
     :param end_occurrences: Used when `end_mode` is `'after_n_occurrences'`. Indicates how many times it should repeat.
