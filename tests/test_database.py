@@ -35,6 +35,7 @@ from actual.queries import (
     set_transaction_payee,
 )
 from actual.rules import Action, Condition, ConditionType, Rule
+from actual.schedules import EndMode, Frequency, Pattern, WeekendSolveMode
 
 
 def test_account_relationships(session):
@@ -458,3 +459,48 @@ def test_schedules(session):
     # change to complete and requery
     schedule_created.completed = 1
     assert len(get_schedules(session)) == 0
+
+
+def test_schedule_is_betweeen(session):
+    expected_date = datetime.date(2025, 10, 11)
+    account = create_account(session, "Bank")
+    payee = get_or_create_payee(session, "Insurance company")
+    # should always be paid on the first working day of the month
+    config = create_schedule_config(expected_date, patterns=[Pattern(1, "day")], skip_weekend=True)
+    # if the amount_operation="isbetween", the schedule needs two amounts
+    with pytest.raises(ActualError, match="amount must be a tuple"):
+        create_schedule(session, config, 100.0, "isbetween", "Insurance", payee, account)
+
+    schedule = create_schedule(session, config, (100.0, 110.0), "isbetween", "Insurance", payee, account)
+    assert json.loads(schedule.rule.conditions) == [
+        {"field": "description", "op": "is", "type": "id", "value": payee.id},
+        {"field": "acct", "op": "is", "type": "id", "value": account.id},
+        {
+            "field": "date",
+            "op": "isapprox",
+            "type": "date",
+            "value": {
+                "frequency": "monthly",
+                "interval": 1,
+                "patterns": [{"type": "day", "value": 1}],
+                "skipWeekend": True,
+                "start": "2025-10-11",
+                "weekendSolveMode": "after",
+            },
+        },
+        {"field": "amount", "op": "isbetween", "type": "number", "value": {"num1": 10000, "num2": 11000}},
+    ]
+
+
+def test_schedule_config(session):
+    # should work
+    today = datetime.date.today()
+    sc = create_schedule_config(today, "never", frequency="monthly", skip_weekend=True, weekend_solve_mode="after")
+    assert sc.end_mode == EndMode.NEVER
+    assert sc.frequency == Frequency.MONTHLY
+    assert sc.weekend_solve_mode == WeekendSolveMode.AFTER
+    # should raise validation issues
+    with pytest.raises(ActualError, match="the end_date must be provided"):
+        create_schedule_config(today, end_mode="on_date")
+    with pytest.raises(ActualError, match="the end_occurrences must be provided"):
+        create_schedule_config(today, end_mode="after_n_occurrences")

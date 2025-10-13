@@ -29,11 +29,6 @@ def int_to_date(date: int | str, month_only: bool = False) -> datetime.date:
     return datetime.datetime.strptime(str(date), date_format).date()
 
 
-def date_to_string(date: datetime.date) -> str:
-    """Converts a date object to a string representation YYYY-MM-DD."""
-    return date.strftime("%Y-%m-%d")
-
-
 def date_to_datetime(date: Optional[datetime.date]) -> Optional[datetime.datetime]:
     """Converts one object from date to datetime object. The reverse is possible directly by calling datetime.date()."""
     if date is None:
