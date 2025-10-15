@@ -77,9 +77,7 @@ def test_account_relationships(session):
 def test_transaction(session):
     today = date.today()
     other = create_account(session, "Other")
-    coffee = create_transaction(
-        session, date=today, account="Other", payee="Starbucks", notes="coffee", amount=float(-9.95)
-    )
+    coffee = create_transaction(session, date=today, account="Other", payee="Starbucks", notes="coffee", amount=(-9.95))
     session.commit()
     assert coffee.amount == -995
     assert len(other.transactions) == 1
@@ -414,7 +412,7 @@ def test_tags(session):
     today = date.today()
     create_account(session, "Wallet")
     tag = create_tag(session, "#happy", "For the happy moments in life")
-    coffee = create_transaction(session, date=today, account="Wallet", notes="Coffee #happy", amount=float(-4.50))
+    coffee = create_transaction(session, date=today, account="Wallet", notes="Coffee #happy", amount=(-4.50))
     session.commit()
     tags = get_tags(session)
     assert tags == [tag]

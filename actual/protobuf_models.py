@@ -3,7 +3,6 @@ from __future__ import annotations
 import base64
 import datetime
 import uuid
-from typing import List
 
 import proto
 
@@ -151,7 +150,7 @@ class SyncRequest(proto.Message):
     def set_null_timestamp(self, client_id: str = None) -> str:
         return self.set_timestamp(client_id, datetime.datetime(1970, 1, 1, 0, 0, 0, 0))
 
-    def set_messages(self, messages: List[Message], client: HULC_Client, master_key: bytes = None):
+    def set_messages(self, messages: list[Message], client: HULC_Client, master_key: bytes = None):
         if not self.messages:
             self.messages = []
         for message in messages:
@@ -179,7 +178,7 @@ class SyncResponse(proto.Message):
     messages = proto.RepeatedField(MessageEnvelope, number=1)
     merkle = proto.Field(proto.STRING, number=2)
 
-    def get_messages(self, master_key: bytes = None) -> List[Message]:
+    def get_messages(self, master_key: bytes = None) -> list[Message]:
         messages = []
         for message in self.messages:  # noqa
             if message.isEncrypted:

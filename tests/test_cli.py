@@ -1,7 +1,6 @@
 import datetime
 import json
 import pathlib
-from typing import List
 
 import pytest
 from click.testing import Result
@@ -61,7 +60,7 @@ def actual_server(request, module_mocker, tmp_path_factory):
         yield container
 
 
-def invoke(command: List[str]) -> Result:
+def invoke(command: list[str]) -> Result:
     from actual.cli.main import app
 
     return runner.invoke(app, command)

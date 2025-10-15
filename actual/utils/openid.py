@@ -5,6 +5,7 @@ It starts a web server to listen redirect_uri, waiting for auth code.
 It optionally opens a browser window to guide a human user to manually login.
 After obtaining an auth code, the web server will automatically shut down.
 """
+
 import logging
 import os
 import socket
@@ -50,7 +51,7 @@ def _is_inside_docker():
                 cgroup_path = line.split(":", 2)[2].strip()
                 if cgroup_path.strip() != "/":
                     return True
-    except IOError:
+    except OSError:
         pass  # We are probably not running on Linux
     return os.path.exists("/.dockerenv")  # Docker on Mac will run this line
 
@@ -85,9 +86,7 @@ def _browse(auth_uri, browser_name=None):  # throws ImportError, webbrowser.Erro
 
             # https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_powershell_exe
             # Ampersand (&) should be quoted
-            exit_code = subprocess.call(
-                ["powershell.exe", "-NoProfile", "-Command", 'Start-Process "{}"'.format(auth_uri)]
-            )
+            exit_code = subprocess.call(["powershell.exe", "-NoProfile", "-Command", f'Start-Process "{auth_uri}"'])
             browser_opened = exit_code == 0
         except FileNotFoundError:  # WSL might be too old
             pass
@@ -148,7 +147,7 @@ class _AuthCodeHandler(BaseHTTPRequestHandler):
         logger.debug(format, *map(_printify, args))
 
 
-class _AuthCodeHttpServer(HTTPServer, object):
+class _AuthCodeHttpServer(HTTPServer):
     def __init__(self, server_address, *args, **kwargs):
         _, port = server_address
         if port and (sys.platform == "win32" or is_wsl()):
@@ -172,7 +171,7 @@ class _AuthCodeHttpServer6(_AuthCodeHttpServer):
     address_family = socket.AF_INET6
 
 
-class AuthCodeReceiver(object):
+class AuthCodeReceiver:
     # This class has (rather than is) an _AuthCodeHttpServer, so it does not leak API
     def __init__(self, port=None, scheduled_actions=None):
         """Create a Receiver waiting for incoming auth response.
@@ -293,8 +292,8 @@ class AuthCodeReceiver(object):
         auth_uri_callback=None,
         browser_name=None,
     ):
-        welcome_uri = "http://localhost:{p}".format(p=self.get_port())
-        abort_uri = "{loc}?error=abort".format(loc=welcome_uri)
+        welcome_uri = f"http://localhost:{self.get_port()}"
+        abort_uri = f"{welcome_uri}?error=abort"
         logger.debug("Abort by visit %s", abort_uri)
         self._server.welcome_page = Template(welcome_template or "").safe_substitute(
             auth_uri=auth_uri, abort_uri=abort_uri

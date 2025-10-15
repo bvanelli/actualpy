@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import enum
-from typing import Dict, List, Literal, Optional, Union
+from typing import Dict, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, TypeAdapter
 
@@ -179,7 +179,7 @@ class RemoteFileListDTO(FileDTO):
     encrypt_key_id: Optional[str] = Field(..., alias="encryptKeyId")
     # optional OpenId fields
     owner: Optional[str] = None
-    users_with_access: Optional[List[BaseOpenIDUserFileAccessDTO]] = Field(
+    users_with_access: Optional[list[BaseOpenIDUserFileAccessDTO]] = Field(
         default_factory=list, alias="usersWithAccess"
     )
 
@@ -199,7 +199,7 @@ class GetUserFileInfoDTO(StatusDTO):
 class ListUserFilesDTO(StatusDTO):
     """List user files response model."""
 
-    data: List[RemoteFileListDTO]
+    data: list[RemoteFileListDTO]
 
 
 class UserGetKeyDTO(StatusDTO):
@@ -236,13 +236,13 @@ class IsBootstrapedDTO(BaseModel):
     bootstrapped: bool
     login_method: Optional[str] = Field(default="password", alias="loginMethod")
     multi_user: Optional[bool] = Field(default=False, alias="multiuser")
-    available_login_methods: Optional[List[LoginMethodDTO]] = Field(default=None, alias="availableLoginMethods")
+    available_login_methods: Optional[list[LoginMethodDTO]] = Field(default=None, alias="availableLoginMethods")
 
 
 class LoginMethodsDTO(StatusDTO):
     """Login methods response model."""
 
-    methods: List[LoginMethodDTO]
+    methods: list[LoginMethodDTO]
 
 
 class BootstrapInfoDTO(StatusDTO):

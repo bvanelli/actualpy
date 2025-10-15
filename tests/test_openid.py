@@ -52,7 +52,6 @@ def test_openid_endpoints(actual_server, mocker):
 
 
 def test_login_handshake(mocker):
-
     def _threading_call(url: str):
         # This thread will do the interaction of the user logging in via browser
         # We just wait a second then call the endpoint passing the token from the open id callback to the API
