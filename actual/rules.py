@@ -104,7 +104,7 @@ class ValueType(enum.Enum):
             # must be BOOLEAN
             return operation.value in ("is",)
 
-    def validate(self, value: typing.Union[int, typing.List[str], str, None], operation: ConditionType = None) -> bool:
+    def validate(self, value: typing.Union[int, list[str], str, None], operation: ConditionType = None) -> bool:
         if isinstance(value, list) and operation in (ConditionType.ONE_OF, ConditionType.NOT_ONE_OF):
             return all(self.validate(v, None) for v in value)
         if value is None:
@@ -148,8 +148,8 @@ class ValueType(enum.Enum):
 
 
 def get_value(
-    value: typing.Union[int, typing.List[str], str, None], value_type: ValueType
-) -> typing.Union[int, datetime.date, typing.List[str], str, None]:
+    value: typing.Union[int, list[str], str, None], value_type: ValueType
+) -> typing.Union[int, datetime.date, list[str], str, None]:
     """Converts the value to an actual value according to the type."""
     if value_type is ValueType.DATE:
         if isinstance(value, str):
@@ -168,8 +168,8 @@ def get_value(
 
 def condition_evaluation(
     op: ConditionType,
-    true_value: typing.Union[int, typing.List[str], str, datetime.date, None],
-    self_value: typing.Union[int, typing.List[str], str, datetime.date, BetweenValue, None],
+    true_value: typing.Union[int, list[str], str, datetime.date, None],
+    self_value: typing.Union[int, list[str], str, datetime.date, BetweenValue, None],
     options: dict = None,
 ) -> bool:
     """Helper function to evaluate the condition based on the true_value, value found on the transaction, and the
@@ -273,9 +273,9 @@ class Condition(pydantic.BaseModel):
         int,
         float,
         str,
-        typing.List[str],
+        list[str],
         Schedule,
-        typing.List[BaseModel],
+        list[BaseModel],
         BetweenValue,
         BaseModel,
         datetime.date,
@@ -295,7 +295,7 @@ class Condition(pydantic.BaseModel):
             ret.pop("options", None)
         return ret
 
-    def get_value(self) -> typing.Union[int, datetime.date, typing.List[str], str, None]:
+    def get_value(self) -> typing.Union[int, datetime.date, list[str], str, None]:
         return get_value(self.value, self.type)
 
     @pydantic.model_validator(mode="after")
@@ -468,13 +468,13 @@ class Rule(pydantic.BaseModel):
     automatically.
     """
 
-    conditions: typing.List[Condition] = pydantic.Field(
+    conditions: list[Condition] = pydantic.Field(
         ..., description="List of conditions that need to be met (one or all) in order for the actions to be applied."
     )
     operation: typing.Literal["and", "or"] = pydantic.Field(
         "and", description="Operation to apply for the rule evaluation. If 'all' or 'any' need to be evaluated."
     )
-    actions: typing.List[Action] = pydantic.Field(..., description="List of actions to apply to the transaction.")
+    actions: list[Action] = pydantic.Field(..., description="List of actions to apply to the transaction.")
     stage: typing.Literal["pre", "post", None] = pydantic.Field(
         None, description="Stage in which the rule will be evaluated (default None)"
     )
@@ -496,7 +496,7 @@ class Rule(pydantic.BaseModel):
         actions = ", ".join([str(a) for a in self.actions])
         return f"If {operation} of these conditions match {conditions} then {actions}"
 
-    def set_split_amount(self, transaction: Transactions) -> typing.List[Transactions]:
+    def set_split_amount(self, transaction: Transactions) -> list[Transactions]:
         """Run the rules from setting split amounts."""
         from actual.queries import create_split  # lazy import to prevert circular issues
 
@@ -507,7 +507,7 @@ class Rule(pydantic.BaseModel):
         # get inner session from object
         session = transaction._sa_instance_state.session  # noqa
         # first, do all entries that have fixed values
-        split_by_index: typing.List[Transactions] = [None for _ in range(len(split_amount_actions))]  # noqa
+        split_by_index: list[Transactions] = [None for _ in range(len(split_amount_actions))]  # noqa
         fixed_split_amount_actions = [a for a in split_amount_actions if a.options["method"] == "fixed-amount"]
         remainder = transaction.amount
         for action in fixed_split_amount_actions:
@@ -593,7 +593,7 @@ class RuleSet(pydantic.BaseModel):
     ```
     """
 
-    rules: typing.List[Rule] = pydantic.Field(..., description="List of rules to be evaluated on run.")
+    rules: list[Rule] = pydantic.Field(..., description="List of rules to be evaluated on run.")
 
     def __str__(self):
         """Returns a readable string representation of the ruleset."""
@@ -605,7 +605,7 @@ class RuleSet(pydantic.BaseModel):
 
     def _run(
         self,
-        transaction: typing.Union[Transactions, typing.List[Transactions]],
+        transaction: typing.Union[Transactions, list[Transactions]],
         stage: typing.Literal["pre", "post", None],
     ):
         for rule in [r for r in self.rules if r.stage == stage]:

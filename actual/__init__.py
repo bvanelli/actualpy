@@ -10,7 +10,7 @@ import uuid
 import warnings
 import zipfile
 from os import PathLike
-from typing import IO, List, Optional, Union
+from typing import IO, Optional, Union
 
 from sqlmodel import MetaData, Session, create_engine
 
@@ -178,7 +178,7 @@ class Actual(ActualServer):
             raise UnknownFileId(f"Multiple files found with identifier '{file_id}'")
         return self.set_file(selected_files[0])
 
-    def run_migrations(self, migration_files: List[str]):
+    def run_migrations(self, migration_files: list[str]):
         """
         Runs the migration files, skipping the ones that have already been run.
 
@@ -375,7 +375,7 @@ class Actual(ActualServer):
         self.update_metadata({"groupId": None})  # since we don't know what the new group id will be
         self.upload_budget()
 
-    def apply_changes(self, messages: List[Message]) -> list[Changeset]:
+    def apply_changes(self, messages: list[Message]) -> list[Changeset]:
         """Applies a list of sync changes, based on what the sync method returned on the remote."""
         if not self.engine:
             raise UnknownFileId("No valid file available, download one with download_budget()")
@@ -591,7 +591,7 @@ class Actual(ActualServer):
         if self._file.group_id:  # only files with a group id can be synced
             self.sync_sync(req)
 
-    def run_rules(self, transactions: Optional[List[Transactions]] = None):
+    def run_rules(self, transactions: Optional[list[Transactions]] = None):
         """Runs all the stored rules on the database on all transactions, without any filters."""
         if transactions is None:
             transactions = get_transactions(self.session, is_parent=True)
@@ -600,7 +600,7 @@ class Actual(ActualServer):
 
     def _run_bank_sync_account(
         self, acct: Accounts, start_date: datetime.date, is_first_sync: bool
-    ) -> List[Transactions]:
+    ) -> list[Transactions]:
         sync_method = acct.account_sync_source
         account_id = acct.account_id
         requisition_id = acct.bank.bank_id if sync_method == "goCardless" else None
@@ -657,7 +657,7 @@ class Actual(ActualServer):
 
     def run_bank_sync(
         self, account: str | Accounts | None = None, start_date: datetime.date | None = None, run_rules: bool = False
-    ) -> List[Transactions]:
+    ) -> list[Transactions]:
         """
         Runs the bank synchronization for the selected account. If missing, all accounts are synchronized.
 

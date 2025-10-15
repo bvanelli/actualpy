@@ -1,10 +1,9 @@
 import re
 import uuid
 import warnings
-from typing import List
 
 
-def js_migration_statements(js_file: str) -> List[str]:
+def js_migration_statements(js_file: str) -> list[str]:
     """
     Extracts all relevant SQL queries from a JavaScript migration file to make them run locally.
 

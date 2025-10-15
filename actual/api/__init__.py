@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime
 import json
-from typing import List, Literal, Optional, Union
+from typing import Literal, Optional, Union
 
 import requests
 
@@ -184,7 +184,7 @@ class ActualServer:
         self._token = login_response.data.token
         return login_response
 
-    def data_file_index(self) -> List[str]:
+    def data_file_index(self) -> list[str]:
         """Gets all the migration file references for the actual server."""
         response = self._requests_session.get(f"{self.api_url}/{Endpoints.DATA_FILE_INDEX}")
         response.raise_for_status()
@@ -343,7 +343,7 @@ class ActualServer:
         response.raise_for_status()
         return OpenIDConfigResponseDTO.model_validate(response.json())
 
-    def open_id_users(self) -> List[OpenIDUserDTO]:
+    def open_id_users(self) -> list[OpenIDUserDTO]:
         """Returns the list of OpenID users on the server."""
         response = self._requests_session.get(f"{self.api_url}/{Endpoints.OPEN_ID_USERS}")
         response.raise_for_status()
@@ -412,7 +412,7 @@ class ActualServer:
         response.raise_for_status()
         return OpenIDDeleteUserResponseDTO.model_validate(response.json())
 
-    def list_file_users_allowed(self, file_id: str) -> List[OpenIDUserFileAccessDTO]:
+    def list_file_users_allowed(self, file_id: str) -> list[OpenIDUserFileAccessDTO]:
         """Lists all users allowed to access a certain file. Also returns if the user owns the file or not."""
         response = self._requests_session.get(
             f"{self.api_url}/{Endpoints.OPEN_ID_ACCESS_USERS}", params={"fileId": file_id}

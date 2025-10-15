@@ -101,7 +101,7 @@ class Schedule(pydantic.BaseModel):
     start: datetime.date = pydantic.Field(..., description="Start date of the schedule.")
     interval: int = pydantic.Field(1, description="Repeat every interval at frequency unit.")
     frequency: Frequency = pydantic.Field(Frequency.MONTHLY, description="Unit for the defined interval.")
-    patterns: typing.List[Pattern] = pydantic.Field(default_factory=list)
+    patterns: list[Pattern] = pydantic.Field(default_factory=list)
     skip_weekend: bool = pydantic.Field(
         False, alias="skipWeekend", description="If should move schedule before or after a weekend."
     )
@@ -238,7 +238,7 @@ class Schedule(pydantic.BaseModel):
             return None
         return with_weekend_skip.date()
 
-    def xafter(self, date: datetime.date = None, count: int = 1) -> typing.List[datetime.date]:
+    def xafter(self, date: datetime.date = None, count: int = 1) -> list[datetime.date]:
         if not date:
             date = datetime.date.today()
         # dateutils only accepts datetime for evaluation
