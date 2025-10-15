@@ -41,8 +41,7 @@ def test_category_rule(session):
     # evaluate if things match
     assert t.payee_id == payee.id
     assert (
-        str(rs) == f"If all of these conditions match 'category' is '{cat.id}' "
-        f"then set 'description' to '{payee.id}'"
+        str(rs) == f"If all of these conditions match 'category' is '{cat.id}' then set 'description' to '{payee.id}'"
     )
     # check if it ignores the input when making the category None
     t.category_id = None

@@ -476,7 +476,7 @@ class Rule(pydantic.BaseModel):
     )
     actions: typing.List[Action] = pydantic.Field(..., description="List of actions to apply to the transaction.")
     stage: typing.Literal["pre", "post", None] = pydantic.Field(
-        None, description="Stage in which the rule" "will be evaluated (default None)"
+        None, description="Stage in which the rule will be evaluated (default None)"
     )
 
     @pydantic.model_validator(mode="before")

@@ -181,9 +181,9 @@ def test_models(actual_server):
             assert table_name in __TABLE_COLUMNS_MAP__, f"Missing table '{table_name}' on models."
             # then assert if all columns are matching the model
             for column_name in table.columns.keys():
-                assert (
-                    column_name in __TABLE_COLUMNS_MAP__[table_name]["columns"]
-                ), f"Missing column '{column_name}' at table '{table_name}'."
+                assert column_name in __TABLE_COLUMNS_MAP__[table_name]["columns"], (
+                    f"Missing column '{column_name}' at table '{table_name}'."
+                )
 
 
 def test_header_login():

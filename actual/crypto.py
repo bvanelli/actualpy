@@ -18,9 +18,12 @@ def random_bytes(size: int = 12) -> str:
 
 
 def make_salt(length: int = 32) -> str:
-    """Generates a random salt with a specified length."""
-    # reference generates 32 bytes of random data
-    # github.com/actualbudget/actual/blob/70e37c0119f4ba95ccf6549f0df4aac770f1bb8f/packages/loot-core/src/server/main.ts#L1489
+    """
+    Generates a random salt with a specified length.
+
+    By default, it generates 32 bytes of random data, based on the [reference implementation](
+    github.com/actualbudget/actual/blob/70e37c0119f4ba95ccf6549f0df4aac770f1bb8f/packages/loot-core/src/server/main.ts#L1489)
+    """
     return base64.b64encode(os.urandom(length)).decode()
 
 

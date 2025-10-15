@@ -626,7 +626,8 @@ class Actual(ActualServer):
                 balance_to_use = current_balance - sum(t.transaction_amount.amount for t in new_transactions)
             if balance_to_use:
                 payee = None if acct.offbudget else get_or_create_payee(self.session, "Starting Balance")
-                # get date from the oldest transaction. There seems to be a bug here, and it gets the youngest transaction.
+                # get date from the oldest transaction.
+                # There seems to be a bug here, and it gets the youngest transaction.
                 oldest_date = new_transactions[-1].date if new_transactions else datetime.date.today()
                 reconciled_transaction = create_transaction(
                     self.session, oldest_date, acct, payee, notes=None, amount=balance_to_use, cleared=True

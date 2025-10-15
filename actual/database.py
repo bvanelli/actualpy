@@ -17,7 +17,8 @@ model.
 import datetime
 import decimal
 import json
-from typing import Dict, List, Optional, Sequence, Tuple, Type, Union
+from collections.abc import Sequence
+from typing import Dict, List, Optional, Tuple, Type, Union
 
 from sqlalchemy import MetaData, Table, engine, event, inspect
 from sqlalchemy.dialects.sqlite import insert
@@ -167,7 +168,7 @@ def strong_reference_session(session: Session):
     @event.listens_for(session, "after_soft_rollback")
     def after_commit_or_rollback(
         sess,
-        previous_transaction=None,  # noqa: previous_transaction needed for soft rollback
+        previous_transaction=None,
     ):
         if sess.info.get("messages"):
             del sess.info["messages"]
@@ -205,7 +206,7 @@ class BaseModel(SQLModel):
         changed_attributes = []
         inspr = inspect(self)
         attrs = class_mapper(self.__class__).column_attrs  # exclude relationships
-        for attr in attrs:  # noqa: you can iterate over attrs
+        for attr in attrs:
             column = attr.key
             if column == "id":
                 continue
@@ -740,7 +741,8 @@ class Transactions(BaseModel, table=True):
     )
     transfer: Optional["Transactions"] = Relationship(
         sa_relationship_kwargs={
-            "primaryjoin": "and_(Transactions.transferred_id == remote(Transactions.id), remote(Transactions.tombstone)==0)",
+            "primaryjoin": "and_("
+            "Transactions.transferred_id == remote(Transactions.id), remote(Transactions.tombstone)==0)",
             "foreign_keys": "Transactions.transferred_id",
         }
     )
@@ -771,7 +773,8 @@ class ZeroBudgetMonths(SQLModel, table=True):
 
 class BaseBudgets(BaseModel):
     """
-    Hosts the shared code between both [ZeroBudgets][actual.database.ZeroBudgets] and [ReflectBudgets][actual.database.ReflectBudgets].
+    Hosts the shared code between both [ZeroBudgets][actual.database.ZeroBudgets] and
+    [ReflectBudgets][actual.database.ReflectBudgets].
 
     Each budget will represent a certain month in a certain category. When a budget is missing on the frontend,
     frontend will assume this value is zero, but the entity will be missing from the database.
