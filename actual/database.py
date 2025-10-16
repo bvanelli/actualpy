@@ -195,6 +195,9 @@ class BaseModel(SQLModel):
             converted_attr_name = get_attribute_by_table_name(self.__tablename__, column, reverse=True)
             m = Message(dict(dataset=self.__tablename__, row=row, column=converted_attr_name))
             value = self.__getattribute__(column)
+            # we cannot store boolean values, so we always convert it to integer
+            if isinstance(value, bool):
+                value = int(value)
             # if the entry is new, we can ignore null columns, otherwise consider it an update to None
             if value is not None or not is_new:
                 m.set_value(value)
