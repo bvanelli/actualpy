@@ -17,7 +17,8 @@ model.
 import datetime
 import decimal
 import json
-from typing import Dict, List, Optional, Sequence, Tuple, Type, Union
+from collections.abc import Sequence
+from typing import Dict, Optional, Tuple, Type, Union
 
 from sqlalchemy import MetaData, Table, engine, event, inspect
 from sqlalchemy.dialects.sqlite import insert
@@ -167,7 +168,7 @@ def strong_reference_session(session: Session):
     @event.listens_for(session, "after_soft_rollback")
     def after_commit_or_rollback(
         sess,
-        previous_transaction=None,  # noqa: previous_transaction needed for soft rollback
+        previous_transaction=None,
     ):
         if sess.info.get("messages"):
             del sess.info["messages"]
@@ -178,7 +179,7 @@ def strong_reference_session(session: Session):
 class BaseModel(SQLModel):
     id: str = Field(sa_column=Column("id", Text, primary_key=True))
 
-    def convert(self, is_new: bool = True) -> List[Message]:
+    def convert(self, is_new: bool = True) -> list[Message]:
         """Convert the object into distinct entries for sync method. Based on the [original implementation](
         https://github.com/actualbudget/actual/blob/98c17bd5e0f13e27a09a7f6ac176510530572be7/packages/loot-core/src/server/aql/schema-helpers.ts#L146)
         """
@@ -194,18 +195,21 @@ class BaseModel(SQLModel):
             converted_attr_name = get_attribute_by_table_name(self.__tablename__, column, reverse=True)
             m = Message(dict(dataset=self.__tablename__, row=row, column=converted_attr_name))
             value = self.__getattribute__(column)
+            # we cannot store boolean values, so we always convert it to integer
+            if isinstance(value, bool):
+                value = int(value)
             # if the entry is new, we can ignore null columns, otherwise consider it an update to None
             if value is not None or not is_new:
                 m.set_value(value)
                 changes.append(m)
         return changes
 
-    def changed(self) -> List[str]:
+    def changed(self) -> list[str]:
         """Returns a list of attributes changed."""
         changed_attributes = []
         inspr = inspect(self)
         attrs = class_mapper(self.__class__).column_attrs  # exclude relationships
-        for attr in attrs:  # noqa: you can iterate over attrs
+        for attr in attrs:
             column = attr.key
             if column == "id":
                 continue
@@ -265,7 +269,7 @@ class Accounts(BaseModel, table=True):
     last_reconciled: Optional[str] = Field(default=None, sa_column=Column("last_reconciled", Text))
 
     payee: "Payees" = Relationship(back_populates="account", sa_relationship_kwargs={"uselist": False})
-    transactions: List["Transactions"] = Relationship(
+    transactions: list["Transactions"] = Relationship(
         back_populates="account",
         sa_relationship_kwargs={
             "primaryjoin": (
@@ -339,7 +343,7 @@ class Categories(BaseModel, table=True):
             "primaryjoin": "and_(ReflectBudgets.category_id == Categories.id)",
         },
     )
-    transactions: List["Transactions"] = Relationship(
+    transactions: list["Transactions"] = Relationship(
         back_populates="category",
         sa_relationship_kwargs={
             "primaryjoin": (
@@ -382,7 +386,7 @@ class CategoryGroups(BaseModel, table=True):
     sort_order: Optional[float] = Field(default=None, sa_column=Column("sort_order", Float))
     tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
 
-    categories: List["Categories"] = Relationship(
+    categories: list["Categories"] = Relationship(
         back_populates="group",
         sa_relationship_kwargs={
             "primaryjoin": "and_(CategoryGroups.id == Categories.cat_group, Categories.tombstone == 0)",
@@ -541,7 +545,7 @@ class Payees(BaseModel, table=True):
     learn_categories: Optional[bool] = Field(sa_column=Column("learn_categories", Boolean, server_default=text("1")))
 
     account: Optional["Accounts"] = Relationship(back_populates="payee", sa_relationship_kwargs={"uselist": False})
-    transactions: List["Transactions"] = Relationship(
+    transactions: list["Transactions"] = Relationship(
         back_populates="payee",
         sa_relationship_kwargs={"primaryjoin": "and_(Transactions.payee_id == Payees.id, Transactions.tombstone==0)"},
     )
@@ -600,7 +604,7 @@ class Schedules(BaseModel, table=True):
     name: Optional[str] = Field(default=None, sa_column=Column("name", Text, server_default=text("NULL")))
 
     rule: "Rules" = Relationship(sa_relationship_kwargs={"uselist": False})
-    transactions: List["Transactions"] = Relationship(back_populates="schedule")
+    transactions: list["Transactions"] = Relationship(back_populates="schedule")
 
 
 class SchedulesJsonPaths(SQLModel, table=True):
@@ -731,7 +735,7 @@ class Transactions(BaseModel, table=True):
         back_populates="splits",
         sa_relationship_kwargs={"remote_side": "Transactions.id", "foreign_keys": "Transactions.parent_id"},
     )
-    splits: List["Transactions"] = Relationship(
+    splits: list["Transactions"] = Relationship(
         back_populates="parent",
         sa_relationship_kwargs={
             "primaryjoin": "and_(Transactions.id == remote(Transactions.parent_id), remote(Transactions.tombstone)==0)",
@@ -740,7 +744,8 @@ class Transactions(BaseModel, table=True):
     )
     transfer: Optional["Transactions"] = Relationship(
         sa_relationship_kwargs={
-            "primaryjoin": "and_(Transactions.transferred_id == remote(Transactions.id), remote(Transactions.tombstone)==0)",
+            "primaryjoin": "and_("
+            "Transactions.transferred_id == remote(Transactions.id), remote(Transactions.tombstone)==0)",
             "foreign_keys": "Transactions.transferred_id",
         }
     )
@@ -771,7 +776,8 @@ class ZeroBudgetMonths(SQLModel, table=True):
 
 class BaseBudgets(BaseModel):
     """
-    Hosts the shared code between both [ZeroBudgets][actual.database.ZeroBudgets] and [ReflectBudgets][actual.database.ReflectBudgets].
+    Hosts the shared code between both [ZeroBudgets][actual.database.ZeroBudgets] and
+    [ReflectBudgets][actual.database.ReflectBudgets].
 
     Each budget will represent a certain month in a certain category. When a budget is missing on the frontend,
     frontend will assume this value is zero, but the entity will be missing from the database.

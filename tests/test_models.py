@@ -4,6 +4,7 @@ import uuid
 import pytest
 
 from actual.database import (
+    Categories,
     CategoryMapping,
     Transactions,
     get_attribute_by_table_name,
@@ -57,6 +58,13 @@ def test_conversion():
     assert t.tombstone is None  # server default is 0, but local copy is None
     t.delete()
     assert t.tombstone == 1
+
+
+@pytest.mark.parametrize("hidden,expected", [(True, 1), (False, 0)])
+def test_conversion_boolean(hidden, expected):
+    cat = Categories(id=str(uuid.uuid4()), name="foobar", hidden=hidden)
+    conversion = cat.convert()
+    assert [c for c in conversion if c.column == "hidden"][0].get_value() == expected
 
 
 def test_delete_exception():

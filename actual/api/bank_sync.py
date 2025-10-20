@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime
 import decimal
 import enum
-from typing import List, Optional
+from typing import Optional
 
 from pydantic import AliasChoices, BaseModel, Field
 
@@ -32,8 +32,8 @@ class BankSyncAccountDTO(BaseModel):
     balance: str
     available_balance: str = Field(..., alias="available-balance")
     balance_date: int = Field(..., alias="balance-date")
-    transactions: List[BankSyncTransactionDTO]
-    holdings: List[dict]
+    transactions: list[BankSyncTransactionDTO]
+    holdings: list[dict]
 
 
 class BankSyncAmount(BaseModel):
@@ -91,7 +91,7 @@ class TransactionItem(BaseModel):
     booking_date: Optional[datetime.date] = Field(None, alias="bookingDate")
     value_date: Optional[datetime.date] = Field(None, alias="valueDate")
     remittance_information_unstructured: str = Field(None, alias="remittanceInformationUnstructured")
-    remittance_information_unstructured_array: List[str] = Field(
+    remittance_information_unstructured_array: list[str] = Field(
         default_factory=list, alias="remittanceInformationUnstructuredArray"
     )
     additional_information: Optional[str] = Field(None, alias="additionalInformation")
@@ -111,17 +111,17 @@ class TransactionItem(BaseModel):
 
 
 class Transactions(BaseModel):
-    all: List[TransactionItem] = Field(..., description="List of all transactions, from newest to oldest.")
-    booked: List[TransactionItem]
-    pending: List[TransactionItem]
+    all: list[TransactionItem] = Field(..., description="List of all transactions, from newest to oldest.")
+    booked: list[TransactionItem]
+    pending: list[TransactionItem]
 
 
 class BankSyncAccountData(BaseModel):
-    accounts: List[BankSyncAccountDTO]
+    accounts: list[BankSyncAccountDTO]
 
 
 class BankSyncTransactionData(BaseModel):
-    balances: List[Balance]
+    balances: list[Balance]
     starting_balance: int = Field(..., alias="startingBalance")
     transactions: Transactions
     # goCardless specific

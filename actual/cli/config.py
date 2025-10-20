@@ -59,7 +59,7 @@ class Config(pydantic.BaseModel):
             default_config.save()
             return default_config
         else:
-            with open(config_path, "r") as file:
+            with open(config_path) as file:
                 config = yaml.safe_load(file)
                 return cls.model_validate(config)
 

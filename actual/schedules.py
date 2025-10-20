@@ -149,7 +149,7 @@ class Schedule(pydantic.BaseModel):
         1, description="The interval at which the recurrence happens. Defaults to `1` if omitted."
     )
     frequency: Frequency = pydantic.Field(Frequency.MONTHLY, description="How often the schedule repeats.")
-    patterns: typing.List[Pattern] = pydantic.Field(
+    patterns: list[Pattern] = pydantic.Field(
         default_factory=list,
         description="Optional patterns to control specific dates for recurrence "
         "(e.g., certain weekdays or month days).",
@@ -320,7 +320,7 @@ class Schedule(pydantic.BaseModel):
             return None
         return with_weekend_skip.date()
 
-    def xafter(self, date: datetime.date = None, count: int = 1) -> typing.List[datetime.date]:
+    def xafter(self, date: datetime.date = None, count: int = 1) -> list[datetime.date]:
         if not date:
             date = datetime.date.today()
         # dateutils only accepts datetime for evaluation
