@@ -217,17 +217,6 @@ class Schedule(pydantic.BaseModel):
     def serialize_model(self, handler) -> dict:
         """Converts a schedule to a dict that can be used in a rule."""
         ret = handler(self)
-        if not self.skip_weekend:
-            ret.pop("skipWeekend", None)
-            ret.pop("weekendSolveMode", None)
-        if self.end_mode == EndMode.NEVER:
-            ret.pop("endMode", None)
-        if self.end_mode != EndMode.ON_DATE:
-            ret.pop("endDate", None)
-        if self.end_mode != EndMode.AFTER_N_OCCURRENCES:
-            ret.pop("endOccurrences", None)
-        if not self.patterns:
-            ret.pop("patterns", None)
         return ret
 
     @pydantic.model_validator(mode="after")

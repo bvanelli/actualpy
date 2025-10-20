@@ -444,13 +444,19 @@ def test_schedules(session):
     assert len(schedules) == 1
     cond = json.loads(schedules[0].rule.conditions)
     assert cond[1] == {
-        "op": "isapprox",
         "field": "date",
         "type": "date",
+        "op": "isapprox",
         "value": {
             "start": "2025-10-11",
             "interval": 1,
             "frequency": "monthly",
+            "patterns": [],
+            "skipWeekend": False,
+            "weekendSolveMode": "after",
+            "endMode": "never",
+            "endOccurrences": 1,
+            "endDate": "2025-10-11",
         },
     }
     assert schedule_created == schedules[0]
@@ -471,12 +477,12 @@ def test_schedule_is_betweeen(session):
 
     schedule = create_schedule(session, config, (100.0, 110.0), "isbetween", "Insurance", payee, account)
     assert json.loads(schedule.rule.conditions) == [
-        {"field": "description", "op": "is", "type": "id", "value": payee.id},
-        {"field": "acct", "op": "is", "type": "id", "value": account.id},
+        {"field": "description", "type": "id", "op": "is", "value": payee.id},
+        {"field": "acct", "type": "id", "op": "is", "value": account.id},
         {
             "field": "date",
-            "op": "isapprox",
             "type": "date",
+            "op": "isapprox",
             "value": {
                 "frequency": "monthly",
                 "interval": 1,
@@ -484,9 +490,12 @@ def test_schedule_is_betweeen(session):
                 "skipWeekend": True,
                 "start": "2025-10-11",
                 "weekendSolveMode": "after",
+                "endMode": "never",
+                "endOccurrences": 1,
+                "endDate": "2025-10-11",
             },
         },
-        {"field": "amount", "op": "isbetween", "type": "number", "value": {"num1": 10000, "num2": 11000}},
+        {"field": "amount", "type": "number", "op": "isbetween", "value": {"num1": 10000, "num2": 11000}},
     ]
 
 

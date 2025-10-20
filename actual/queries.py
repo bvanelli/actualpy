@@ -1095,7 +1095,7 @@ def create_schedule(
 def create_schedule_config(
     start: datetime.date | datetime.datetime,
     end_mode: EndMode | typing.Literal["never", "on_date", "after_n_occurrences"] | str = EndMode.NEVER,
-    end_occurrences: int = None,
+    end_occurrences: int | None = None,
     end_date: datetime.date | datetime.datetime | None = None,
     interval: int = 1,
     frequency: Frequency | typing.Literal["daily", "weekly", "monthly", "yearly"] | str = Frequency.MONTHLY,
@@ -1136,6 +1136,12 @@ def create_schedule_config(
         raise ActualError("When using end_mode 'on_date', the end_date must be provided.")
     if end_mode == EndMode.AFTER_N_OCCURRENCES and end_occurrences is None:
         raise ActualError("When using end_mode 'after_n_occurrences', the end_occurrences must be provided.")
+
+    if end_date is None:
+        # do the same as the frontend and fill in the start date
+        end_date = start
+    if end_occurrences is None:
+        end_occurrences = 1
 
     return Schedule(
         start=start,
