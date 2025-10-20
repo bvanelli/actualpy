@@ -228,8 +228,12 @@ class Schedule(pydantic.BaseModel):
         return self
 
     def is_approx(self, date: datetime.date, interval: datetime.timedelta = datetime.timedelta(days=2)) -> bool:
-        """This function checks if the input date could fit inside of this schedule. It will use the interval as the
-        maximum threshold before and after the specified date to look for. This defaults on Actual to 2 days."""
+        """
+        This function checks if the input date could fit in the schedule.
+
+        It will use the interval as the maximum threshold before and after the specified date to look for.
+        This defaults on Actual to +-2 days.
+        """
         if date < self.start or (self.end_mode == EndMode.ON_DATE and self.end_date < date):
             return False
         before = self.before(date)
