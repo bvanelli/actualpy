@@ -11,6 +11,8 @@ from actual.queries import (
     create_account,
     create_budget,
     create_rule,
+    create_schedule,
+    create_schedule_config,
     create_splits,
     create_tag,
     create_transaction,
@@ -24,6 +26,7 @@ from actual.queries import (
     get_or_create_preference,
     get_preferences,
     get_ruleset,
+    get_schedules,
     get_tag,
     get_tags,
     get_transactions,
@@ -32,6 +35,7 @@ from actual.queries import (
     set_transaction_payee,
 )
 from actual.rules import Action, Condition, ConditionType, Rule
+from actual.schedules import EndMode, Frequency, Pattern, WeekendSolveMode
 
 
 def test_account_relationships(session):
@@ -191,14 +195,24 @@ def test_rule_insertion_method(session):
     session.commit()
     # create and run rule
     action = Action(field="cleared", value=1)
-    assert action.as_dict() == {"field": "cleared", "op": "set", "type": "boolean", "value": True}
+    assert action.model_dump(mode="json", by_alias=True) == {
+        "field": "cleared",
+        "op": "set",
+        "type": "boolean",
+        "value": True,
+    }
     condition = Condition(field="date", op=ConditionType.IS_APPROX, value=date(2024, 1, 2))
-    assert condition.as_dict() == {"field": "date", "op": "isapprox", "type": "date", "value": "2024-01-02"}
+    assert condition.model_dump(mode="json", by_alias=True) == {
+        "field": "date",
+        "op": "isapprox",
+        "type": "date",
+        "value": "2024-01-02",
+    }
     # test full rule
     rule = Rule(conditions=[condition], actions=[action], operation="all", stage="pre")
     created_rule = create_rule(session, rule, run_immediately=True)
-    assert [condition.as_dict()] == json.loads(created_rule.conditions)
-    assert [action.as_dict()] == json.loads(created_rule.actions)
+    assert [condition.model_dump(mode="json", by_alias=True)] == json.loads(created_rule.conditions)
+    assert [action.model_dump(mode="json", by_alias=True)] == json.loads(created_rule.actions)
     assert created_rule.conditions_op == "and"
     assert created_rule.stage == "pre"
     trs = get_transactions(session)
@@ -419,3 +433,81 @@ def test_tags(session):
     assert tags[0].transactions == [coffee]
     assert tags[0] == get_tag(session, "#happy")
     assert get_tags(session, "#foobar", "moments") == []
+
+
+def test_schedules(session):
+    config = create_schedule_config(datetime.date(2025, 10, 11))
+    schedule_created = create_schedule(session, config, 500.0, name="foobar")
+    session.commit()
+
+    schedules = get_schedules(session)
+    assert len(schedules) == 1
+    cond = json.loads(schedules[0].rule.conditions)
+    assert cond[1] == {
+        "field": "date",
+        "type": "date",
+        "op": "isapprox",
+        "value": {
+            "start": "2025-10-11",
+            "interval": 1,
+            "frequency": "monthly",
+            "patterns": [],
+            "skipWeekend": False,
+            "weekendSolveMode": "after",
+            "endMode": "never",
+            "endOccurrences": 1,
+            "endDate": "2025-10-11",
+        },
+    }
+    assert schedule_created == schedules[0]
+    # change to complete and requery
+    schedule_created.completed = 1
+    assert len(get_schedules(session)) == 0
+
+
+def test_schedule_is_betweeen(session):
+    expected_date = datetime.date(2025, 10, 11)
+    account = create_account(session, "Bank")
+    payee = get_or_create_payee(session, "Insurance company")
+    # should always be paid on the first working day of the month
+    config = create_schedule_config(expected_date, patterns=[Pattern(1, "day")], skip_weekend=True)
+    # if the amount_operation="isbetween", the schedule needs two amounts
+    with pytest.raises(ActualError, match="amount must be a tuple"):
+        create_schedule(session, config, 100.0, "isbetween", "Insurance", payee, account)
+
+    schedule = create_schedule(session, config, (100.0, 110.0), "isbetween", "Insurance", payee, account)
+    assert json.loads(schedule.rule.conditions) == [
+        {"field": "description", "type": "id", "op": "is", "value": payee.id},
+        {"field": "acct", "type": "id", "op": "is", "value": account.id},
+        {
+            "field": "date",
+            "type": "date",
+            "op": "isapprox",
+            "value": {
+                "frequency": "monthly",
+                "interval": 1,
+                "patterns": [{"type": "day", "value": 1}],
+                "skipWeekend": True,
+                "start": "2025-10-11",
+                "weekendSolveMode": "after",
+                "endMode": "never",
+                "endOccurrences": 1,
+                "endDate": "2025-10-11",
+            },
+        },
+        {"field": "amount", "type": "number", "op": "isbetween", "value": {"num1": 10000, "num2": 11000}},
+    ]
+
+
+def test_schedule_config(session):
+    # should work
+    today = datetime.date.today()
+    sc = create_schedule_config(today, "never", frequency="monthly", skip_weekend=True, weekend_solve_mode="after")
+    assert sc.end_mode == EndMode.NEVER
+    assert sc.frequency == Frequency.MONTHLY
+    assert sc.weekend_solve_mode == WeekendSolveMode.AFTER
+    # should raise validation issues
+    with pytest.raises(ActualError, match="the end_date must be provided"):
+        create_schedule_config(today, end_mode="on_date")
+    with pytest.raises(ActualError, match="the end_occurrences must be provided"):
+        create_schedule_config(today, end_mode="after_n_occurrences")

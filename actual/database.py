@@ -589,7 +589,7 @@ class Rules(BaseModel, table=True):
     )
 
 
-class Schedules(SQLModel, table=True):
+class Schedules(BaseModel, table=True):
     """Stores the schedules defined by the user. Is also linked to a rule that executes it."""
 
     id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))

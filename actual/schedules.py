@@ -1,3 +1,10 @@
+"""
+Schedules implement the logic for calculating the scheduled dates for each schedule stored in the database.
+
+The actual schedule database object is the [Schedules][actual.database.Schedules], and it can be converted by loading
+the rules appropriately.
+"""
+
 import datetime
 import enum
 import typing
@@ -13,22 +20,9 @@ from dateutil.rrule import (
     weekday,
     weekdays,
 )
+from pydantic import model_serializer
 
-
-def date_to_datetime(date: typing.Optional[datetime.date]) -> typing.Optional[datetime.datetime]:
-    """Converts one object from date to datetime object. The reverse is possible directly by calling datetime.date()."""
-    if date is None:
-        return None
-    return datetime.datetime.combine(date, datetime.time.min)
-
-
-def day_to_ordinal(day: int) -> str:
-    """Converts an integer day to an ordinal number, i.e. 1 -> 1st, 32 -> 32nd"""
-    if 11 <= (day % 100) <= 13:
-        suffix = "th"
-    else:
-        suffix = ["th", "st", "nd", "rd", "th"][min(day % 10, 4)]
-    return f"{day}{suffix}"
+from actual.utils.conversions import date_to_datetime, day_to_ordinal
 
 
 class EndMode(enum.Enum):
@@ -69,10 +63,56 @@ class PatternType(enum.Enum):
 
 
 class Pattern(pydantic.BaseModel):
+    """
+    Implements a single pattern for a schedule.
+
+    The pattern controls individual inclusions on the schedule. For example, if you want to make a schedule that runs
+    every month on a specific day, you could additionally add the a pattern for, for example, the 15th of the month.
+    This translates to:
+
+    ```python
+    p = Pattern(15, PatternType.DAY)
+    # print will display the friendly string for the pattern
+    print(p)
+    ```
+
+    You may also provide the pattern as in days of the week. For the first Tuesday, you would use:
+
+    ```python
+    Pattern(1, PatternType.TUESDAY)
+    # is also equivalent to
+    Pattern(1, "TU")
+    ```
+
+    If you want to indicate the `last` day, you can use `-1` for the value:
+
+    ```
+    last_day = Pattern(-1, PatternType.DAY)
+    # last day of the schedule period
+    print(last_day)
+    ```
+    """
+
     model_config = pydantic.ConfigDict(validate_assignment=True)
 
-    value: int
-    type: PatternType
+    value: int = pydantic.Field(
+        ..., description="Day of the month or weekday. If set to `-1`, it will translate to the last day."
+    )
+    type: PatternType = pydantic.Field(
+        default=PatternType.DAY,
+        description="Type of pattern. Can be set to a specific weekday (i.e. Monday) or day of the month.",
+    )
+
+    def __init__(
+        self,
+        value: int,
+        type: typing.Union[
+            PatternType, typing.Literal["SU", "MO", "TU", "WE", "TH", "FR", "SA", "day"], str
+        ] = PatternType.DAY,
+    ):
+        if isinstance(type, str):
+            type = PatternType(type)
+        super().__init__(value=value, type=type)
 
     def __str__(self) -> str:
         if self.value == -1:
@@ -89,36 +129,59 @@ class Pattern(pydantic.BaseModel):
 
 class Schedule(pydantic.BaseModel):
     """
-    Implements basic schedules. They are described in https://actualbudget.org/docs/budgeting/schedules/
+    Implements [schedules](https://actualbudget.org/docs/schedules) object for calculation.
 
-    Schedules are part of a rule which then compares if the date found would fit within the schedule by the .is_approx()
-    method. If it does, and the other conditions match, the transaction will then be linked with the schedule id
-    (stored in the database).
+    Schedules are a way to define recurring transactions in your budget.
+
+    On the database level, schedules are stored as part of a [Rule][actual.rules.Rule], which then compares if the
+    date found fits within the schedule by using the [is_approx][actual.schedules.Schedule.is_approx] method.
+    If it does fit, and the other conditions match (extra conditions are only available via the custom rule edit), the
+    transaction will then be linked with the schedule id (stored in the database for the transaction).
+
+    This object **is not a database level object**, meaning that it needs to be converted first using
+    [create_schedule][actual.queries.create_schedule], that will create the correct rule.
     """
 
     model_config = pydantic.ConfigDict(validate_assignment=True)
 
-    start: datetime.date = pydantic.Field(..., description="Start date of the schedule.")
-    interval: int = pydantic.Field(1, description="Repeat every interval at frequency unit.")
-    frequency: Frequency = pydantic.Field(Frequency.MONTHLY, description="Unit for the defined interval.")
-    patterns: list[Pattern] = pydantic.Field(default_factory=list)
+    start: datetime.date = pydantic.Field(..., description="The date indicating the start date of the recurrence.")
+    interval: int = pydantic.Field(
+        1, description="The interval at which the recurrence happens. Defaults to `1` if omitted."
+    )
+    frequency: Frequency = pydantic.Field(Frequency.MONTHLY, description="How often the schedule repeats.")
+    patterns: list[Pattern] = pydantic.Field(
+        default_factory=list,
+        description="Optional patterns to control specific dates for recurrence "
+        "(e.g., certain weekdays or month days).",
+    )
     skip_weekend: bool = pydantic.Field(
-        False, alias="skipWeekend", description="If should move schedule before or after a weekend."
+        False,
+        alias="skipWeekend",
+        description="If true, skips weekends when calculating recurrence dates. "
+        "This option can be further configured with the `weekend_solve_mode` parameter.",
     )
     weekend_solve_mode: WeekendSolveMode = pydantic.Field(
         WeekendSolveMode.AFTER,
         alias="weekendSolveMode",
-        description="When skipping weekend, the value should be set before or after the weekend interval.",
+        description="If a calculated date falls on a weekend and `skip_weekend` is true, "
+        "this controls whether the date moves to the before or after weekday.",
     )
     end_mode: EndMode = pydantic.Field(
         EndMode.NEVER,
         alias="endMode",
-        description="If the schedule should run forever or end at a certain date or number of occurrences.",
+        description="Specifies how the recurrence ends: "
+        "never ends, after a number of occurrences, or on a specific date.",
     )
-    end_occurrences: int = pydantic.Field(
-        1, alias="endOccurrences", description="Number of occurrences before the schedule ends."
+    end_occurrences: typing.Optional[int] = pydantic.Field(
+        1,
+        alias="endOccurrences",
+        description="Used when `end_mode` is `'after_n_occurrences'`. Indicates how many times it should repeat.",
     )
-    end_date: datetime.date = pydantic.Field(None, alias="endDate")
+    end_date: typing.Optional[datetime.date] = pydantic.Field(
+        None,
+        alias="endDate",
+        description="Used when `end_mode` is `'on_date'`. The date object indicating when the recurrence should end.",
+    )
 
     def __str__(self) -> str:
         # evaluate frequency: handle the case where DAILY convert to 'dai' instead of 'day'
@@ -150,6 +213,12 @@ class Schedule(pydantic.BaseModel):
         move = f" ({self.weekend_solve_mode.value} weekend)" if self.skip_weekend else ""
         return f"Every {frequency}{target}{end}{move}"
 
+    @model_serializer(mode="wrap")
+    def serialize_model(self, handler) -> dict:
+        """Converts a schedule to a dict that can be used in a rule."""
+        ret = handler(self)
+        return ret
+
     @pydantic.model_validator(mode="after")
     def validate_end_date(self):
         if self.end_mode == EndMode.ON_DATE and self.end_date is None:
@@ -159,8 +228,12 @@ class Schedule(pydantic.BaseModel):
         return self
 
     def is_approx(self, date: datetime.date, interval: datetime.timedelta = datetime.timedelta(days=2)) -> bool:
-        """This function checks if the input date could fit inside of this schedule. It will use the interval as the
-        maximum threshold before and after the specified date to look for. This defaults on Actual to 2 days."""
+        """
+        This function checks if the input date could fit in the schedule.
+
+        It will use the interval as the maximum threshold before and after the specified date to look for.
+        This defaults on Actual to +-2 days.
+        """
         if date < self.start or (self.end_mode == EndMode.ON_DATE and self.end_date < date):
             return False
         before = self.before(date)
@@ -172,9 +245,11 @@ class Schedule(pydantic.BaseModel):
         return False
 
     def rruleset(self) -> rruleset:
-        """Returns the rruleset from dateutil library. This is used internally to calculate the schedule dates.
+        """
+        Returns the `rruleset` from the dateutil library. This is used internally to calculate the schedule dates.
 
-        For information on how to use this object check the official documentation https://dateutil.readthedocs.io"""
+        For information on how to use this object, check the [official documentation](https://dateutil.readthedocs.io).
+        """
         rule_sets_configs = []
         config = dict(freq=self.frequency.as_dateutil(), dtstart=self.start, interval=self.interval)
         # add termination options
