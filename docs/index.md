@@ -42,7 +42,7 @@ with Actual(base_url="http://localhost:5006", password="mypass", file="My budget
 
 ## Adding new transactions
 
-After you create your first budget (or when updating an existing budget), you can add new transactions by adding them
+After creating your first budget (or when updating an existing budget), you can add new transactions by adding them
 using the [`create_transaction`][actual.queries.create_transaction] method, and commit it using
 [`actual.commit`][actual.Actual.commit]. You cannot use the SQLAlchemy session directly because that adds the entries
 to your local database, but will not sync the results back to the server (that is only possible when re-uploading the
