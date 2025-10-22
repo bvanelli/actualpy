@@ -94,7 +94,7 @@ The Actual budget is stored in a SQLite database hosted on the user's browser. T
 and can be encrypted with a local key so that not even the server can read your financial statements.
 
 The Actual Server is a way of hosting only files and changes. Since re-uploading the full database on every single
-change is too resource-intensive, Actual only stores one state of the "base database," and everything added by the user
+change is too resource-intensive, Actual only stores one state of the "base database" and everything added by the user
 via the frontend or APIs represents individual changes applied on top. This means that for every locally made change,
 the frontend performs a SYNC request with a list of the following string parameters:
 
@@ -109,17 +109,17 @@ be stored. Null values and server defaults are not required to be present in the
 changed to null. If the file is encrypted, the protobuf content will also be encrypted so that the server does not know
 what was changed.
 
-New clients can use these individual changes to update their local copies. Whenever a SYNC request is made, the
-response will also contain changes that might have been made in other browsers, so that the user is informed about
-the latest information.
+When you open your budget on another device, the client can use these individual changes to update its local copies.
+Whenever a SYNC request is made, the response will also contain changes that might have been made in other devices,
+so that the user is informed about the latest information.
 
 However, this also means that new users may need to download a long list of changes, potentially making initialization
 slow. Thankfully, users are also allowed to reset the sync. When resetting a file via the frontend, the browser
-resets the file completely and clears the list of changes. This ensures all changes are actually stored in
-the "base database." This is done on the frontend under *Settings > Reset sync*, and it causes the current file to be
+resets the file completely and clears the list of changes, re-uploading the full file as the new "base database".
+This is done on the frontend under *Settings > Reset sync*, and it causes the current file to be
 reset (removed from the server) and re-uploaded again, with all changes already in place.
 
-This means that when using this library to perform changes on the database, you have to make sure that either:
+This means that when using this library to perform changes on the database, you have to **make sure that either**:
 
 - A sync request is made using the `actual.commit()` method. This only handles pending operations that haven't yet
   been committed, generates a change list with them, and posts them to the sync endpoint.
