@@ -128,7 +128,7 @@ def get_transactions(
     """
     Returns a list of all available transactions, sorted by date in descending order.
 
-    :param s: Session from Actual local database.
+    :param s: Session from the Actual local database.
     :param start_date: Optional start date for the transaction period (inclusive)
     :param end_date: optional end date for the transaction period (exclusive)
     :param notes: optional notes filter for the transactions. This looks for a case-insensitive pattern rather than for
@@ -136,8 +136,9 @@ def get_transactions(
     :param account: Optional account (either Account object or Account name) filter for the transactions.
     :param category: Optional category (either Category object or Category name) filter for the transactions.
     :param is_parent: Optional boolean flag to indicate if a transaction is a parent. Parent transactions are either
-    single transactions or the main transaction with `Transactions.splits` property. Default is to return all individual
-    splits, and the parent can be retrieved by `Transactions.parent`.
+                      single transactions or the main transaction with the `Transactions.splits` property. The default
+                      is to return all individual splits, and the parent can be retrieved by
+                      the `Transactions.parent` property.
     :param include_deleted: Includes deleted transactions from the search.
     :param budget: Optional budget filter for the transactions. The budget range and category will be used to filter the
                    final results. **Usually not used together with the `start_date` and `end_date` filters, as they
@@ -270,7 +271,7 @@ def create_transaction(
     """
     Creates a transaction from the provided input.
 
-    :param s: Session from Actual local database.
+    :param s: Session from the Actual local database.
     :param date: Date of the transaction.
     :param account: Either account name or account object (via `get_account` or `get_accounts`). Will not be
     auto-created if missing.
@@ -280,7 +281,7 @@ def create_transaction(
     :param amount: Amount of the transaction. Positive indicates that the account balance will go up (deposit), and
     negative that the account balance will go down (payment)
     :param imported_id: unique id of the imported transaction. This is often provided if the transaction comes from
-    a third-party system that contains unique ids (i.e. via bank sync).
+    a third-party system that contains unique ids (i.e., via bank sync).
     :param cleared: Visual indication that the transaction is in both your budget and in your account statement,
     and they match.
     :param imported_payee: Known internally as imported_description, this is the original name of the payee, when
@@ -312,10 +313,10 @@ def set_transaction_payee(s: Session, transaction: Transactions, payee: typing.U
     Sets a payee safely by checking if this payee is a transfer. If it is, then the transfer will be created.
 
     This is necessary since the payee can be set to a "transfer id", which references and account. When this happens,
-    the transaction will be marked as a transfer between the two accounts, and new transaction will need to be created
+    the transaction will be marked as a transfer between the two accounts, and a new transaction will need to be created
     on the other account, with the negative amount.
 
-    :param s: Session from Actual local database.
+    :param s: Session from the Actual local database.
     :param transaction: Transaction to exchange the payee.
     :param payee: Object or unique id of the payee to be set. Must be existing
     """
@@ -390,7 +391,7 @@ def reconcile_transaction(
 ) -> Transactions:
     """Matches the transaction to an existing transaction using fuzzy matching.
 
-    :param s: Session from Actual local database.
+    :param s: Session from the Actual local database.
     :param date: Date of the transaction.
     :param account: Either account name or account object (via `get_account` or `get_accounts`). Will not be
     auto-created if missing.
@@ -400,7 +401,7 @@ def reconcile_transaction(
     :param amount: Amount of the transaction. Positive indicates that the account balance will go up (deposit), and
     negative that the account balance will go down (payment)
     :param imported_id: unique id of the imported transaction. This is often provided if the transaction comes from
-    a third-party system that contains unique ids (i.e. via bank sync).
+    a third-party system that contains unique ids (i.e., via bank sync).
     :param cleared: This is a visual indication that the transaction is in both your budget and in your account
     statement, and they match.
     :param imported_payee: Known internally as imported_description, this is the original name of the payee, when
@@ -431,7 +432,7 @@ def create_splits(
 
     The total amount will be evaluated as the sum of the individual amounts. All dates must be set to the same value.
 
-    :param s: Session from Actual local database.
+    :param s: Session from the Actual local database.
     :param transactions: List of transactions that will be added to the splits.
     :param payee: Name or object of the payee from the transaction. Will be created if missing.
     :param notes: Optional description for the transaction.
@@ -459,10 +460,10 @@ def create_split(s: Session, transaction: Transactions, amount: float | decimal.
     """
     Creates a transaction split based on the parent transaction.
 
-    This is the opposite of create_splits, that joins all transactions as one big transaction. When using this method,
-    you need to make sure all splits that you add to a transaction are then valid.
+    This is the opposite of [create_splits][actual.queries.create_splits], that joins all transactions as one big
+    transaction. When using this method, you need to make sure all splits that you add to a transaction are then valid.
 
-    :param s: Session from Actual local database.
+    :param s: Session from the Actual local database.
     :param transaction: Parent transaction to the split you want to create.
     :param amount: Amount of the split.
     :return: The generated transaction object for the split transaction.
@@ -485,16 +486,23 @@ def _base_query(instance: typing.Type[T], name: str = None, include_deleted: boo
 
 
 def create_category_group(s: Session, name: str) -> CategoryGroups:
-    """Creates a new category with the group name `name`. Make sure you avoid creating payees with duplicate names, as
-    it makes it difficult to find them without knowing the unique id beforehand."""
+    """
+    Creates a new category with the group name `name`.
+
+    Make sure you avoid creating payees with duplicate names, as it makes it difficult to find them without knowing
+    the unique id beforehand.
+    """
     category_group = CategoryGroups(id=str(uuid.uuid4()), name=name, is_income=0, sort_order=0)
     s.add(category_group)
     return category_group
 
 
 def get_or_create_category_group(s: Session, name: str) -> CategoryGroups:
-    """Gets or create the category group, if not found with `name`. Deleted category groups are excluded from the
-    search."""
+    """
+    Gets or create the category group, if not found with `name`.
+
+    Deleted category groups are excluded from the search.
+    """
     category_group = s.exec(
         select(CategoryGroups).filter(CategoryGroups.name == name, CategoryGroups.tombstone == 0)
     ).one_or_none()
@@ -507,7 +515,7 @@ def get_categories(s: Session, name: str = None, include_deleted: bool = False) 
     """
     Returns a list of all available categories.
 
-    :param s: Session from Actual local database.
+    :param s: Session from the Actual local database.
     :param name: Pattern name of the payee, case-insensitive.
     :param include_deleted: Includes all payees which were deleted via frontend. They would not show normally.
     :return: List of categories with `transactions` already loaded.
@@ -550,7 +558,7 @@ def get_tags(
 ) -> typing.Sequence[Tags]:
     """Get all tags stored on the Actual database using a name or description pattern.
 
-    :param s: Session from Actual local database.
+    :param s: Session from the Actual local database.
     :param name: Pattern name of the tag name, case-insensitive.
     :param description: Pattern name of the tag description, case-insensitive.
     :param include_deleted: Includes all tags which were deleted via frontend. They would not show normally.
@@ -597,8 +605,11 @@ def get_category(
 def get_or_create_category(
     s: Session, name: str | Categories, group_name: str = None, strict_group: bool = False
 ) -> Categories:
-    """Gets or create the category, if not found with `name`. If the category already exists, but in a different group,
-    but the category name is still unique, it will be returned, unless `strict_group` is set to `True`.
+    """
+    Gets or create the category, if not found with `name`.
+
+    If the category already exists, but in a different group, but the category name is still unique, it will be
+    returned, unless `strict_group` is set to `True`.
 
     If a group name is not provided, the default 'Usual Expenses' will be picked.
     """
@@ -612,10 +623,10 @@ def get_accounts(s: Session, name: str = None, include_deleted: bool = False) ->
     """
     Returns a list of all available accounts.
 
-    :param s: session from Actual local database.
-    :param name: pattern name of the payee, case-insensitive.
-    :param include_deleted: includes all payees which were deleted via frontend. They would not show normally.
-    :return: list of accounts with `transactions` already loaded.
+    :param s: Session from the Actual local database.
+    :param name: Pattern name of the payee, case-insensitive.
+    :param include_deleted: Includes all payees deleted via frontend. They would not show normally.
+    :return: List of accounts with `transactions` already loaded.
     """
     query = _base_query(Accounts, name, include_deleted).options(joinedload(Accounts.transactions))
     return s.exec(query).unique().all()
@@ -625,10 +636,10 @@ def get_payees(s: Session, name: str = None, include_deleted: bool = False) -> t
     """
     Returns a list of all available payees.
 
-    :param s: session from Actual local database.
-    :param name: pattern name of the payee, case-insensitive.
-    :param include_deleted: includes all payees which were deleted via frontend. They would not show normally.
-    :return: list of payees with `transactions` already loaded.
+    :param s: Session from the Actual local database.
+    :param name: Pattern name of the payee, case-insensitive.
+    :param include_deleted: Includes all payees deleted via frontend. They would not show normally.
+    :return: List of payees with `transactions` already loaded.
     """
     query = _base_query(Payees, name, include_deleted).options(joinedload(Payees.transactions))
     return s.exec(query).unique().all()
@@ -720,8 +731,8 @@ def _get_budget_table(s: Session) -> typing.Type[typing.Union[ReflectBudgets, Ze
     - Envelope budgeting (default, recommended): `budgetType` is `rollover` or `envelope`, table is ZeroBudgets
     - Tracking budgeting: `budgetType` is `report` or `tracking`, table is `ReflectBudgets`
 
-    :param s: session from Actual local database.
-    :return: table object for the budget type, based on the preferences.
+    :param s: Session from the Actual local database.
+    :return: Table object for the budget type, based on the preferences.
     """
     budget_type = get_preference(s, "budgetType")
     if budget_type and budget_type.value in ("report", "tracking"):
@@ -743,7 +754,7 @@ def get_budgets(
     - Envelope budgeting (default): [ZeroBudgets][actual.database.ZeroBudgets]
     - Tracking budgeting: [ReflectBudgets][actual.database.ReflectBudgets]
 
-    :param s: Session from Actual local database.
+    :param s: Session from the Actual local database.
     :param month: Month to get budgets for, as a date for that month. Use `datetime.date.today()` if you want the budget
                   for the current month.
     :param category: The category to filter for the budget. By default, the query looks for all budgets.
@@ -769,7 +780,7 @@ def get_budget(
     """
     Gets an existing budget by category name, returns `None` if not found.
 
-    :param s: Session from Actual local database.
+    :param s: Session from the Actual local database.
     :param month: Month to get budgets for, as a date for that month. Use `datetime.date.today()` if you want the budget
                   for the current month.
     :param category: Category to filter for the budget.
@@ -787,7 +798,7 @@ def create_budget(
     Gets an existing budget based on the month and category. If it already exists, the amount will be replaced by
     the new amount.
 
-    :param s: Session from Actual local database.
+    :param s: Session from the Actual local database.
     :param month: Month to get budgets for, as a date for that month. Use `datetime.date.today()` if you want the budget
                   for the current month.
     :param category: Category to filter for the budget.
@@ -815,7 +826,7 @@ def get_budgeted_balance(s: Session, month: datetime.date, category: str | Categ
     If you want a function that consideres the accumulated value in case of a envelope budget, check the
     [get_accumulated_budgeted_balance][actual.queries.get_accumulated_budgeted_balance].
 
-    :param s: Session from Actual local database.
+    :param s: Session from the Actual local database.
     :param month: Month to get budgets for, as a date for that month. Use `datetime.date.today()` if you want the budget
                   for the current month.
     :param category:  Category to filter for the budget.
@@ -855,7 +866,7 @@ def get_accumulated_budgeted_balance(s: Session, month: datetime.date, category:
     When using **tracking budget**, only the current month is considered for savings, so no previous values will carry
     over.
 
-    :param s: Session from Actual local database.
+    :param s: Session from the Actual local database.
     :param month: Month to get budgets for, as a date for that month. Use `datetime.date.today()` if you want the budget
                   for the current month.
     :param category:  Category to filter for the budget.
@@ -898,7 +909,7 @@ def create_transfer(
     """
     Creates a transfer of money between two accounts. The amount is provided as a positive value.
 
-    :param s: Session from Actual local database.
+    :param s: Session from the Actual local database.
     :param date: Date of the transfer.
     :param source_account: Account that will transfer the money and reduce its balance.
     :param dest_account: Account that will receive the money and increase its balance.
@@ -933,8 +944,8 @@ def get_rules(s: Session, include_deleted: bool = False) -> typing.Sequence[Rule
     """
     Returns a list of all available rules.
 
-    :param s: Session from Actual local database.
-    :param include_deleted: Includes all payees that were deleted via frontend. They would not show normally.
+    :param s: Session from the Actual local database.
+    :param include_deleted: Includes all payees deleted via frontend. They would not show normally.
     :return: List of rules.
     """
     return s.exec(_base_query(Rules, None, include_deleted)).all()
@@ -944,7 +955,7 @@ def get_ruleset(s: Session) -> RuleSet:
     """
     Returns a list of all available rules, but as a rule set that can be used to be applied to existing transactions.
 
-    :param s: Session from Actual local database.
+    :param s: Session from the Actual local database.
     :return: RuleSet object that contains all rules and can be either.
     """
     rule_set = list()
@@ -965,7 +976,7 @@ def create_rule(
     Creates a rule based on the conditions and actions defined on the input rule. The rule can be ordered to run
     immediately, running the action for all entries that match the conditions on insertion.
 
-    :param s: Session from Actual local database.
+    :param s: Session from the Actual local database.
     :param rule: A constructed [Rule][actual.rules.Rule] object. The rule format and data types are validated on the
                  constructor **but the data itself is not**. Make sure that, if you reference uuids, that they exist.
     :param run_immediately: If the run should run for all transactions on insert, defaults to `False`.
@@ -993,7 +1004,7 @@ def get_schedules(
     """
     Returns a list of all available schedules, automatically filtering completed schedules.
 
-    :param s: Session from Actual local database.
+    :param s: Session from the Actual local database.
     :param name: Pattern name of the payee, case-insensitive.
     :param include_deleted: Includes all payees deleted via frontend. They would not show normally.
     :param include_completed: Includes all schedules that have been completed. They are also shown as hidden on the
@@ -1019,7 +1030,7 @@ def create_schedule(
     """
     Create a schedule database object based on the parameters.
 
-    :param s: Session from Actual local database.
+    :param s: Session from the Actual local database.
     :param date: Date of the schedule (if it only happens once) or [Schedule][actual.schedules.Schedule] object, that
                  can be initialized more easily with the helper
                  [create_schedule_config][actual.queries.create_schedule_config].
@@ -1158,7 +1169,7 @@ def create_schedule_config(
 
 def get_or_create_clock(s: Session, client: HULC_Client = None) -> MessagesClock:
     """
-    Loads the HULC Clock from the database, that tells the client from when the messages should be retrieved.
+    Loads the HULC Clock from the database that tells the client from when the messages should be retrieved.
 
     See the [original implementation.](
     https://github.com/actualbudget/actual/blob/5bcfc71be67c6e7b7c8b444e4c4f60da9ea9fdaa/packages/loot-core/src/server/db/index.ts#L81-L98)
@@ -1167,7 +1178,7 @@ def get_or_create_clock(s: Session, client: HULC_Client = None) -> MessagesClock
     client is created. If the clock was already existing, the timestamp will only be overwritten if a client is
     provided, otherwise the original value will be returned.
 
-    :param s: session from Actual local database.
+    :param s: Session from the Actual local database.
     :param client: HULC Client object.
     :return: The message clock object.
     """
@@ -1189,7 +1200,7 @@ def get_preferences(s: Session) -> typing.Sequence[Preferences]:
     """
     Loads the preference list from the database.
 
-    :param s: Session from Actual local database.
+    :param s: Session from the Actual local database.
     :return: List of preferences.
     """
     return s.exec(select(Preferences)).all()
@@ -1199,7 +1210,7 @@ def get_or_create_preference(s: Session, key: str, value: str) -> Preferences:
     """
     Loads the preference list from the database. If the key is missing, a new one is created, otherwise it's updated.
 
-    :param s: Session from Actual local database.
+    :param s: Session from the Actual local database.
     :param key: Key of the preference.
     :param value: Value of the preference.
     :return: The preference object.
@@ -1217,9 +1228,9 @@ def get_preference(s: Session, key: str, default: str = None) -> typing.Optional
     """
     Gets an existing preference by key name, returns `None` if not found.
 
-    :param s: Session from Actual local database.
+    :param s: Session from the Actual local database.
     :param key: Preference name.
-    :param default: Default value to be returned if key is not found.
+    :param default: Default value to be returned if the key is not found.
     :return: Preference matching the key provided. If not found, returns `None`.
     """
     return s.exec(select(Preferences).where(Preferences.id == key)).one_or_none() or default

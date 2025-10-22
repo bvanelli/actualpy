@@ -9,7 +9,7 @@ pip install actualpy
 ## Using relationships and properties
 
 The SQLAlchemy model already contains relationships to the referenced foreign keys and some properties. For example,
-it's pretty simple to get the current balances for both accounts, payees and budgets:
+it's pretty simple to get the current balances for accounts, payees, and budgets:
 
 ```python
 from actual import Actual
@@ -42,10 +42,10 @@ with Actual(base_url="http://localhost:5006", password="mypass", file="My budget
 
 ## Adding new transactions
 
-After you created your first budget (or when updating an existing budget), you can add new transactions by adding them
+After you create your first budget (or when updating an existing budget), you can add new transactions by adding them
 using the [`create_transaction`][actual.queries.create_transaction] method, and commit it using
 [`actual.commit`][actual.Actual.commit]. You cannot use the SQLAlchemy session directly because that adds the entries
-to your  local database, but will not sync the results back to the server (that is only possible when re-uploading the
+to your local database, but will not sync the results back to the server (that is only possible when re-uploading the
 file).
 
 The method will make sure the local database is updated, but will also send a SYNC request with the added data so that
@@ -94,20 +94,20 @@ with Actual(base_url="http://localhost:5006", password="mypass", file="My budget
 
 ```
 
-When working with transactions, is importing to keep in mind that the value amounts are set with floating number,
-but the value stored on the database will be an integer (number of cents) instead. So instead of updating a
+When working with transactions, it is important to keep in mind that the value amounts are set with floating-point
+numbers, but the value stored in the database will be an integer (number of cents) instead. So instead of updating a
 transaction with [Transactions.amount][actual.database.Transactions], use the
 [Transactions.set_amount][actual.database.Transactions.set_amount] instead.
 
 !!! warning
-    You can also modify the relationships, for example the `transaction.payee.name`, but you to be aware that
+    You can also modify the relationships, for example the `transaction.payee.name`, but you need to be aware that
     this payee might be used for more than one transaction. Whenever the relationship is anything but 1:1, you have to
     track the changes already done to prevent modifying a field twice.
 
 ## Generating backups
 
 You can use actualpy to generate regular backups of your server files. Here is a script that will backup your server
-file on the current folder:
+file to the current folder:
 
 ```python
 from actual import Actual

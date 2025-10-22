@@ -27,20 +27,21 @@ Suppose you have the following csv file (in the notes), which contains the field
     Current Checking Account,2024-01-16,,Phone contract,Phone,-15
     Current Checking Account,2024-01-13,,Cinema tickets,Entertainment:Music/Movies,-10
     Current Checking Account,2024-01-12,,Groceries,Groceries,-25
-    Current Cash in Wallet,2024-01-06,,Couple of beers at a bar,Entertainment:Recreation,-25
-    Current Cash in Wallet,2024-01-06,Current Checking Account,Cash withdraw,,50
-    Current Checking Account,2024-01-06,Current Cash in Wallet,Cash withdraw,,-50
+    Current Cash in Wallet,2024-01-06,,A couple of beers at a bar,Entertainment:Recreation,-25
+    Current Cash in Wallet,2024-01-06,Current Checking Account,Cash withdrawal,,50
+    Current Checking Account,2024-01-06,Current Cash in Wallet,Cash withdrawal,,-50
     Current Checking Account,2024-01-05,,Groceries,Groceries,-25
     Current Checking Account,2024-01-01,,Mobility Bonus,Other Income,100
     Current Checking Account,2024-01-01,,Salary Payment,Salary,700
     ```
 
 When you import transactions, you do not know which entries have already been imported from a previously imported file,
-so it's useful to be able to match entries which are already in the database.
+so it's useful to be able to match entries that are already in the database.
 
 To do that, you can use the [reconcile_transaction][actual.queries.reconcile_transaction]. The important thing to
-note here is that **you will need to pass the transactions which were already imported to the function to prevent
-flagging duplicates**. Check [here how actual handles duplicates](https://actualbudget.org/docs/transactions/importing#avoiding-duplicate-transactions).
+note here is that **you will need to pass the transactions that were already imported to the function to prevent
+flagging duplicates**. Check [here how Actual handles duplicates](
+https://actualbudget.org/docs/transactions/importing#avoiding-duplicate-transactions).
 
 ```python
 import csv
@@ -54,7 +55,7 @@ from actual.queries import get_or_create_account, reconcile_transaction
 
 
 def load_csv_data(file: pathlib.Path) -> list[dict]:
-    # Loads the data from the csv as a list of dictionaries
+    # Loads the data from the CSV as a list of dictionaries
     data = []
     with open(file) as csvfile:
         for entry in csv.DictReader(csvfile):
