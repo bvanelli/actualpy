@@ -30,7 +30,11 @@ def int_to_date(date: int | str, month_only: bool = False) -> datetime.date:
 
 
 def date_to_datetime(date: Optional[datetime.date]) -> Optional[datetime.datetime]:
-    """Converts one object from date to datetime object. The reverse is possible directly by calling datetime.date()."""
+    """
+    Converts one object from date to the datetime object.
+
+    The reverse is possible directly by calling `datetime.date()`.
+    """
     if date is None:
         return None
     return datetime.datetime.combine(date, datetime.time.min)
@@ -63,7 +67,8 @@ def current_timestamp() -> int:
 
 
 def cents_to_decimal(amount: int) -> decimal.Decimal:
-    """Converts the number of cents to a `decimal.Decimal` object.
+    """
+    Converts the number of cents to a `decimal.Decimal` object.
 
     When providing `500`, the result will be `decimal.Decimal(5.0)`.
     """
@@ -71,7 +76,8 @@ def cents_to_decimal(amount: int) -> decimal.Decimal:
 
 
 def decimal_to_cents(amount: decimal.Decimal | int | float) -> int:
-    """Converts the decimal amount (`decimal.Decimal` or `int` or `float`) to an integer value.
+    """
+    Converts the decimal amount (`decimal.Decimal` or `int` or `float`) to an integer value.
 
     When providing `decimal.Decimal(5.0)`, the result will be `500`.
     """

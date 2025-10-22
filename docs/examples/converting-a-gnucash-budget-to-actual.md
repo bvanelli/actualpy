@@ -3,13 +3,13 @@
 !!! warning
 
     The following example is not guaranteed to work, and you might need to change some parameters to make it work
-    in your use case.
+    for your use case.
 
 When I first migrated to Actual, I was using GnuCash to manage my budget. I then started writing _actualpy_
-as a way to automate this migration, since at the time it _seemed_ like it was going to be straight forward:
-read the GnuCash with the pre-existing Python library, then import everything into Actual using HTTP requests.
+as a way to automate this migration, since at the time it _seemed_ like it was going to be straightforward:
+read the GnuCash data with the pre-existing Python library, then import everything into Actual using HTTP requests.
 
-This led me to an entire trip to re-engineering the Actual protocol, and trying to provide a high-quality API for
+This led me on an entire journey of re-engineering the Actual protocol, and trying to provide a high-quality API for
 the Python community.
 
 If you still want to use this, here is the original code, without any warranty that this will actually work.

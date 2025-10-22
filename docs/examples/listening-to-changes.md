@@ -1,17 +1,17 @@
 # Listening to changes
 
-Sometimes, it can be useful to list to changes done on your server, rather than just reading static data.
+Sometimes, it can be useful to listen to changes made on your server, rather than just reading static data.
 
-The following example shows how to add a listener to your Actual server and only listen to changes done on the
-budget. We still need to implement a pooling rate to listen to the `sync` endpoint, but it should both
+The following example shows how to add a listener to your Actual server and only listen to changes made to the
+budget. We still need to implement a polling rate to listen to the `sync` endpoint, but it should both
 update your local budget **and** log the changes to the budget.
 
-First, we have to understand the [Changeset][actual.utils.changeset.Changeset]: it groups together changes done to a
+First, we have to understand the [Changeset][actual.utils.changeset.Changeset]: it groups together changes made to a
 certain resource. It contains which columns were changed, and the new values.
 
 It's important to note that the changeset **does not contain** the original values of the columns, as well as the
-information if the row is new or updated. It is possible, however, to retrieve this information by loading a local
-copy of the database.
+information about whether the row is new or updated. It is possible, however, to retrieve this information by loading a
+local copy of the database.
 
 The changeset is also only available **from the moment the budget was initialized**.
 
@@ -37,9 +37,9 @@ if __name__ == "__main__":
     main()
 ```
 
-We are now going to implement a change handler. A common scenario is reacting to transactions being added to the
-budget. To do this, we need to know which transactions were already there when we downloaded the budget,
-which can be done with the method [get_transactions][actual.queries.get_transactions].
+We are now going to implement a change handler. A common scenario is reacting to transactions being added to the budget.
+To do this, we need to know which transactions were already there when we downloaded the budget, which can be done with
+the method [get_transactions][actual.queries.get_transactions].
 
 The next step is to implement the change handler logic. We want to filter everything that is not of type
 [Transaction][actual.database.Transactions], and also skip transactions that were modified:

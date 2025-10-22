@@ -1,13 +1,19 @@
-# Command line interface
+# Command Line Interface
 
-You can try out `actualpy` directly without the need of writing a custom script. All you need to do is install the
-command line interface with:
+The `actualpy` command line interface (CLI) allows you to interact with your Actual Budget data directly
+from the terminal without writing custom scripts.
+
+## Installation
+
+Install the CLI with the optional CLI dependencies:
 
 ```bash
 pip install "actualpy[cli]"
 ```
 
-You should then be able to generate exports directly:
+## Initial setup
+
+Before using any commands, you need to initialize a budget configuration:
 
 ```console
 $ actualpy init
@@ -17,6 +23,11 @@ Please enter the Actual server password:
 Please enter the budget index: 1
 Name of the context for this budget [test]:
 Initialized budget 'test'
+```
+
+Once initialized, you can export your budget data:
+
+```console
 $ actualpy export
 Exported budget 'Test' (budget id 'My-Finances-0b46239') to '2024-10-04-1438-Test.zip'.
 ```
