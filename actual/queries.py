@@ -312,7 +312,7 @@ def set_transaction_payee(s: Session, transaction: Transactions, payee: typing.U
     """
     Sets a payee safely by checking if this payee is a transfer. If it is, then the transfer will be created.
 
-    This is necessary since the payee can be set to a "transfer id", which references and account. When this happens,
+    This is necessary since the payee can be set to a "transfer id", which references an account. When this happens,
     the transaction will be marked as a transfer between the two accounts, and a new transaction will need to be created
     on the other account, with the negative amount.
 
@@ -346,6 +346,7 @@ def set_transaction_payee(s: Session, transaction: Transactions, payee: typing.U
         )
         transaction.category_id = None
         transfer.transferred_id, transaction.transferred_id = transaction.id, transfer.id
+        transfer.payee_id = transaction.account.payee.id
 
     # finally set the payee
     transaction.payee_id = payee.id if payee else None

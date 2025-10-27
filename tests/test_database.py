@@ -420,6 +420,7 @@ def test_set_payee_to_transfer(session):
     session.commit()
     assert t.payee_id == wallet.payee.id
     assert t.transfer.transfer == t
+    assert t.transfer.payee_id == bank.payee.id
 
 
 def test_tags(session):
