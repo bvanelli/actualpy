@@ -346,6 +346,7 @@ def set_transaction_payee(s: Session, transaction: Transactions, payee: typing.U
         )
         transaction.category_id = None
         transfer.transferred_id, transaction.transferred_id = transaction.id, transfer.id
+        transfer.payee_id = transaction.account.payee.id
 
     # finally set the payee
     transaction.payee_id = payee.id if payee else None
