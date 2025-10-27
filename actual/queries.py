@@ -92,17 +92,19 @@ def _transactions_base_query(
 
 def _balance_base_query(
     s: Session,
-    start_date: datetime.date,
-    end_date: datetime.date,
+    start_date: datetime.date | None,
+    end_date: datetime.date | None,
     account: Accounts | str | None = None,
     category: Categories | str | None = None,
 ) -> Select:
     query = select(func.coalesce(func.sum(Transactions.amount), 0)).where(
-        Transactions.date >= date_to_int(start_date),
-        Transactions.date < date_to_int(end_date),
         Transactions.is_parent == 0,
         Transactions.tombstone == 0,
     )
+    if start_date is not None:
+        query = query.filter(Transactions.date >= date_to_int(start_date))
+    if end_date is not None:
+        query = query.filter(Transactions.date < date_to_int(end_date))
     if account:
         account = get_account(s, account)
         if account:
@@ -485,6 +487,22 @@ def _base_query(instance: typing.Type[T], name: str = None, include_deleted: boo
     return query
 
 
+def get_category_groups(s: Session, name: str = None, include_deleted: bool = False, is_income: bool = None):
+    """
+    Returns a list of all available category groups.
+
+    :param s: Session from the Actual local database.
+    :param name: Pattern name of the category group, case-insensitive.
+    :param include_deleted: Includes all category groups deleted via frontend. They would not show normally.
+    :param is_income: If set, it will filter by the `is_income` property of the category.
+    :return: List of category groups with `categories` already loaded.
+    """
+    query = _base_query(CategoryGroups, name, include_deleted).options(joinedload(CategoryGroups.categories))
+    if is_income is not None:
+        query = query.filter(CategoryGroups.is_income == is_income)
+    return s.exec(query).unique().all()
+
+
 def create_category_group(s: Session, name: str) -> CategoryGroups:
     """
     Creates a new category with the group name `name`.
@@ -511,16 +529,21 @@ def get_or_create_category_group(s: Session, name: str) -> CategoryGroups:
     return category_group
 
 
-def get_categories(s: Session, name: str = None, include_deleted: bool = False) -> typing.Sequence[Categories]:
+def get_categories(
+    s: Session, name: str = None, include_deleted: bool = False, is_income: bool = None
+) -> typing.Sequence[Categories]:
     """
     Returns a list of all available categories.
 
     :param s: Session from the Actual local database.
-    :param name: Pattern name of the payee, case-insensitive.
-    :param include_deleted: Includes all payees which were deleted via frontend. They would not show normally.
+    :param name: Pattern name of the category, case-insensitive.
+    :param include_deleted: Includes all categories deleted via frontend. They would not show normally.
+    :param is_income: If set, it will filter by the `is_income` property of the category.
     :return: List of categories with `transactions` already loaded.
     """
     query = _base_query(Categories, name, include_deleted).options(joinedload(Categories.transactions))
+    if is_income is not None:
+        query = query.filter(Categories.is_income == is_income)
     return s.exec(query).unique().all()
 
 
@@ -823,7 +846,7 @@ def get_budgeted_balance(s: Session, month: datetime.date, category: str | Categ
     """
     Returns the budgeted balance under the category for the individual month, not taking into account accumulated value.
 
-    If you want a function that consideres the accumulated value in case of a envelope budget, check the
+    If you want a function that consideres the accumulated value in case of an envelope budget, check the
     [get_accumulated_budgeted_balance][actual.queries.get_accumulated_budgeted_balance].
 
     :param s: Session from the Actual local database.
@@ -840,7 +863,7 @@ def get_budgeted_balance(s: Session, month: datetime.date, category: str | Categ
         balance = s.scalar(_balance_base_query(s, range_start, range_end, category=category))
         budget_leftover = cents_to_decimal(balance)
     else:
-        budget_leftover = budget.get_amount() + budget.balance  # we can sum because balance is negative
+        budget_leftover = budget.get_amount() + budget.balance  # we can sum because the balance is negative
     return budget_leftover
 
 
