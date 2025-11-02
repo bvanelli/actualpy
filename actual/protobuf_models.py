@@ -26,7 +26,7 @@ class HULC_Client:
     clocks.
     """
 
-    def __init__(self, client_id: str | None = None, initial_count: int = 0, ts: datetime.datetime = None):
+    def __init__(self, client_id: str | None = None, initial_count: int = 0, ts: datetime.datetime | None = None):
         self.client_id = client_id or self.random_client_id()
         self.initial_count = initial_count
         self.ts = ts or datetime.datetime(1970, 1, 1, 0, 0, 0)
@@ -129,7 +129,9 @@ class MessageEnvelope(proto.Message):
     isEncrypted = proto.Field(proto.BOOL, number=2)
     content = proto.Field(proto.BYTES, number=3)
 
-    def set_timestamp(self, client_id: str | None = None, now: datetime.datetime = None, initial_count: int = 0) -> str:
+    def set_timestamp(
+        self, client_id: str | None = None, now: datetime.datetime | None = None, initial_count: int = 0
+    ) -> str:
         self.timestamp = HULC_Client(client_id, initial_count).timestamp(now)
         return self.timestamp
 
@@ -143,7 +145,9 @@ class SyncRequest(proto.Message):
     keyId = proto.Field(proto.STRING, number=5)
     since = proto.Field(proto.STRING, number=6)
 
-    def set_timestamp(self, client_id: str | None = None, now: datetime.datetime = None, initial_count: int = 0) -> str:
+    def set_timestamp(
+        self, client_id: str | None = None, now: datetime.datetime | None = None, initial_count: int = 0
+    ) -> str:
         self.since = HULC_Client(client_id, initial_count).timestamp(now)
         return self.since
 

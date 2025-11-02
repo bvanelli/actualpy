@@ -144,7 +144,7 @@ class ActualServer:
         self._token = login_response.data.token
         return login_response
 
-    def headers(self, file_id: str | None = None, extra_headers: dict = None) -> dict:
+    def headers(self, file_id: str | None = None, extra_headers: dict | None = None) -> dict:
         """
         Generates a header based on the stored token for the connection.
 
