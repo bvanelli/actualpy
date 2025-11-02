@@ -246,7 +246,7 @@ def get_envelope_budget_info(s: Session, until: datetime.date) -> list[EnvelopeB
             for category in category_group.categories:
                 # todo: refactor this
                 category_accumulated_balance = (
-                    last_budget.from_category(category).balance if last_budget else decimal.Decimal(0)
+                    last_budget.from_category(category).accumulated_balance if last_budget else decimal.Decimal(0)
                 )
                 # reset the accumulated balance if it's under 0
                 if category_accumulated_balance < 0:
