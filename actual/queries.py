@@ -868,13 +868,17 @@ def get_budgeted_balance(s: Session, month: datetime.date, category: str | Categ
     return budget_leftover
 
 
-def _get_first_positive_transaction(s: Session, category: Categories) -> typing.Optional[Transactions]:
+def _get_first_positive_transaction(s: Session, category: Categories | None = None) -> typing.Optional[Transactions]:
     """
     Returns the first positive transaction in a certain category.
 
+    If the category is missing, the first positive transaction in the entire budget is returned.
+
     This is used to find the month to start the budgeting calculation, since it makes the budget positive.
     """
-    query = select(Transactions).where(Transactions.amount > 0, Transactions.category_id == category.id)
+    query = select(Transactions).where(Transactions.amount > 0).order_by(Transactions.date.asc())
+    if category is not None:
+        query = query.where(Transactions.category_id == category.id)
     return s.exec(query).first()
 
 
