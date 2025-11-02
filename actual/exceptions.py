@@ -98,5 +98,5 @@ class ActualBankSyncError(ActualError):
     this library.
     """
 
-    def __init__(self, error_type: str, status: str = None, reason: str = None):
+    def __init__(self, error_type: str, status: str | None = None, reason: str | None = None):
         self.error_type, self.status, self.reason = error_type, status, reason

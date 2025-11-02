@@ -30,7 +30,7 @@ it might be worthwhile to include the library `msal-python` as a real dependency
 """
 
 
-def obtain_auth_code(listen_port: int, auth_uri: str = None):
+def obtain_auth_code(listen_port: int, auth_uri: str | None = None):
     with AuthCodeReceiver(port=listen_port) as receiver:
         return receiver.get_auth_response(
             auth_uri=auth_uri,

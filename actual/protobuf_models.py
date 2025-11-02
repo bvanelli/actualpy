@@ -26,7 +26,7 @@ class HULC_Client:
     clocks.
     """
 
-    def __init__(self, client_id: str = None, initial_count: int = 0, ts: datetime.datetime = None):
+    def __init__(self, client_id: str | None = None, initial_count: int = 0, ts: datetime.datetime | None = None):
         self.client_id = client_id or self.random_client_id()
         self.initial_count = initial_count
         self.ts = ts or datetime.datetime(1970, 1, 1, 0, 0, 0)
@@ -43,7 +43,7 @@ class HULC_Client:
         count = f"{self.initial_count:0>4X}"
         return f"{self.ts.isoformat(timespec='milliseconds')}Z-{count}-{self.client_id}"
 
-    def timestamp(self, now: datetime.datetime = None) -> str:
+    def timestamp(self, now: datetime.datetime | None = None) -> str:
         """Actual uses Hybrid Unique Logical Clock (HULC) timestamp generator.
 
         Timestamps serialize into a 46-character collatable string. Examples:
@@ -129,7 +129,9 @@ class MessageEnvelope(proto.Message):
     isEncrypted = proto.Field(proto.BOOL, number=2)
     content = proto.Field(proto.BYTES, number=3)
 
-    def set_timestamp(self, client_id: str = None, now: datetime.datetime = None, initial_count: int = 0) -> str:
+    def set_timestamp(
+        self, client_id: str | None = None, now: datetime.datetime | None = None, initial_count: int = 0
+    ) -> str:
         self.timestamp = HULC_Client(client_id, initial_count).timestamp(now)
         return self.timestamp
 
@@ -143,14 +145,16 @@ class SyncRequest(proto.Message):
     keyId = proto.Field(proto.STRING, number=5)
     since = proto.Field(proto.STRING, number=6)
 
-    def set_timestamp(self, client_id: str = None, now: datetime.datetime = None, initial_count: int = 0) -> str:
+    def set_timestamp(
+        self, client_id: str | None = None, now: datetime.datetime | None = None, initial_count: int = 0
+    ) -> str:
         self.since = HULC_Client(client_id, initial_count).timestamp(now)
         return self.since
 
-    def set_null_timestamp(self, client_id: str = None) -> str:
+    def set_null_timestamp(self, client_id: str | None = None) -> str:
         return self.set_timestamp(client_id, datetime.datetime(1970, 1, 1, 0, 0, 0, 0))
 
-    def set_messages(self, messages: list[Message], client: HULC_Client, master_key: bytes = None):
+    def set_messages(self, messages: list[Message], client: HULC_Client, master_key: bytes | None = None):
         if not self.messages:
             self.messages = []
         for message in messages:
@@ -178,7 +182,7 @@ class SyncResponse(proto.Message):
     messages = proto.RepeatedField(MessageEnvelope, number=1)
     merkle = proto.Field(proto.STRING, number=2)
 
-    def get_messages(self, master_key: bytes = None) -> list[Message]:
+    def get_messages(self, master_key: bytes | None = None) -> list[Message]:
         messages = []
         for message in self.messages:  # noqa
             if message.isEncrypted:
