@@ -478,7 +478,9 @@ class Rule(pydantic.BaseModel):
         "and", description="Operation to apply for the rule evaluation. If 'all' or 'any' need to be evaluated."
     )
     actions: list[Action] = pydantic.Field(..., description="List of actions to apply to the transaction.")
-    stage: typing.Literal["pre", "post", None] = pydantic.Field()
+    stage: typing.Literal["pre", "post", None] = pydantic.Field(
+        None, description="Stage in which the rule will be evaluated (default None)"
+    )
 
     @pydantic.model_validator(mode="before")
     def correct_operation(cls, value):
