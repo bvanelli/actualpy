@@ -26,6 +26,7 @@ class BudgetCategory:
     spent: decimal.Decimal
     balance: decimal.Decimal
     accumulated_balance: decimal.Decimal
+    carryover: bool
     budget: Optional[Union[ReflectBudgets, BaseBudgets]] = None  # If the budget value
 
     def __str__(self):
@@ -185,13 +186,15 @@ def get_category_detailed_budget(s: Session, month: datetime.date, category: Cat
         balance = s.scalar(_balance_base_query(s, range_start, range_end, category=category))
         budgeted = decimal.Decimal(0)
         spent = cents_to_decimal(balance)
+        carryover = False
     else:
         budgeted = budget.get_amount()
         spent = budget.balance
+        carryover = bool(budget.carryover)
     # Balance is the simple subtraction of the spent from the budget amount
     balance = budgeted + spent
     # The accumulated balance relates to a previous budget, so it has to be computed later
-    return BudgetCategory(category, budgeted, spent, balance, decimal.Decimal(0), budget)
+    return BudgetCategory(category, budgeted, spent, balance, decimal.Decimal(0), carryover, budget)
 
 
 def get_income(s: Session, month: datetime.date) -> decimal.Decimal:
@@ -249,9 +252,9 @@ def get_envelope_budget_info(s: Session, until: datetime.date) -> list[EnvelopeB
                     last_budget.from_category(category).accumulated_balance if last_budget else decimal.Decimal(0)
                 )
                 # reset the accumulated balance if it's under 0
-                if category_accumulated_balance < 0:
-                    category_accumulated_balance = decimal.Decimal(0)
                 category_detailed_budget = get_category_detailed_budget(s, current_month, category)
+                if not category_detailed_budget.carryover and category_accumulated_balance < 0:
+                    category_accumulated_balance = decimal.Decimal(0)
                 category_accumulated_balance += category_detailed_budget.balance
                 category_detailed_budget.accumulated_balance = category_accumulated_balance
                 cat_list.append(category_detailed_budget)

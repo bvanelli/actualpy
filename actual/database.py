@@ -814,6 +814,7 @@ class BaseBudgets(BaseModel):
     month: Optional[int] = Field(default=None, sa_column=Column("month", Integer))
     category_id: Optional[str] = Field(default=None, sa_column=Column("category", Text))
     amount: Optional[int] = Field(default=None, sa_column=Column("amount", Integer, server_default=text("0")))
+    carryover: Optional[int] = Field(default=None, sa_column=Column("carryover", Integer, server_default=text("0")))
 
     def get_date(self) -> datetime.date:
         """Returns the transaction date as a datetime.date object, instead of as a string."""
