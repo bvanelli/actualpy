@@ -17,7 +17,7 @@ runner = CliRunner()
 server_version = ACTUAL_SERVER_INTEGRATION_VERSIONS[-1]  # use latest version
 
 
-def base_dataset(actual: Actual, budget_name: str = "Test", encryption_password: str = None):
+def base_dataset(actual: Actual, budget_name: str = "Test", encryption_password: str | None = None):
     actual.create_budget(budget_name)
     bank = create_account(actual.session, "Bank")
     create_transaction(
