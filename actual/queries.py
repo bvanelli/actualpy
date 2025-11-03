@@ -347,7 +347,7 @@ def set_transaction_payee(s: Session, transaction: Transactions, payee: typing.U
 
         # Clear the category for on-budget account transfers, keep it untouched for off-budget account transfers
         if not payee.account.offbudget:
-          transaction.category_id = None
+            transaction.category_id = None
 
         transfer.transferred_id, transaction.transferred_id = transaction.id, transfer.id
         transfer.payee_id = transaction.account.payee.id
