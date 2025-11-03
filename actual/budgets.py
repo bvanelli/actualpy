@@ -172,7 +172,7 @@ class TrackingBudget(BaseBudget):
         return self.budgeted_income + self.expenses
 
 
-class BudgetList(list):
+class BudgetList(list[EnvelopeBudget | TrackingBudget]):
     def __init__(self, iterable, is_tracking_budget: bool = False):
         super().__init__(iterable)
         self.is_tracking_budget: bool = is_tracking_budget

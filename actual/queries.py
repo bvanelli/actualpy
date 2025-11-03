@@ -816,7 +816,11 @@ def get_budget(
 
 
 def create_budget(
-    s: Session, month: datetime.date, category: str | Categories, amount: decimal.Decimal | float | int = 0.0
+    s: Session,
+    month: datetime.date,
+    category: str | Categories,
+    amount: decimal.Decimal | float | int = 0.0,
+    carryover: bool | None = None,
 ) -> typing.Union[ZeroBudgets, ReflectBudgets]:
     """
     Gets an existing budget based on the month and category. If it already exists, the amount will be replaced by
@@ -827,6 +831,8 @@ def create_budget(
                   for the current month.
     :param category: Category to filter for the budget.
     :param amount: Amount for the budget.
+    :param carryover: If set to `True`, the budget will carry the negative balances over to the next month. By default,
+                      no value is actively set, and the database will set it to `False`.
     :return: Return budget matching the month and category, and assigns the amount to the budget. If not found, creates
              a new budget.
     """
@@ -839,6 +845,8 @@ def create_budget(
     budget = table(id=str(uuid.uuid4()), category_id=category.id)
     budget.set_date(month)
     budget.set_amount(amount)
+    if carryover is not None:
+        budget.carryover = int(carryover)
     s.add(budget)
     return budget
 
@@ -854,6 +862,7 @@ def get_budgeted_balance(s: Session, month: datetime.date, category: str | Categ
     :param month: Month to get budgets for, as a date for that month. Use `datetime.date.today()` if you want the budget
                   for the current month.
     :param category:  Category to filter for the budget.
+    :param accumulated_balance: Accumulated balance from a previous month, when computing
     :return: A decimal representing the budget real balance for the category.
     """
 
@@ -889,7 +898,8 @@ def get_accumulated_budgeted_balance(s: Session, month: datetime.date, category:
     This is calculated by summing all considered budget values and subtracting all transactions for them.
 
     When using **envelope budget**, this value will accumulate with each consecutive month that your spending is
-    greater than your budget. If this value goes under 0.00, your budget is reset for the next month.
+    greater than your budget. If this value goes under 0.00, your budget is reset for the next month, unless the
+    `carryover` flag is set on the budget. In this case, the balance will be held for the next month.
 
     When using **tracking budget**, only the current month is considered for savings, so no previous values will carry
     over.
@@ -904,7 +914,7 @@ def get_accumulated_budgeted_balance(s: Session, month: datetime.date, category:
     budgets = get_budgets(s, category=category)
     is_tracking_budget = _get_budget_table(s) is ReflectBudgets
     # the first ever budget is the longest we have to look for when searching for the running balance
-    # If the budget is set to tracking, the accumulated value will always be the months balance
+    # If the budget is set to tracking, the accumulated value will always be the month's balance
     if not budgets or is_tracking_budget:
         return get_budgeted_balance(s, month, category)
     first_budget_month = budgets[0].get_date()
@@ -917,7 +927,11 @@ def get_accumulated_budgeted_balance(s: Session, month: datetime.date, category:
     current_month = min(first_budget_month, first_transaction_month)
     accumulated_balance = decimal.Decimal(0)
     while current_month <= month:
-        if accumulated_balance < 0:
+        budget = [b for b in budgets if b.get_date() == current_month]
+        carryover = False
+        if budget and budget[0].carryover:
+            carryover = True
+        if not carryover and accumulated_balance < 0:
             accumulated_balance = decimal.Decimal(0)
         current_month_balance = get_budgeted_balance(s, current_month, category)
         accumulated_balance += current_month_balance
