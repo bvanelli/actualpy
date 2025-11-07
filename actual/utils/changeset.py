@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-from typing import Type, Union
 
 from sqlmodel import Column, Session, SQLModel, select
 
@@ -20,9 +19,9 @@ class Changeset:
     The changeset is also only available **from the moment the budget was initialized**.
     """
 
-    table: Type[SQLModel] = field(metadata={"description": "The SQLModel reference to the table hosting the data."})
+    table: type[SQLModel] = field(metadata={"description": "The SQLModel reference to the table hosting the data."})
     id: str = field(metadata={"description": "The unique id of the row that was inserted or updated."})
-    values: dict[Column, Union[str, int, bool, None]] = field(
+    values: dict[Column, str | int | bool | None] = field(
         metadata={
             "description": "The list of values that were updated on the remote server, using column names as keys."
         }

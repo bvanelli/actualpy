@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime
 import json
-from typing import Literal, Optional, Union
+from typing import Literal
 
 import requests
 
@@ -84,7 +84,7 @@ class ActualServer:
         # finally call validate
         self.validate()
 
-    def login(self, password: Optional[str], method: Literal["password", "header", "openid"] = "password") -> LoginDTO:
+    def login(self, password: str | None, method: Literal["password", "header", "openid"] = "password") -> LoginDTO:
         """
         Logs in on the Actual server using the password provided. Raises `AuthorizationError` if it fails to
         authenticate the user.
@@ -436,7 +436,7 @@ class ActualServer:
         account_id: str,
         start_date: datetime.date,
         requisition_id: str | None = None,
-    ) -> Union[BankSyncErrorDTO, BankSyncTransactionResponseDTO]:
+    ) -> BankSyncErrorDTO | BankSyncTransactionResponseDTO:
         if bank_sync == "gocardless" and requisition_id is None:
             raise ActualInvalidOperationError("Retrieving transactions with goCardless requires `requisition_id`")
         endpoint = Endpoints.BANK_SYNC_TRANSACTIONS.value.format(bank_sync=bank_sync)

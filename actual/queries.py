@@ -226,7 +226,7 @@ def create_transaction_from_ids(
     s: Session,
     date: datetime.date,
     account_id: str,
-    payee_id: typing.Optional[str],
+    payee_id: str | None,
     notes: str,
     category_id: str | None = None,
     amount: decimal.Decimal = 0,
@@ -308,7 +308,7 @@ def create_transaction(
     )
 
 
-def set_transaction_payee(s: Session, transaction: Transactions, payee: typing.Union[Payees, str, None]) -> None:
+def set_transaction_payee(s: Session, transaction: Transactions, payee: Payees | str | None) -> None:
     """
     Sets a payee safely by checking if this payee is a transfer. If it is, then the transfer will be created.
 
@@ -320,7 +320,7 @@ def set_transaction_payee(s: Session, transaction: Transactions, payee: typing.U
     :param transaction: Transaction to exchange the payee.
     :param payee: Object or unique id of the payee to be set. Must be existing
     """
-    current_payee: typing.Optional[Payees] = None
+    current_payee: Payees | None = None
     if isinstance(payee, str):
         payee = s.scalar(select(Payees).where(Payees.id == payee))
     if transaction.payee_id:  # resolve based on the id, in case the relationship did not load
@@ -477,7 +477,7 @@ def create_split(s: Session, transaction: Transactions, amount: float | decimal.
     return split
 
 
-def _base_query(instance: typing.Type[T], name: str | None = None, include_deleted: bool = False) -> Select:
+def _base_query(instance: type[T], name: str | None = None, include_deleted: bool = False) -> Select:
     """Internal method to reduce querying complexity on sub-functions."""
     query = select(instance)
     if not include_deleted:
@@ -550,7 +550,7 @@ def create_category(
     return category
 
 
-def get_tag(s: Session, name: str) -> typing.Optional[Tags]:
+def get_tag(s: Session, name: str) -> Tags | None:
     """Gets one individual tag based on an exact match of the name."""
     return s.exec(select(Tags).where(Tags.tag == name.lstrip("#"))).one_or_none()
 
@@ -589,7 +589,7 @@ def create_tag(s: Session, name: str, description: str | None = None, color: str
 
 def get_category(
     s: Session, name: str | Categories, group_name: str | None = None, strict_group: bool = False
-) -> typing.Optional[Categories]:
+) -> Categories | None:
     """Gets an existing category by name, returns `None` if not found. Deleted payees are excluded from the search."""
     if isinstance(name, Categories):
         return name
@@ -647,7 +647,7 @@ def get_payees(s: Session, name: str | None = None, include_deleted: bool = Fals
     return s.exec(query).unique().all()
 
 
-def get_payee(s: Session, name: str | Payees) -> typing.Optional[Payees]:
+def get_payee(s: Session, name: str | Payees) -> Payees | None:
     """Gets an existing payee by name, returns `None` if not found. Deleted payees are excluded from the search."""
     if isinstance(name, Payees):
         return name
@@ -705,7 +705,7 @@ def create_account(
     return acct
 
 
-def get_account(s: Session, name: str | Accounts) -> typing.Optional[Accounts]:
+def get_account(s: Session, name: str | Accounts) -> Accounts | None:
     """
     Gets an account with the desired name, otherwise returns `None`. Deleted accounts are excluded from the search.
     """
@@ -726,7 +726,7 @@ def get_or_create_account(s: Session, name: str | Accounts) -> Accounts:
     return account
 
 
-def _get_budget_table(s: Session) -> typing.Type[typing.Union[ReflectBudgets, ZeroBudgets]]:
+def _get_budget_table(s: Session) -> type[ReflectBudgets | ZeroBudgets]:
     """
     Finds out which type of budget the user uses. The types are:
 
@@ -745,7 +745,7 @@ def _get_budget_table(s: Session) -> typing.Type[typing.Union[ReflectBudgets, Ze
 
 def get_budgets(
     s: Session, month: datetime.date | None = None, category: str | Categories | None = None
-) -> typing.Sequence[typing.Union[ZeroBudgets, ReflectBudgets]]:
+) -> typing.Sequence[ZeroBudgets | ReflectBudgets]:
     """
     Returns a list of all available budgets.
 
@@ -776,9 +776,7 @@ def get_budgets(
     return s.exec(query).unique().all()
 
 
-def get_budget(
-    s: Session, month: datetime.date, category: str | Categories
-) -> typing.Optional[typing.Union[ZeroBudgets, ReflectBudgets]]:
+def get_budget(s: Session, month: datetime.date, category: str | Categories) -> ZeroBudgets | ReflectBudgets | None:
     """
     Gets an existing budget by category name, returns `None` if not found.
 
@@ -795,7 +793,7 @@ def get_budget(
 
 def create_budget(
     s: Session, month: datetime.date, category: str | Categories, amount: decimal.Decimal | float | int = 0.0
-) -> typing.Union[ZeroBudgets, ReflectBudgets]:
+) -> ZeroBudgets | ReflectBudgets:
     """
     Gets an existing budget based on the month and category. If it already exists, the amount will be replaced by
     the new amount.
@@ -846,7 +844,7 @@ def get_budgeted_balance(s: Session, month: datetime.date, category: str | Categ
     return budget_leftover
 
 
-def _get_first_positive_transaction(s: Session, category: Categories) -> typing.Optional[Transactions]:
+def _get_first_positive_transaction(s: Session, category: Categories) -> Transactions | None:
     """
     Returns the first positive transaction in a certain category.
 
@@ -907,7 +905,7 @@ def create_transfer(
     dest_account: str | Accounts,
     amount: decimal.Decimal | int | float,
     notes: str | None = None,
-) -> typing.Tuple[Transactions, Transactions]:
+) -> tuple[Transactions, Transactions]:
     """
     Creates a transfer of money between two accounts. The amount is provided as a positive value.
 
@@ -1226,7 +1224,7 @@ def get_or_create_preference(s: Session, key: str, value: str) -> Preferences:
     return preference
 
 
-def get_preference(s: Session, key: str, default: str | None = None) -> typing.Optional[Preferences]:
+def get_preference(s: Session, key: str, default: str | None = None) -> Preferences | None:
     """
     Gets an existing preference by key name, returns `None` if not found.
 

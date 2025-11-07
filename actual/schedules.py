@@ -106,9 +106,7 @@ class Pattern(pydantic.BaseModel):
     def __init__(
         self,
         value: int,
-        type: typing.Union[
-            PatternType, typing.Literal["SU", "MO", "TU", "WE", "TH", "FR", "SA", "day"], str
-        ] = PatternType.DAY,
+        type: PatternType | typing.Literal["SU", "MO", "TU", "WE", "TH", "FR", "SA", "day"] | str = PatternType.DAY,
     ):
         if isinstance(type, str):
             type = PatternType(type)
@@ -172,12 +170,12 @@ class Schedule(pydantic.BaseModel):
         description="Specifies how the recurrence ends: "
         "never ends, after a number of occurrences, or on a specific date.",
     )
-    end_occurrences: typing.Optional[int] = pydantic.Field(
+    end_occurrences: int | None = pydantic.Field(
         1,
         alias="endOccurrences",
         description="Used when `end_mode` is `'after_n_occurrences'`. Indicates how many times it should repeat.",
     )
-    end_date: typing.Optional[datetime.date] = pydantic.Field(
+    end_date: datetime.date | None = pydantic.Field(
         None,
         alias="endDate",
         description="Used when `end_mode` is `'on_date'`. The date object indicating when the recurrence should end.",
@@ -283,9 +281,7 @@ class Schedule(pydantic.BaseModel):
             rs.rrule(rrule(**cfg))
         return rs
 
-    def do_skip_weekend(
-        self, dt_start: datetime.datetime, value: datetime.datetime
-    ) -> typing.Optional[datetime.datetime]:
+    def do_skip_weekend(self, dt_start: datetime.datetime, value: datetime.datetime) -> datetime.datetime | None:
         if value.weekday() in (5, 6) and self.skip_weekend:
             if self.weekend_solve_mode == WeekendSolveMode.AFTER:
                 value = value + datetime.timedelta(days=7 - value.weekday())
@@ -299,7 +295,7 @@ class Schedule(pydantic.BaseModel):
                 value = value_before
         return value
 
-    def before(self, date: datetime.date | None = None) -> typing.Optional[datetime.date]:
+    def before(self, date: datetime.date | None = None) -> datetime.date | None:
         if not date:
             date = datetime.date.today()
         dt_start = date_to_datetime(date)
