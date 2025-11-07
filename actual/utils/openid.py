@@ -118,7 +118,7 @@ class _AuthCodeHandler(BaseHTTPRequestHandler):
         qs = parse_qs(urlparse(self.path).query)
         if qs.get("token") or qs.get("error"):  # So, it is an auth response
             auth_response = _qs2kv(qs)
-            logger.debug("Got auth response: %s", auth_response)
+            logger.debug(f"Got auth response: {auth_response}")
             if self.server.auth_state and self.server.auth_state != auth_response.get("state"):
                 # OAuth2 successful and error responses contain state when it was used
                 # https://www.rfc-editor.org/rfc/rfc6749#section-4.2.2.1
@@ -156,7 +156,7 @@ class _AuthCodeHttpServer(HTTPServer):
             # yet the second server would not receive any incoming request.
             # So, we need to turn it off.
             self.allow_reuse_address = False
-        super(_AuthCodeHttpServer, self).__init__(server_address, *args, **kwargs)
+        super(_AuthCodeHttpServer, self).__init__(server_address, *args, **kwargs)  # noqa: UP008
 
     def handle_timeout(self):
         # It will be triggered when no request comes in self.timeout seconds.
@@ -294,13 +294,13 @@ class AuthCodeReceiver:
     ):
         welcome_uri = f"http://localhost:{self.get_port()}"
         abort_uri = f"{welcome_uri}?error=abort"
-        logger.debug("Abort by visit %s", abort_uri)
+        logger.debug(f"Abort by visit {abort_uri}")
         self._server.welcome_page = Template(welcome_template or "").safe_substitute(
             auth_uri=auth_uri, abort_uri=abort_uri
         )
         if auth_uri:  # Now attempt to open a local browser to visit it
             _uri = welcome_uri if welcome_template else auth_uri
-            logger.info("Open a browser on this device to visit: %s" % _uri)
+            logger.info(f"Open a browser on this device to visit: {_uri}")
             browser_opened = False
             try:
                 browser_opened = _browse(_uri, browser_name=browser_name)

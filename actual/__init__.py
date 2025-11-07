@@ -10,7 +10,7 @@ import uuid
 import warnings
 import zipfile
 from os import PathLike
-from typing import IO, Optional, Union
+from typing import IO
 
 from sqlmodel import MetaData, Session, create_engine
 
@@ -157,7 +157,7 @@ class Actual(ActualServer):
             )
         return self._session
 
-    def set_file(self, file_id: Union[str, RemoteFileListDTO]) -> RemoteFileListDTO:
+    def set_file(self, file_id: str | RemoteFileListDTO) -> RemoteFileListDTO:
         """
         Sets the file id for the class for further requests.
 
@@ -487,7 +487,7 @@ class Actual(ActualServer):
         if self._in_context and not self._session:
             self._session = strong_reference_session(Session(self.engine, **self._sa_kwargs))
 
-    def download_master_encryption_key(self, encryption_password: str) -> Optional[bytes]:
+    def download_master_encryption_key(self, encryption_password: str) -> bytes | None:
         """
         Downloads and assembles the key for decrypting the budget based on the provided encryption password.
 
@@ -591,7 +591,7 @@ class Actual(ActualServer):
         if self._file.group_id:  # only files with a group id can be synced
             self.sync_sync(req)
 
-    def run_rules(self, transactions: Optional[list[Transactions]] = None):
+    def run_rules(self, transactions: list[Transactions] | None = None):
         """Runs all the stored rules on the database on all transactions, without any filters."""
         if transactions is None:
             transactions = get_transactions(self.session, is_parent=True)
