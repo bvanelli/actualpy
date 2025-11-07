@@ -422,6 +422,7 @@ def reconcile_transaction(
         # try to update fields
         if update_existing:
             match.notes = notes
+            match.cleared=cleared
             if category:
                 match.category_id = get_or_create_category(s, category).id
             match.set_date(date)
