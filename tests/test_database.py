@@ -1,6 +1,7 @@
 import datetime
 import decimal
 import json
+import warnings
 from datetime import date, timedelta
 
 import pytest
@@ -34,9 +35,10 @@ from actual.queries import (
 from actual.rules import Action, Condition, ConditionType, Rule
 from actual.schedules import EndMode, Frequency, Pattern, WeekendSolveMode
 
+today = date.today()
+
 
 def test_account_relationships(session):
-    today = date.today()
     bank = create_account(session, "Bank", 5000)
     create_account(session, "Savings")
     landlord = get_or_create_payee(session, "Landlord")
@@ -76,7 +78,6 @@ def test_account_relationships(session):
 
 
 def test_transaction(session):
-    today = date.today()
     other = create_account(session, "Other")
     coffee = create_transaction(session, date=today, account="Other", payee="Starbucks", notes="coffee", amount=(-9.95))
     session.commit()
@@ -87,14 +88,14 @@ def test_transaction(session):
 
 def test_transaction_without_payee(session):
     other = create_account(session, "Other")
-    tr = create_transaction(session, date=date.today(), account=other)
+    tr = create_transaction(session, date=today, account=other)
     assert tr.payee_id is None
 
 
 def test_transfer(session):
     bank = create_account(session, "Bank", 200)
     savings = create_account(session, "Savings")
-    origin, dst = create_transfer(session, date.today(), "Bank", "Savings", 200, "Saving money")
+    origin, dst = create_transfer(session, today, "Bank", "Savings", 200, "Saving money")
     assert origin.payee_id == savings.payee.id
     assert dst.payee_id == bank.payee.id
     assert bank.balance == decimal.Decimal(0.0)
@@ -102,23 +103,30 @@ def test_transfer(session):
 
 
 def test_reconcile_transaction(session):
-    today = date.today()
     create_account(session, "Bank")
-    rent_payment = create_transaction(
-        session, today, "Bank", "Landlord", "Paying rent", "Expenses", -1200, imported_id="unique"
-    )
+    rent_payment = create_transaction(session, today, "Bank", "Landlord", "Paying rent", "Expenses", -1200)
     unrelated = create_transaction(
         session, today - timedelta(days=5), "Bank", "Carshop", "Car maintenance", "Car", -1200
     )
     session.commit()
     assert (
-        reconcile_transaction(session, today + timedelta(days=1), "Bank", category="Rent", amount=-1200).id
+        reconcile_transaction(
+            session,
+            today + timedelta(days=1),
+            "Bank",
+            category="Rent",
+            amount=-1200,
+            notes="New notes",
+            imported_id="unique",
+        ).id
         == rent_payment.id
     )
     session.commit()
     # check if the property was updated
     assert rent_payment.get_date() == today + timedelta(days=1)
     assert rent_payment.category.name == "Rent"
+    assert rent_payment.financial_id == "unique"
+    assert rent_payment.payee.name == "Landlord"  # payee stayed the same
     # should still be able to match if the payee is defined, as the match is stronger
     assert (
         reconcile_transaction(
@@ -147,10 +155,37 @@ def test_reconcile_transaction(session):
     )
 
 
+def test_reconcile_transaction_update(session):
+    # Here, we want to test if using reconcile actually updates all fields that it should
+    create_account(session, "Bank")
+    rent_payment = reconcile_transaction(
+        session, today, "Bank", "Random ID", "Paying rent", "Expenses", -1200, imported_id="unique"
+    )
+    assert rent_payment.notes == "Paying rent"
+    assert bool(rent_payment.cleared) is False
+    session.commit()
+    reconciled = reconcile_transaction(
+        session, today, payee="Landlord", account="Bank", amount=-1200, cleared=True, update_existing=True
+    )
+    session.commit()  # this commit will update the payee property
+    assert rent_payment.id == reconciled.id
+    assert bool(reconciled.cleared) is True
+    assert reconciled.payee_id == get_or_create_payee(session, "Landlord").id
+    assert reconciled.payee.name == "Landlord"
+    assert rent_payment.notes == "Paying rent"
+    assert bool(rent_payment.cleared) is True
+    reconciled = reconcile_transaction(
+        session, today, payee="Landlord", account="Bank", amount=-1200, notes="New notes", update_existing=True
+    )
+    session.commit()
+    assert bool(rent_payment.cleared) is True  # Should not reset the cleared flag
+    assert reconciled.notes == "New notes"
+
+
 def test_create_splits(session):
     bank = create_account(session, "Bank")
-    t = create_transaction(session, date.today(), bank, category="Dining", amount=-10.0)
-    t_taxes = create_transaction(session, date.today(), bank, category="Taxes", amount=-2.5)
+    t = create_transaction(session, today, bank, category="Dining", amount=-10.0)
+    t_taxes = create_transaction(session, today, bank, category="Taxes", amount=-2.5)
     parent_transaction = create_splits(session, [t, t_taxes], notes="Dining")
     # find all children
     trs = get_transactions(session)
@@ -167,12 +202,22 @@ def test_create_splits(session):
     assert len(category) == 1
 
 
+def test_create_splits_deprecation(session):
+    bank = create_account(session, "Bank")
+    t = create_transaction(session, today, bank, category="Dining", amount=-10.0)
+    t_taxes = create_transaction(session, today, bank, category="Taxes", amount=-2.5)
+    with warnings.catch_warnings(record=True) as w:
+        parent_transaction = create_splits(session, [t, t_taxes], "foobar", notes="Dining")
+        assert len(w) == 1
+    assert parent_transaction.payee_id is None
+
+
 def test_create_splits_error(session):
     bank = create_account(session, "Bank")
     wallet = create_account(session, "Wallet")
-    t1 = create_transaction(session, date.today(), bank, category="Dining", amount=-10.0)
-    t2 = create_transaction(session, date.today(), wallet, category="Taxes", amount=-2.5)
-    t3 = create_transaction(session, date.today() - timedelta(days=1), bank, category="Taxes", amount=-2.5)
+    t1 = create_transaction(session, today, bank, category="Dining", amount=-10.0)
+    t2 = create_transaction(session, today, wallet, category="Taxes", amount=-2.5)
+    t3 = create_transaction(session, today - timedelta(days=1), bank, category="Taxes", amount=-2.5)
     with pytest.raises(ActualError, match="must be the same for all transactions in splits"):
         create_splits(session, [t1, t2])
     with pytest.raises(ActualError, match="must be the same for all transactions in splits"):
@@ -181,9 +226,9 @@ def test_create_splits_error(session):
 
 def test_create_transaction_without_account_error(session):
     with pytest.raises(ActualError):
-        create_transaction(session, date.today(), "foo", "")
+        create_transaction(session, today, "foo", "")
     with pytest.raises(ActualError):
-        create_transaction(session, date.today(), None, "")
+        create_transaction(session, today, None, "")
 
 
 def test_rule_insertion_method(session):
@@ -317,7 +362,7 @@ def test_set_payee_to_transfer(session):
     bank = create_account(session, "Bank")
     session.commit()
     # Create a transaction setting the payee
-    t = create_transaction(session, date.today(), bank, wallet.payee, amount=-50)
+    t = create_transaction(session, today, bank, wallet.payee, amount=-50)
     session.commit()
     transactions = get_transactions(session)
     assert len(transactions) == 2
@@ -338,8 +383,19 @@ def test_set_payee_to_transfer(session):
     assert t.transfer.payee_id == bank.payee.id
 
 
+def test_set_payee_to_transfer_off_budget(session):
+    bank = create_account(session, "Bank")
+    off_budget = create_account(session, "Off Budget", off_budget=True)
+    category = get_or_create_category(session, "Groceries")
+    session.commit()
+    create_transaction(session, date.today(), bank, off_budget.payee, category=category, amount=-50)
+    transactions = get_transactions(session)
+    assert len(transactions) == 2
+    assert bank.transactions[0].category == category
+    assert off_budget.transactions[0].category is None
+
+
 def test_tags(session):
-    today = date.today()
     create_account(session, "Wallet")
     tag = create_tag(session, "#happy", "For the happy moments in life")
     coffee = create_transaction(session, date=today, account="Wallet", notes="Coffee #happy", amount=(-4.50))
@@ -417,7 +473,6 @@ def test_schedule_is_betweeen(session):
 
 def test_schedule_config(session):
     # should work
-    today = datetime.date.today()
     sc = create_schedule_config(today, "never", frequency="monthly", skip_weekend=True, weekend_solve_mode="after")
     assert sc.end_mode == EndMode.NEVER
     assert sc.frequency == Frequency.MONTHLY

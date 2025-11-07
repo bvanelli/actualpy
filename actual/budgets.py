@@ -1,7 +1,7 @@
 import dataclasses
 import datetime
 import decimal
-from typing import Iterator, Optional, Union
+from collections.abc import Iterator
 
 from sqlalchemy import select
 from sqlmodel import Session
@@ -27,7 +27,7 @@ class BudgetCategory:
     balance: decimal.Decimal
     accumulated_balance: decimal.Decimal
     carryover: bool
-    budget: Optional[Union[ReflectBudgets, BaseBudgets]] = None  # If the budget value
+    budget: ReflectBudgets | BaseBudgets | None = None  # If the budget value
 
     def __str__(self):
         budgeted = float(self.budgeted)

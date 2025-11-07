@@ -1,7 +1,6 @@
 import datetime
 import pathlib
 import warnings
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -219,7 +218,7 @@ def payees():
 
 @app.command()
 def export(
-    filename: Optional[pathlib.Path] = typer.Argument(
+    filename: pathlib.Path | None = typer.Argument(
         default=None,
         help="Name of the file to export, in zip format. "
         "Leave it empty to export it to the current folder with default name.",

@@ -228,7 +228,7 @@ def create_transaction_from_ids(
     s: Session,
     date: datetime.date,
     account_id: str,
-    payee_id: typing.Optional[str],
+    payee_id: str | None,
     notes: str,
     category_id: str | None = None,
     amount: decimal.Decimal = 0,
@@ -255,6 +255,8 @@ def create_transaction_from_ids(
     s.add(t)
     if process_payee:
         set_transaction_payee(s, t, payee_id)
+    else:  # simply set the field without evaluating as a transfer
+        t.payee_id = payee_id
     return t
 
 
@@ -310,7 +312,7 @@ def create_transaction(
     )
 
 
-def set_transaction_payee(s: Session, transaction: Transactions, payee: typing.Union[Payees, str, None]) -> None:
+def set_transaction_payee(s: Session, transaction: Transactions, payee: Payees | str | None) -> None:
     """
     Sets a payee safely by checking if this payee is a transfer. If it is, then the transfer will be created.
 
@@ -322,7 +324,7 @@ def set_transaction_payee(s: Session, transaction: Transactions, payee: typing.U
     :param transaction: Transaction to exchange the payee.
     :param payee: Object or unique id of the payee to be set. Must be existing
     """
-    current_payee: typing.Optional[Payees] = None
+    current_payee: Payees | None = None
     if isinstance(payee, str):
         payee = s.scalar(select(Payees).where(Payees.id == payee))
     if transaction.payee_id:  # resolve based on the id, in case the relationship did not load
@@ -346,9 +348,12 @@ def set_transaction_payee(s: Session, transaction: Transactions, payee: typing.U
             amount=-transaction.get_amount(),
             process_payee=False,
         )
-        transaction.category_id = None
+
+        # Clear the category for on-budget account transfers, keep it untouched for off-budget account transfers
+        if not payee.account.offbudget:
+            transaction.category_id = None
+
         transfer.transferred_id, transaction.transferred_id = transaction.id, transfer.id
-        transfer.payee_id = transaction.account.payee.id
 
     # finally set the payee
     transaction.payee_id = payee.id if payee else None
@@ -382,12 +387,12 @@ def reconcile_transaction(
     s: Session,
     date: datetime.date,
     account: str | Accounts,
-    payee: str | Payees = "",
-    notes: str = "",
+    payee: str | Payees | None = None,
+    notes: str | None = None,
     category: str | Categories | None = None,
     amount: decimal.Decimal | float | int = 0,
     imported_id: str | None = None,
-    cleared: bool = False,
+    cleared: bool | None = None,
     imported_payee: str | None = None,
     update_existing: bool = True,
     already_matched: list[Transactions] | None = None,
@@ -419,16 +424,27 @@ def reconcile_transaction(
     if match:
         # try to update fields
         if update_existing:
-            match.notes = notes
+            if notes is not None:
+                match.notes = notes
+            if cleared is not None:
+                match.cleared = cleared
             if category:
                 match.category_id = get_or_create_category(s, category).id
+            if payee:
+                match.payee_id = get_or_create_payee(s, payee).id
+            if imported_id:
+                match.financial_id = imported_id
             match.set_date(date)
         return match
+    if cleared is None:
+        cleared = False
+    if notes is None:
+        notes = ""
     return create_transaction(s, date, account, payee, notes, category, amount, imported_id, cleared, imported_payee)
 
 
 def create_splits(
-    s: Session, transactions: typing.Sequence[Transactions], payee: str | Payees = "", notes: str = ""
+    s: Session, transactions: typing.Sequence[Transactions], payee: str | Payees = None, notes: str = ""
 ) -> Transactions:
     """
     Creates a transaction with splits based on the list of transactions.
@@ -437,18 +453,22 @@ def create_splits(
 
     :param s: Session from the Actual local database.
     :param transactions: List of transactions that will be added to the splits.
-    :param payee: Name or object of the payee from the transaction. Will be created if missing.
+    :param payee: (Deprecated) Name or object of the payee from the transaction. Ignored for all purposes, since
+        only the child transactions have a payee.
     :param notes: Optional description for the transaction.
     :return: The generated transaction object for the parent transaction.
     """
+    if payee:
+        warnings.warn(
+            "Transactions parents shall have no payee defined, only individual splits.", category=DeprecationWarning
+        )
     if not all(transactions[0].date == t.date for t in transactions) or not all(
         transactions[0].acct == t.acct for t in transactions
     ):
         raise ActualError("`date` and `acct` must be the same for all transactions in splits")
-    payee = get_or_create_payee(s, payee)
     split_amount = decimal.Decimal(sum(t.get_amount() for t in transactions))
     split_transaction = create_transaction_from_ids(
-        s, transactions[0].get_date(), transactions[0].acct, payee.id, notes, None, split_amount
+        s, transactions[0].get_date(), transactions[0].acct, None, notes, None, split_amount
     )
     split_transaction.is_parent = 1
     split_transaction.is_child = 0
@@ -478,7 +498,7 @@ def create_split(s: Session, transaction: Transactions, amount: float | decimal.
     return split
 
 
-def _base_query(instance: typing.Type[T], name: str | None = None, include_deleted: bool = False) -> Select:
+def _base_query(instance: type[T], name: str | None = None, include_deleted: bool = False) -> Select:
     """Internal method to reduce querying complexity on sub-functions."""
     query = select(instance)
     if not include_deleted:
@@ -572,7 +592,7 @@ def create_category(
     return category
 
 
-def get_tag(s: Session, name: str) -> typing.Optional[Tags]:
+def get_tag(s: Session, name: str) -> Tags | None:
     """Gets one individual tag based on an exact match of the name."""
     return s.exec(select(Tags).where(Tags.tag == name.lstrip("#"))).one_or_none()
 
@@ -611,7 +631,7 @@ def create_tag(s: Session, name: str, description: str | None = None, color: str
 
 def get_category(
     s: Session, name: str | Categories, group_name: str | None = None, strict_group: bool = False
-) -> typing.Optional[Categories]:
+) -> Categories | None:
     """Gets an existing category by name, returns `None` if not found. Deleted payees are excluded from the search."""
     if isinstance(name, Categories):
         return name
@@ -669,7 +689,7 @@ def get_payees(s: Session, name: str | None = None, include_deleted: bool = Fals
     return s.exec(query).unique().all()
 
 
-def get_payee(s: Session, name: str | Payees) -> typing.Optional[Payees]:
+def get_payee(s: Session, name: str | Payees) -> Payees | None:
     """Gets an existing payee by name, returns `None` if not found. Deleted payees are excluded from the search."""
     if isinstance(name, Payees):
         return name
@@ -727,7 +747,7 @@ def create_account(
     return acct
 
 
-def get_account(s: Session, name: str | Accounts) -> typing.Optional[Accounts]:
+def get_account(s: Session, name: str | Accounts) -> Accounts | None:
     """
     Gets an account with the desired name, otherwise returns `None`. Deleted accounts are excluded from the search.
     """
@@ -748,7 +768,7 @@ def get_or_create_account(s: Session, name: str | Accounts) -> Accounts:
     return account
 
 
-def _get_budget_table(s: Session) -> typing.Type[typing.Union[ReflectBudgets, ZeroBudgets]]:
+def _get_budget_table(s: Session) -> type[ReflectBudgets | ZeroBudgets]:
     """
     Finds out which type of budget the user uses. The types are:
 
@@ -767,7 +787,7 @@ def _get_budget_table(s: Session) -> typing.Type[typing.Union[ReflectBudgets, Ze
 
 def get_budgets(
     s: Session, month: datetime.date | None = None, category: str | Categories | None = None
-) -> typing.Sequence[typing.Union[ZeroBudgets, ReflectBudgets]]:
+) -> typing.Sequence[ZeroBudgets | ReflectBudgets]:
     """
     Returns a list of all available budgets.
 
@@ -798,9 +818,7 @@ def get_budgets(
     return s.exec(query).unique().all()
 
 
-def get_budget(
-    s: Session, month: datetime.date, category: str | Categories
-) -> typing.Optional[typing.Union[ZeroBudgets, ReflectBudgets]]:
+def get_budget(s: Session, month: datetime.date, category: str | Categories) -> ZeroBudgets | ReflectBudgets | None:
     """
     Gets an existing budget by category name, returns `None` if not found.
 
@@ -821,7 +839,7 @@ def create_budget(
     category: str | Categories,
     amount: decimal.Decimal | float | int = 0.0,
     carryover: bool | None = None,
-) -> typing.Union[ZeroBudgets, ReflectBudgets]:
+) -> ZeroBudgets | ReflectBudgets:
     """
     Gets an existing budget based on the month and category. If it already exists, the amount will be replaced by
     the new amount.
@@ -862,7 +880,6 @@ def get_budgeted_balance(s: Session, month: datetime.date, category: str | Categ
     :param month: Month to get budgets for, as a date for that month. Use `datetime.date.today()` if you want the budget
                   for the current month.
     :param category:  Category to filter for the budget.
-    :param accumulated_balance: Accumulated balance from a previous month, when computing
     :return: A decimal representing the budget real balance for the category.
     """
 
@@ -877,7 +894,7 @@ def get_budgeted_balance(s: Session, month: datetime.date, category: str | Categ
     return budget_leftover
 
 
-def _get_first_positive_transaction(s: Session, category: Categories | None = None) -> typing.Optional[Transactions]:
+def _get_first_positive_transaction(s: Session, category: Categories | None = None) -> Transactions | None:
     """
     Returns the first positive transaction in a certain category.
 
@@ -947,7 +964,7 @@ def create_transfer(
     dest_account: str | Accounts,
     amount: decimal.Decimal | int | float,
     notes: str | None = None,
-) -> typing.Tuple[Transactions, Transactions]:
+) -> tuple[Transactions, Transactions]:
     """
     Creates a transfer of money between two accounts. The amount is provided as a positive value.
 
@@ -973,9 +990,6 @@ def create_transfer(
     # swap the transferred ids
     source_transaction.transferred_id = dest_transaction.id
     dest_transaction.transferred_id = source_transaction.id
-    # set payees
-    source_transaction.payee_id = dest.payee.id
-    dest_transaction.payee_id = source.payee.id
     # add and return objects
     s.add(source_transaction)
     s.add(dest_transaction)
@@ -1266,7 +1280,7 @@ def get_or_create_preference(s: Session, key: str, value: str) -> Preferences:
     return preference
 
 
-def get_preference(s: Session, key: str, default: str | None = None) -> typing.Optional[Preferences]:
+def get_preference(s: Session, key: str, default: str | None = None) -> Preferences | None:
     """
     Gets an existing preference by key name, returns `None` if not found.
 

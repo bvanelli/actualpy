@@ -17,7 +17,7 @@ from actual.exceptions import ActualSplitTransactionError
 from actual.schedules import Schedule
 
 
-def get_normalized_string(value: str) -> typing.Optional[str]:
+def get_normalized_string(value: str) -> str | None:
     """Normalization of string for comparison. Uses lowercase and Canonical Decomposition.
 
     See https://github.com/actualbudget/actual/blob/a22160579d6e1f7a17213561cec79c321a14525b/packages/loot-core/src/shared/normalisation.ts
@@ -55,8 +55,8 @@ class ActionType(enum.Enum):
 class BetweenValue(pydantic.BaseModel):
     """Used for `isbetween` rules."""
 
-    num_1: typing.Union[int, float] = pydantic.Field(alias="num1")
-    num_2: typing.Union[int, float] = pydantic.Field(alias="num2")
+    num_1: int | float = pydantic.Field(alias="num1")
+    num_2: int | float = pydantic.Field(alias="num2")
 
     def __str__(self):
         return f"({self.num_1}, {self.num_2})"
@@ -149,8 +149,8 @@ class ValueType(enum.Enum):
 
 
 def get_value(
-    value: typing.Union[int, list[str], str, None], value_type: ValueType
-) -> typing.Union[int, datetime.date, list[str], str, None]:
+    value: int | list[str] | str | None, value_type: ValueType
+) -> int | datetime.date | list[str] | str | None:
     """Converts the value to an actual value according to the type."""
     if value_type is ValueType.DATE:
         if isinstance(value, str):
@@ -270,20 +270,9 @@ class Condition(pydantic.BaseModel):
         "amount_outflow",
     ]
     op: ConditionType
-    value: typing.Union[
-        int,
-        float,
-        str,
-        list[str],
-        Schedule,
-        list[BaseModel],
-        BetweenValue,
-        BaseModel,
-        datetime.date,
-        None,
-    ]
-    type: typing.Optional[ValueType] = None
-    options: typing.Optional[dict] = None
+    value: int | float | str | list[str] | Schedule | list[BaseModel] | BetweenValue | BaseModel | datetime.date | None
+    type: ValueType | None = None
+    options: dict | None = None
 
     def __str__(self) -> str:
         v = f"'{self.value}'" if isinstance(self.value, str) or isinstance(self.value, Schedule) else str(self.value)
@@ -297,7 +286,7 @@ class Condition(pydantic.BaseModel):
             ret.pop("options", None)
         return ret
 
-    def get_value(self) -> typing.Union[int, datetime.date, list[str], str, None]:
+    def get_value(self) -> int | datetime.date | list[str] | str | None:
         return get_value(self.value, self.type)
 
     @pydantic.model_validator(mode="after")
@@ -359,13 +348,11 @@ class Action(pydantic.BaseModel):
     - `amount`: `type` must be `number` and format in cents
     """
 
-    field: typing.Optional[typing.Literal["category", "description", "notes", "cleared", "acct", "date", "amount"]] = (
-        None
-    )
+    field: typing.Literal["category", "description", "notes", "cleared", "acct", "date", "amount"] | None = None
     op: ActionType = pydantic.Field(ActionType.SET, description="Action type to apply (default changes a column).")
-    value: typing.Union[str, bool, int, float, pydantic.BaseModel, None]
-    type: typing.Optional[ValueType] = None
-    options: typing.Dict[str, typing.Union[str, int]] | None = None
+    value: str | bool | int | float | pydantic.BaseModel | None
+    type: ValueType | None = None
+    options: dict[str, str | int] | None = None
 
     def __str__(self) -> str:
         if self.op in (ActionType.SET, ActionType.LINK_SCHEDULE):
@@ -608,7 +595,7 @@ class RuleSet(pydantic.BaseModel):
 
     def _run(
         self,
-        transaction: typing.Union[Transactions, list[Transactions]],
+        transaction: Transactions | list[Transactions],
         stage: typing.Literal["pre", "post", None],
     ):
         for rule in [r for r in self.rules if r.stage == stage]:
@@ -620,7 +607,7 @@ class RuleSet(pydantic.BaseModel):
 
     def run(
         self,
-        transaction: typing.Union[Transactions, typing.Sequence[Transactions]],
+        transaction: Transactions | typing.Sequence[Transactions],
         stage: typing.Literal["all", "pre", "post", None] = "all",
     ):
         """

@@ -1,6 +1,5 @@
 import pathlib
 import tempfile
-from typing import Union
 
 
 def get_base_tmp_folder() -> pathlib.Path:
@@ -13,7 +12,7 @@ def get_base_tmp_folder() -> pathlib.Path:
     return tmp_dir
 
 
-def get_tmp_folder(file_id: Union[str, None]) -> pathlib.Path:
+def get_tmp_folder(file_id: str | None) -> pathlib.Path:
     """
     Returns a base folder to store the file based on the file id. Will create the folder if not existing.
     """
