@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import datetime
 import decimal
-from typing import Optional, Tuple
 
 
 def date_to_int(date: datetime.date, month_only: bool = False) -> int:
@@ -29,7 +28,7 @@ def int_to_date(date: int | str, month_only: bool = False) -> datetime.date:
     return datetime.datetime.strptime(str(date), date_format).date()
 
 
-def date_to_datetime(date: Optional[datetime.date]) -> Optional[datetime.datetime]:
+def date_to_datetime(date: datetime.date | None) -> datetime.datetime | None:
     """
     Converts one object from date to the datetime object.
 
@@ -49,7 +48,7 @@ def day_to_ordinal(day: int) -> str:
     return f"{day}{suffix}"
 
 
-def month_range(month: datetime.date) -> Tuple[datetime.date, datetime.date]:
+def month_range(month: datetime.date) -> tuple[datetime.date, datetime.date]:
     """
     Range of the provided `month` as a tuple `[start, end)`.
 

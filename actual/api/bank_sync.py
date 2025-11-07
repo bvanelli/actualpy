@@ -3,7 +3,6 @@ from __future__ import annotations
 import datetime
 import decimal
 import enum
-from typing import Optional
 
 from pydantic import AliasChoices, BaseModel, Field
 
@@ -72,31 +71,29 @@ class Balance(BaseModel):
 
     balance_amount: BankSyncAmount = Field(..., alias="balanceAmount")
     balance_type: BalanceType = Field(..., alias="balanceType")
-    reference_date: Optional[str] = Field(None, alias="referenceDate", description="The date of the balance")
+    reference_date: str | None = Field(None, alias="referenceDate", description="The date of the balance")
 
 
 class TransactionItem(BaseModel):
-    transaction_id: Optional[str] = Field(None, alias="transactionId")
-    booked: Optional[bool] = False
+    transaction_id: str | None = Field(None, alias="transactionId")
+    booked: bool | None = False
     transaction_amount: BankSyncAmount = Field(..., alias="transactionAmount")
     # these fields are generated on the server itself, so we can trust them as being correct
-    payee_name: Optional[str] = Field(None, alias="payeeName")
+    payee_name: str | None = Field(None, alias="payeeName")
     date: datetime.date = Field(..., alias="date")
-    notes: Optional[str] = Field(None, alias="notes")
+    notes: str | None = Field(None, alias="notes")
     # goCardless optional fields
-    payee: Optional[str] = Field(None, validation_alias=AliasChoices("debtorName", "creditorName"))
-    payee_account: Optional[DebtorAccount] = Field(
-        None, validation_alias=AliasChoices("debtorAccount", "creditorAccount")
-    )
-    booking_date: Optional[datetime.date] = Field(None, alias="bookingDate")
-    value_date: Optional[datetime.date] = Field(None, alias="valueDate")
+    payee: str | None = Field(None, validation_alias=AliasChoices("debtorName", "creditorName"))
+    payee_account: DebtorAccount | None = Field(None, validation_alias=AliasChoices("debtorAccount", "creditorAccount"))
+    booking_date: datetime.date | None = Field(None, alias="bookingDate")
+    value_date: datetime.date | None = Field(None, alias="valueDate")
     remittance_information_unstructured: str = Field(None, alias="remittanceInformationUnstructured")
     remittance_information_unstructured_array: list[str] = Field(
         default_factory=list, alias="remittanceInformationUnstructuredArray"
     )
-    additional_information: Optional[str] = Field(None, alias="additionalInformation")
+    additional_information: str | None = Field(None, alias="additionalInformation")
     # simpleFin optional fields
-    posted_date: Optional[datetime.date] = Field(None, alias="postedDate")
+    posted_date: datetime.date | None = Field(None, alias="postedDate")
 
     @property
     def imported_payee(self):
@@ -125,8 +122,8 @@ class BankSyncTransactionData(BaseModel):
     starting_balance: int = Field(..., alias="startingBalance")
     transactions: Transactions
     # goCardless specific
-    iban: Optional[str] = None
-    institution_id: Optional[str] = Field(None, alias="institutionId")
+    iban: str | None = None
+    institution_id: str | None = Field(None, alias="institutionId")
 
     @property
     def balance(self) -> decimal.Decimal:
@@ -141,5 +138,5 @@ class BankSyncTransactionData(BaseModel):
 class BankSyncErrorData(BaseModel):
     error_type: str
     error_code: str
-    status: Optional[str] = None
-    reason: Optional[str] = None
+    status: str | None = None
+    reason: str | None = None

@@ -156,7 +156,7 @@ class _AuthCodeHttpServer(HTTPServer):
             # yet the second server would not receive any incoming request.
             # So, we need to turn it off.
             self.allow_reuse_address = False
-        super(_AuthCodeHttpServer, self).__init__(server_address, *args, **kwargs)
+        super(_AuthCodeHttpServer, self).__init__(server_address, *args, **kwargs)  # noqa: UP008
 
     def handle_timeout(self):
         # It will be triggered when no request comes in self.timeout seconds.
@@ -300,7 +300,7 @@ class AuthCodeReceiver:
         )
         if auth_uri:  # Now attempt to open a local browser to visit it
             _uri = welcome_uri if welcome_template else auth_uri
-            logger.info("Open a browser on this device to visit: %s" % _uri)
+            logger.info(f"Open a browser on this device to visit: {_uri}")
             browser_opened = False
             try:
                 browser_opened = _browse(_uri, browser_name=browser_name)

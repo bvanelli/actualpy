@@ -18,7 +18,7 @@ import datetime
 import decimal
 import json
 from collections.abc import Sequence
-from typing import Dict, Optional, Tuple, Type, Union
+from typing import Optional
 
 from sqlalchemy import MetaData, Table, engine, event, inspect
 from sqlalchemy.dialects.sqlite import insert
@@ -74,7 +74,7 @@ def reflect_model(eng: engine.Engine) -> MetaData:
     return local_meta
 
 
-def get_class_from_reflected_table_name(metadata: MetaData, table_name: str) -> Union[Type[Table], None]:
+def get_class_from_reflected_table_name(metadata: MetaData, table_name: str) -> type[Table] | None:
     """
     Returns, based on the defined tables on the reflected model the corresponding SQLAlchemy table.
 
@@ -83,9 +83,7 @@ def get_class_from_reflected_table_name(metadata: MetaData, table_name: str) -> 
     return metadata.tables.get(table_name, None)
 
 
-def get_attribute_from_reflected_table_name(
-    metadata: MetaData, table_name: str, column_name: str
-) -> Union[Column, None]:
+def get_attribute_from_reflected_table_name(metadata: MetaData, table_name: str, column_name: str) -> Column | None:
     """
     Returns, based on the defined reflected model the corresponding and the SAColumn.
 
@@ -95,7 +93,7 @@ def get_attribute_from_reflected_table_name(
     return table.columns.get(column_name, None)
 
 
-def get_class_by_table_name(table_name: str) -> Union[Type[SQLModel], None]:
+def get_class_by_table_name(table_name: str) -> type[SQLModel] | None:
     """
     Returns, based on the defined tables `__tablename__` the corresponding SQLModel object.
 
@@ -104,7 +102,7 @@ def get_class_by_table_name(table_name: str) -> Union[Type[SQLModel], None]:
     return __TABLE_COLUMNS_MAP__.get(table_name, {}).get("entity", None)
 
 
-def get_attribute_by_table_name(table_name: str, column_name: str, reverse: bool = False) -> Union[str, None]:
+def get_attribute_by_table_name(table_name: str, column_name: str, reverse: bool = False) -> str | None:
     """
     Returns, based on the defined tables `__tablename__` and the SAColumn name, the correct pydantic attribute.
 
@@ -123,7 +121,7 @@ def get_attribute_by_table_name(table_name: str, column_name: str, reverse: bool
 
 
 def apply_change(
-    session: Session, table: Type[Table], table_id: str, values: Dict[Column, Union[str, int, float, None]]
+    session: Session, table: type[Table], table_id: str, values: dict[Column, str | int | float | None]
 ) -> None:
     """
     This function upserts multiple changes into a table based on the `table_id` as the primary key.
@@ -229,14 +227,14 @@ class BaseModel(SQLModel):
 class Meta(SQLModel, table=True):
     __tablename__ = "__meta__"
 
-    key: Optional[str] = Field(default=None, sa_column=Column("key", Text, primary_key=True))
-    value: Optional[str] = Field(default=None, sa_column=Column("value", Text))
+    key: str | None = Field(default=None, sa_column=Column("key", Text, primary_key=True))
+    value: str | None = Field(default=None, sa_column=Column("value", Text))
 
 
 class Migrations(SQLModel, table=True):
     __tablename__ = "__migrations__"
 
-    id: Optional[int] = Field(default=None, sa_column=Column("id", Integer, primary_key=True))
+    id: int | None = Field(default=None, sa_column=Column("id", Integer, primary_key=True))
 
 
 class Accounts(BaseModel, table=True):
@@ -248,25 +246,25 @@ class Accounts(BaseModel, table=True):
     for managing and interacting with account-related data.
     """
 
-    id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
-    account_id: Optional[str] = Field(default=None, sa_column=Column("account_id", Text))
-    name: Optional[str] = Field(default=None, sa_column=Column("name", Text))
+    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    account_id: str | None = Field(default=None, sa_column=Column("account_id", Text))
+    name: str | None = Field(default=None, sa_column=Column("name", Text))
     # Careful when using those balance fields, are they might be empty. Use account.balance property instead
-    balance_current: Optional[int] = Field(default=None, sa_column=Column("balance_current", Integer))
-    balance_available: Optional[int] = Field(default=None, sa_column=Column("balance_available", Integer))
-    balance_limit: Optional[int] = Field(default=None, sa_column=Column("balance_limit", Integer))
-    mask: Optional[str] = Field(default=None, sa_column=Column("mask", Text))
-    official_name: Optional[str] = Field(default=None, sa_column=Column("official_name", Text))
-    subtype: Optional[str] = Field(default=None, sa_column=Column("subtype", Text))
-    bank_id: Optional[str] = Field(default=None, sa_column=Column("bank", Text, ForeignKey("banks.id")))
-    offbudget: Optional[int] = Field(default=None, sa_column=Column("offbudget", Integer, server_default=text("0")))
-    closed: Optional[int] = Field(default=None, sa_column=Column("closed", Integer, server_default=text("0")))
-    tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
-    sort_order: Optional[float] = Field(default=None, sa_column=Column("sort_order", Float))
-    type: Optional[str] = Field(default=None, sa_column=Column("type", Text))
-    account_sync_source: Optional[str] = Field(default=None, sa_column=Column("account_sync_source", Text))
-    last_sync: Optional[str] = Field(default=None, sa_column=Column("last_sync", Text))
-    last_reconciled: Optional[str] = Field(default=None, sa_column=Column("last_reconciled", Text))
+    balance_current: int | None = Field(default=None, sa_column=Column("balance_current", Integer))
+    balance_available: int | None = Field(default=None, sa_column=Column("balance_available", Integer))
+    balance_limit: int | None = Field(default=None, sa_column=Column("balance_limit", Integer))
+    mask: str | None = Field(default=None, sa_column=Column("mask", Text))
+    official_name: str | None = Field(default=None, sa_column=Column("official_name", Text))
+    subtype: str | None = Field(default=None, sa_column=Column("subtype", Text))
+    bank_id: str | None = Field(default=None, sa_column=Column("bank", Text, ForeignKey("banks.id")))
+    offbudget: int | None = Field(default=None, sa_column=Column("offbudget", Integer, server_default=text("0")))
+    closed: int | None = Field(default=None, sa_column=Column("closed", Integer, server_default=text("0")))
+    tombstone: int | None = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
+    sort_order: float | None = Field(default=None, sa_column=Column("sort_order", Float))
+    type: str | None = Field(default=None, sa_column=Column("type", Text))
+    account_sync_source: str | None = Field(default=None, sa_column=Column("account_sync_source", Text))
+    last_sync: str | None = Field(default=None, sa_column=Column("last_sync", Text))
+    last_reconciled: str | None = Field(default=None, sa_column=Column("last_reconciled", Text))
 
     payee: "Payees" = Relationship(back_populates="account", sa_relationship_kwargs={"uselist": False})
     transactions: list["Transactions"] = Relationship(
@@ -298,16 +296,16 @@ class Accounts(BaseModel, table=True):
         return cents_to_decimal(value)
 
     @property
-    def notes(self) -> Optional[str]:
+    def notes(self) -> str | None:
         """Returns notes for the account. If none are present, returns `None`."""
         return object_session(self).scalar(select(Notes.note).where(Notes.id == f"account-{self.id}"))
 
 
 class Banks(BaseModel, table=True):
-    id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
-    bank_id: Optional[str] = Field(default=None, sa_column=Column("bank_id", Text))
-    name: Optional[str] = Field(default=None, sa_column=Column("name", Text))
-    tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
+    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    bank_id: str | None = Field(default=None, sa_column=Column("bank_id", Text))
+    name: str | None = Field(default=None, sa_column=Column("name", Text))
+    tombstone: int | None = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
 
     account: "Accounts" = Relationship(back_populates="bank")
 
@@ -320,16 +318,14 @@ class Categories(BaseModel, table=True):
     """
 
     hidden: bool = Field(sa_column=Column("hidden", Boolean, nullable=False, server_default=text("0")))
-    id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
-    name: Optional[str] = Field(default=None, sa_column=Column("name", Text))
-    is_income: Optional[int] = Field(default=None, sa_column=Column("is_income", Integer, server_default=text("0")))
-    cat_group: Optional[str] = Field(
-        default=None, sa_column=Column("cat_group", Text, ForeignKey("category_groups.id"))
-    )
-    sort_order: Optional[float] = Field(default=None, sa_column=Column("sort_order", Float))
-    tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
-    goal_def: Optional[str] = Field(default=None, sa_column=Column("goal_def", Text, server_default=text("null")))
-    template_settings: Optional[dict] = Field(default=None, sa_column=Column("template_settings", JSON))
+    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    name: str | None = Field(default=None, sa_column=Column("name", Text))
+    is_income: int | None = Field(default=None, sa_column=Column("is_income", Integer, server_default=text("0")))
+    cat_group: str | None = Field(default=None, sa_column=Column("cat_group", Text, ForeignKey("category_groups.id")))
+    sort_order: float | None = Field(default=None, sa_column=Column("sort_order", Float))
+    tombstone: int | None = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
+    goal_def: str | None = Field(default=None, sa_column=Column("goal_def", Text, server_default=text("null")))
+    template_settings: dict | None = Field(default=None, sa_column=Column("template_settings", JSON))
 
     zero_budgets: "ZeroBudgets" = Relationship(
         back_populates="category",
@@ -380,11 +376,11 @@ class CategoryGroups(BaseModel, table=True):
     __tablename__ = "category_groups"
 
     hidden: bool = Field(sa_column=Column("hidden", Boolean, nullable=False, server_default=text("0")))
-    id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
-    name: Optional[str] = Field(default=None, sa_column=Column("name", Text))
-    is_income: Optional[int] = Field(default=None, sa_column=Column("is_income", Integer, server_default=text("0")))
-    sort_order: Optional[float] = Field(default=None, sa_column=Column("sort_order", Float))
-    tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
+    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    name: str | None = Field(default=None, sa_column=Column("name", Text))
+    is_income: int | None = Field(default=None, sa_column=Column("is_income", Integer, server_default=text("0")))
+    sort_order: float | None = Field(default=None, sa_column=Column("sort_order", Float))
+    tombstone: int | None = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
 
     categories: list["Categories"] = Relationship(
         back_populates="group",
@@ -397,14 +393,14 @@ class CategoryGroups(BaseModel, table=True):
 class CategoryMapping(BaseModel, table=True):
     __tablename__ = "category_mapping"
 
-    id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
-    transfer_id: Optional[str] = Field(default=None, sa_column=Column("transferId", Text))
+    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    transfer_id: str | None = Field(default=None, sa_column=Column("transferId", Text))
 
 
 class CreatedBudgets(SQLModel, table=True):
     __tablename__ = "created_budgets"
 
-    month: Optional[str] = Field(default=None, sa_column=Column("month", Text, primary_key=True))
+    month: str | None = Field(default=None, sa_column=Column("month", Text, primary_key=True))
 
 
 class CustomReports(BaseModel, table=True):
@@ -412,71 +408,71 @@ class CustomReports(BaseModel, table=True):
 
     __tablename__ = "custom_reports"
 
-    id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
-    name: Optional[str] = Field(default=None, sa_column=Column("name", Text))
-    start_date: Optional[str] = Field(default=None, sa_column=Column("start_date", Text))
-    end_date: Optional[str] = Field(default=None, sa_column=Column("end_date", Text))
-    date_static: Optional[int] = Field(default=None, sa_column=Column("date_static", Integer, server_default=text("0")))
-    date_range: Optional[str] = Field(default=None, sa_column=Column("date_range", Text))
-    mode: Optional[str] = Field(default=None, sa_column=Column("mode", Text, server_default=text("'total'")))
-    group_by: Optional[str] = Field(default=None, sa_column=Column("group_by", Text, server_default=text("'Category'")))
-    balance_type: Optional[str] = Field(
+    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    name: str | None = Field(default=None, sa_column=Column("name", Text))
+    start_date: str | None = Field(default=None, sa_column=Column("start_date", Text))
+    end_date: str | None = Field(default=None, sa_column=Column("end_date", Text))
+    date_static: int | None = Field(default=None, sa_column=Column("date_static", Integer, server_default=text("0")))
+    date_range: str | None = Field(default=None, sa_column=Column("date_range", Text))
+    mode: str | None = Field(default=None, sa_column=Column("mode", Text, server_default=text("'total'")))
+    group_by: str | None = Field(default=None, sa_column=Column("group_by", Text, server_default=text("'Category'")))
+    balance_type: str | None = Field(
         default=None, sa_column=Column("balance_type", Text, server_default=text("'Expense'"))
     )
-    show_empty: Optional[int] = Field(default=None, sa_column=Column("show_empty", Integer, server_default=text("0")))
-    show_offbudget: Optional[int] = Field(
+    show_empty: int | None = Field(default=None, sa_column=Column("show_empty", Integer, server_default=text("0")))
+    show_offbudget: int | None = Field(
         default=None, sa_column=Column("show_offbudget", Integer, server_default=text("0"))
     )
-    show_hidden: Optional[int] = Field(default=None, sa_column=Column("show_hidden", Integer, server_default=text("0")))
-    show_uncategorized: Optional[int] = Field(
+    show_hidden: int | None = Field(default=None, sa_column=Column("show_hidden", Integer, server_default=text("0")))
+    show_uncategorized: int | None = Field(
         default=None, sa_column=Column("show_uncategorized", Integer, server_default=text("0"))
     )
-    selected_categories: Optional[str] = Field(default=None, sa_column=Column("selected_categories", Text))
-    graph_type: Optional[str] = Field(
+    selected_categories: str | None = Field(default=None, sa_column=Column("selected_categories", Text))
+    graph_type: str | None = Field(
         default=None, sa_column=Column("graph_type", Text, server_default=text("'BarGraph'"))
     )
-    conditions: Optional[str] = Field(default=None, sa_column=Column("conditions", Text))
-    conditions_op: Optional[str] = Field(
+    conditions: str | None = Field(default=None, sa_column=Column("conditions", Text))
+    conditions_op: str | None = Field(
         default=None, sa_column=Column("conditions_op", Text, server_default=text("'and'"))
     )
-    metadata_: Optional[str] = Field(default=None, sa_column=Column("metadata", Text))
-    interval: Optional[str] = Field(default=None, sa_column=Column("interval", Text, server_default=text("'Monthly'")))
-    color_scheme: Optional[str] = Field(default=None, sa_column=Column("color_scheme", Text))
-    tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
-    include_current: Optional[int] = Field(
+    metadata_: str | None = Field(default=None, sa_column=Column("metadata", Text))
+    interval: str | None = Field(default=None, sa_column=Column("interval", Text, server_default=text("'Monthly'")))
+    color_scheme: str | None = Field(default=None, sa_column=Column("color_scheme", Text))
+    tombstone: int | None = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
+    include_current: int | None = Field(
         default=None, sa_column=Column("include_current", Integer, server_default=text("0"))
     )
-    sort_by: Optional[str] = Field(default=None, sa_column=Column("sort_by", Text, server_default=text("'desc'")))
+    sort_by: str | None = Field(default=None, sa_column=Column("sort_by", Text, server_default=text("'desc'")))
 
 
 class Dashboard(BaseModel, table=True):
-    id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
-    type: Optional[str] = Field(default=None, sa_column=Column("type", Text))
-    width: Optional[int] = Field(default=None, sa_column=Column("width", Integer))
-    height: Optional[int] = Field(default=None, sa_column=Column("height", Integer))
-    x: Optional[int] = Field(default=None, sa_column=Column("x", Integer))
-    y: Optional[int] = Field(default=None, sa_column=Column("y", Integer))
-    meta: Optional[str] = Field(default=None, sa_column=Column("meta", Text))
-    tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
+    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    type: str | None = Field(default=None, sa_column=Column("type", Text))
+    width: int | None = Field(default=None, sa_column=Column("width", Integer))
+    height: int | None = Field(default=None, sa_column=Column("height", Integer))
+    x: int | None = Field(default=None, sa_column=Column("x", Integer))
+    y: int | None = Field(default=None, sa_column=Column("y", Integer))
+    meta: str | None = Field(default=None, sa_column=Column("meta", Text))
+    tombstone: int | None = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
 
 
 class Kvcache(SQLModel, table=True):
-    key: Optional[str] = Field(default=None, sa_column=Column("key", Text, primary_key=True))
-    value: Optional[str] = Field(default=None, sa_column=Column("value", Text))
+    key: str | None = Field(default=None, sa_column=Column("key", Text, primary_key=True))
+    value: str | None = Field(default=None, sa_column=Column("value", Text))
 
 
 class KvcacheKey(SQLModel, table=True):
     __tablename__ = "kvcache_key"
 
-    id: Optional[int] = Field(default=None, sa_column=Column("id", Integer, primary_key=True))
-    key: Optional[float] = Field(default=None, sa_column=Column("key", Float))
+    id: int | None = Field(default=None, sa_column=Column("id", Integer, primary_key=True))
+    key: float | None = Field(default=None, sa_column=Column("key", Float))
 
 
 class MessagesClock(SQLModel, table=True):
     __tablename__ = "messages_clock"
 
-    id: Optional[int] = Field(default=None, sa_column=Column("id", Integer, primary_key=True))
-    clock: Optional[str] = Field(default=None, sa_column=Column("clock", Text))
+    id: int | None = Field(default=None, sa_column=Column("id", Integer, primary_key=True))
+    clock: str | None = Field(default=None, sa_column=Column("clock", Text))
 
     def get_clock(self) -> dict:
         """Gets the clock from JSON text to a dictionary with fields `timestamp` and `merkle`."""
@@ -508,21 +504,21 @@ class MessagesCrdt(SQLModel, table=True):
     row: str = Field(sa_column=Column("row", Text, nullable=False))
     column: str = Field(sa_column=Column("column", Text, nullable=False))
     value: bytes = Field(sa_column=Column("value", LargeBinary, nullable=False))
-    id: Optional[int] = Field(default=None, sa_column=Column("id", Integer, primary_key=True))
+    id: int | None = Field(default=None, sa_column=Column("id", Integer, primary_key=True))
 
 
 class Notes(BaseModel, table=True):
     """Stores the description of each account."""
 
-    id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
-    note: Optional[str] = Field(default=None, sa_column=Column("note", Text))
+    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    note: str | None = Field(default=None, sa_column=Column("note", Text))
 
 
 class PayeeMapping(BaseModel, table=True):
     __tablename__ = "payee_mapping"
 
-    id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
-    target_id: Optional[str] = Field(default=None, sa_column=Column("targetId", Text))
+    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    target_id: str | None = Field(default=None, sa_column=Column("targetId", Text))
 
 
 class Payees(BaseModel, table=True):
@@ -534,15 +530,13 @@ class Payees(BaseModel, table=True):
     have the field `account` not set to `None`.
     """
 
-    id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
-    name: Optional[str] = Field(default=None, sa_column=Column("name", Text))
-    category: Optional[str] = Field(default=None, sa_column=Column("category", Text))
-    tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
-    transfer_acct: Optional[str] = Field(
-        default=None, sa_column=Column("transfer_acct", Text, ForeignKey("accounts.id"))
-    )
-    favorite: Optional[int] = Field(default=None, sa_column=Column("favorite", Integer, server_default=text("0")))
-    learn_categories: Optional[bool] = Field(sa_column=Column("learn_categories", Boolean, server_default=text("1")))
+    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    name: str | None = Field(default=None, sa_column=Column("name", Text))
+    category: str | None = Field(default=None, sa_column=Column("category", Text))
+    tombstone: int | None = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
+    transfer_acct: str | None = Field(default=None, sa_column=Column("transfer_acct", Text, ForeignKey("accounts.id")))
+    favorite: int | None = Field(default=None, sa_column=Column("favorite", Integer, server_default=text("0")))
+    learn_categories: bool | None = Field(sa_column=Column("learn_categories", Boolean, server_default=text("1")))
 
     account: Optional["Accounts"] = Relationship(back_populates="payee", sa_relationship_kwargs={"uselist": False})
     transactions: list["Transactions"] = Relationship(
@@ -566,8 +560,8 @@ class Payees(BaseModel, table=True):
 class Preferences(BaseModel, table=True):
     """Stores the preferences for the user, using key/value pairs."""
 
-    id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
-    value: Optional[str] = Field(default=None, sa_column=Column("value", Text))
+    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    value: str | None = Field(default=None, sa_column=Column("value", Text))
 
 
 class Rules(BaseModel, table=True):
@@ -578,12 +572,12 @@ class Rules(BaseModel, table=True):
     [get_ruleset][actual.queries.get_ruleset].
     """
 
-    id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
-    stage: Optional[str] = Field(default=None, sa_column=Column("stage", Text))
-    conditions: Optional[str] = Field(default=None, sa_column=Column("conditions", Text))
-    actions: Optional[str] = Field(default=None, sa_column=Column("actions", Text))
-    tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
-    conditions_op: Optional[str] = Field(
+    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    stage: str | None = Field(default=None, sa_column=Column("stage", Text))
+    conditions: str | None = Field(default=None, sa_column=Column("conditions", Text))
+    actions: str | None = Field(default=None, sa_column=Column("actions", Text))
+    tombstone: int | None = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
+    conditions_op: str | None = Field(
         default=None,
         sa_column=Column("conditions_op", Text, server_default=text("'and'")),
     )
@@ -592,16 +586,16 @@ class Rules(BaseModel, table=True):
 class Schedules(BaseModel, table=True):
     """Stores the schedules defined by the user. Is also linked to a rule that executes it."""
 
-    id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
-    rule_id: Optional[str] = Field(default=None, sa_column=Column("rule", Text, ForeignKey("rules.id")))
-    active: Optional[int] = Field(default=None, sa_column=Column("active", Integer, server_default=text("0")))
-    completed: Optional[int] = Field(default=None, sa_column=Column("completed", Integer, server_default=text("0")))
-    posts_transaction: Optional[int] = Field(
+    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    rule_id: str | None = Field(default=None, sa_column=Column("rule", Text, ForeignKey("rules.id")))
+    active: int | None = Field(default=None, sa_column=Column("active", Integer, server_default=text("0")))
+    completed: int | None = Field(default=None, sa_column=Column("completed", Integer, server_default=text("0")))
+    posts_transaction: int | None = Field(
         default=None,
         sa_column=Column("posts_transaction", Integer, server_default=text("0")),
     )
-    tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
-    name: Optional[str] = Field(default=None, sa_column=Column("name", Text, server_default=text("NULL")))
+    tombstone: int | None = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
+    name: str | None = Field(default=None, sa_column=Column("name", Text, server_default=text("NULL")))
 
     rule: "Rules" = Relationship(sa_relationship_kwargs={"uselist": False})
     transactions: list["Transactions"] = Relationship(back_populates="schedule")
@@ -610,32 +604,32 @@ class Schedules(BaseModel, table=True):
 class SchedulesJsonPaths(SQLModel, table=True):
     __tablename__ = "schedules_json_paths"
 
-    schedule_id: Optional[str] = Field(default=None, sa_column=Column("schedule_id", Text, primary_key=True))
-    payee: Optional[str] = Field(default=None, sa_column=Column("payee", Text))
-    account: Optional[str] = Field(default=None, sa_column=Column("account", Text))
-    amount: Optional[str] = Field(default=None, sa_column=Column("amount", Text))
-    date: Optional[str] = Field(default=None, sa_column=Column("date", Text))
+    schedule_id: str | None = Field(default=None, sa_column=Column("schedule_id", Text, primary_key=True))
+    payee: str | None = Field(default=None, sa_column=Column("payee", Text))
+    account: str | None = Field(default=None, sa_column=Column("account", Text))
+    amount: str | None = Field(default=None, sa_column=Column("amount", Text))
+    date: str | None = Field(default=None, sa_column=Column("date", Text))
 
 
 class SchedulesNextDate(SQLModel, table=True):
     __tablename__ = "schedules_next_date"
 
-    id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
-    schedule_id: Optional[str] = Field(default=None, sa_column=Column("schedule_id", Text))
-    local_next_date: Optional[int] = Field(default=None, sa_column=Column("local_next_date", Integer))
-    local_next_date_ts: Optional[int] = Field(default=None, sa_column=Column("local_next_date_ts", Integer))
-    base_next_date: Optional[int] = Field(default=None, sa_column=Column("base_next_date", Integer))
-    base_next_date_ts: Optional[int] = Field(default=None, sa_column=Column("base_next_date_ts", Integer))
-    tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
+    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    schedule_id: str | None = Field(default=None, sa_column=Column("schedule_id", Text))
+    local_next_date: int | None = Field(default=None, sa_column=Column("local_next_date", Integer))
+    local_next_date_ts: int | None = Field(default=None, sa_column=Column("local_next_date_ts", Integer))
+    base_next_date: int | None = Field(default=None, sa_column=Column("base_next_date", Integer))
+    base_next_date_ts: int | None = Field(default=None, sa_column=Column("base_next_date_ts", Integer))
+    tombstone: int | None = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
 
 
 class Tags(BaseModel, table=True):
-    tag: Optional[str] = Field(default=None, sa_column=Column("tag", Text, unique=True))
-    color: Optional[str] = Field(
+    tag: str | None = Field(default=None, sa_column=Column("tag", Text, unique=True))
+    color: str | None = Field(
         default=None, sa_column=Column("color", Text), description="Color in hex format (i.e. '#690CB0')"
     )
-    description: Optional[str] = Field(default=None, sa_column=Column("description", Text))
-    tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
+    description: str | None = Field(default=None, sa_column=Column("description", Text))
+    tombstone: int | None = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
 
     @property
     def transactions(self) -> Sequence["Transactions"]:
@@ -661,14 +655,14 @@ class Tags(BaseModel, table=True):
 class TransactionFilters(BaseModel, table=True):
     __tablename__ = "transaction_filters"
 
-    id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
-    name: Optional[str] = Field(default=None, sa_column=Column("name", Text))
-    conditions: Optional[str] = Field(default=None, sa_column=Column("conditions", Text))
-    conditions_op: Optional[str] = Field(
+    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    name: str | None = Field(default=None, sa_column=Column("name", Text))
+    conditions: str | None = Field(default=None, sa_column=Column("conditions", Text))
+    conditions_op: str | None = Field(
         default=None,
         sa_column=Column("conditions_op", Text, server_default=text("'and'")),
     )
-    tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
+    tombstone: int | None = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
 
 
 class Transactions(BaseModel, table=True):
@@ -684,35 +678,35 @@ class Transactions(BaseModel, table=True):
         Index("trans_sorted", "date", "starting_balance_flag", "sort_order", "id"),
     )
 
-    id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
-    is_parent: Optional[int] = Field(default=None, sa_column=Column("isParent", Integer, server_default=text("0")))
-    is_child: Optional[int] = Field(default=None, sa_column=Column("isChild", Integer, server_default=text("0")))
-    acct: Optional[str] = Field(default=None, sa_column=Column("acct", Text, ForeignKey("accounts.id")))
-    category_id: Optional[str] = Field(default=None, sa_column=Column("category", Text, ForeignKey("categories.id")))
-    amount: Optional[int] = Field(default=None, sa_column=Column("amount", Integer))
-    payee_id: Optional[str] = Field(default=None, sa_column=Column("description", Text, ForeignKey("payees.id")))
-    notes: Optional[str] = Field(default=None, sa_column=Column("notes", Text))
-    date: Optional[int] = Field(default=None, sa_column=Column("date", Integer))
-    financial_id: Optional[str] = Field(default=None, sa_column=Column("financial_id", Text))
-    type: Optional[str] = Field(default=None, sa_column=Column("type", Text))
-    location: Optional[str] = Field(default=None, sa_column=Column("location", Text))
-    error: Optional[str] = Field(default=None, sa_column=Column("error", Text))
-    imported_description: Optional[str] = Field(default=None, sa_column=Column("imported_description", Text))
-    starting_balance_flag: Optional[int] = Field(
+    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    is_parent: int | None = Field(default=None, sa_column=Column("isParent", Integer, server_default=text("0")))
+    is_child: int | None = Field(default=None, sa_column=Column("isChild", Integer, server_default=text("0")))
+    acct: str | None = Field(default=None, sa_column=Column("acct", Text, ForeignKey("accounts.id")))
+    category_id: str | None = Field(default=None, sa_column=Column("category", Text, ForeignKey("categories.id")))
+    amount: int | None = Field(default=None, sa_column=Column("amount", Integer))
+    payee_id: str | None = Field(default=None, sa_column=Column("description", Text, ForeignKey("payees.id")))
+    notes: str | None = Field(default=None, sa_column=Column("notes", Text))
+    date: int | None = Field(default=None, sa_column=Column("date", Integer))
+    financial_id: str | None = Field(default=None, sa_column=Column("financial_id", Text))
+    type: str | None = Field(default=None, sa_column=Column("type", Text))
+    location: str | None = Field(default=None, sa_column=Column("location", Text))
+    error: str | None = Field(default=None, sa_column=Column("error", Text))
+    imported_description: str | None = Field(default=None, sa_column=Column("imported_description", Text))
+    starting_balance_flag: int | None = Field(
         default=None,
         sa_column=Column("starting_balance_flag", Integer, server_default=text("0")),
     )
-    transferred_id: Optional[str] = Field(
+    transferred_id: str | None = Field(
         default=None, sa_column=Column("transferred_id", Text, ForeignKey("transactions.id"))
     )
-    sort_order: Optional[float] = Field(default=None, sa_column=Column("sort_order", Float))
-    tombstone: Optional[int] = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
-    cleared: Optional[int] = Field(default=None, sa_column=Column("cleared", Integer, server_default=text("1")))
-    pending: Optional[int] = Field(default=None, sa_column=Column("pending", Integer, server_default=text("0")))
-    parent_id: Optional[str] = Field(default=None, sa_column=Column("parent_id", Text, ForeignKey("transactions.id")))
-    schedule_id: Optional[str] = Field(default=None, sa_column=Column("schedule", Text, ForeignKey("schedules.id")))
-    reconciled: Optional[int] = Field(default=None, sa_column=Column("reconciled", Integer, server_default=text("0")))
-    raw_synced_data: Optional[str] = Field(default=None, sa_column=Column("raw_synced_data", Text))
+    sort_order: float | None = Field(default=None, sa_column=Column("sort_order", Float))
+    tombstone: int | None = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
+    cleared: int | None = Field(default=None, sa_column=Column("cleared", Integer, server_default=text("1")))
+    pending: int | None = Field(default=None, sa_column=Column("pending", Integer, server_default=text("0")))
+    parent_id: str | None = Field(default=None, sa_column=Column("parent_id", Text, ForeignKey("transactions.id")))
+    schedule_id: str | None = Field(default=None, sa_column=Column("schedule", Text, ForeignKey("schedules.id")))
+    reconciled: int | None = Field(default=None, sa_column=Column("reconciled", Integer, server_default=text("0")))
+    raw_synced_data: str | None = Field(default=None, sa_column=Column("raw_synced_data", Text))
 
     account: "Accounts" = Relationship(back_populates="transactions")
     category: Optional["Categories"] = Relationship(
@@ -758,7 +752,7 @@ class Transactions(BaseModel, table=True):
         """Sets the transaction date as a datetime.date object, instead of as a string."""
         self.date = date_to_int(date)
 
-    def set_amount(self, amount: Union[decimal.Decimal, int, float]):
+    def set_amount(self, amount: decimal.Decimal | int | float):
         """Sets the amount as a decimal.Decimal object, instead of as an integer representing the number of cents."""
         self.amount = decimal_to_cents(amount)
 
@@ -770,8 +764,8 @@ class Transactions(BaseModel, table=True):
 class ZeroBudgetMonths(SQLModel, table=True):
     __tablename__ = "zero_budget_months"
 
-    id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
-    buffered: Optional[int] = Field(default=None, sa_column=Column("buffered", Integer, server_default=text("0")))
+    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    buffered: int | None = Field(default=None, sa_column=Column("buffered", Integer, server_default=text("0")))
 
 
 class BaseBudgets(BaseModel):
@@ -783,10 +777,10 @@ class BaseBudgets(BaseModel):
     frontend will assume this value is zero, but the entity will be missing from the database.
     """
 
-    id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
-    month: Optional[int] = Field(default=None, sa_column=Column("month", Integer))
-    category_id: Optional[str] = Field(default=None, sa_column=Column("category", Text))
-    amount: Optional[int] = Field(default=None, sa_column=Column("amount", Integer, server_default=text("0")))
+    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    month: int | None = Field(default=None, sa_column=Column("month", Integer))
+    category_id: str | None = Field(default=None, sa_column=Column("category", Text))
+    amount: int | None = Field(default=None, sa_column=Column("amount", Integer, server_default=text("0")))
 
     def get_date(self) -> datetime.date:
         """Returns the transaction date as a datetime.date object, instead of as a string."""
@@ -801,7 +795,7 @@ class BaseBudgets(BaseModel):
         """
         self.month = date_to_int(date, month_only=True)
 
-    def set_amount(self, amount: Union[decimal.Decimal, int, float]):
+    def set_amount(self, amount: decimal.Decimal | int | float):
         """Sets the amount as a decimal.Decimal object, instead of as an integer representing the number of cents."""
         self.amount = decimal_to_cents(amount)
 
@@ -810,7 +804,7 @@ class BaseBudgets(BaseModel):
         return cents_to_decimal(self.amount)
 
     @property
-    def range(self) -> Tuple[datetime.date, datetime.date]:
+    def range(self) -> tuple[datetime.date, datetime.date]:
         """
         Range of the budget as a tuple [start, end).
 
@@ -852,13 +846,13 @@ class ReflectBudgets(BaseBudgets, table=True):
 
     __tablename__ = "reflect_budgets"
 
-    id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
-    month: Optional[int] = Field(default=None, sa_column=Column("month", Integer))
-    category_id: Optional[str] = Field(default=None, sa_column=Column("category", ForeignKey("categories.id")))
-    amount: Optional[int] = Field(default=None, sa_column=Column("amount", Integer, server_default=text("0")))
-    carryover: Optional[int] = Field(default=None, sa_column=Column("carryover", Integer, server_default=text("0")))
-    goal: Optional[int] = Field(default=None, sa_column=Column("goal", Integer, server_default=text("null")))
-    long_goal: Optional[int] = Field(default=None, sa_column=Column("long_goal", Integer, server_default=text("null")))
+    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    month: int | None = Field(default=None, sa_column=Column("month", Integer))
+    category_id: str | None = Field(default=None, sa_column=Column("category", ForeignKey("categories.id")))
+    amount: int | None = Field(default=None, sa_column=Column("amount", Integer, server_default=text("0")))
+    carryover: int | None = Field(default=None, sa_column=Column("carryover", Integer, server_default=text("0")))
+    goal: int | None = Field(default=None, sa_column=Column("goal", Integer, server_default=text("null")))
+    long_goal: int | None = Field(default=None, sa_column=Column("long_goal", Integer, server_default=text("null")))
 
     category: "Categories" = Relationship(
         back_populates="reflect_budgets",
@@ -879,13 +873,13 @@ class ZeroBudgets(BaseBudgets, table=True):
 
     __tablename__ = "zero_budgets"
 
-    id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
-    month: Optional[int] = Field(default=None, sa_column=Column("month", Integer))
-    category_id: Optional[str] = Field(default=None, sa_column=Column("category", ForeignKey("categories.id")))
-    amount: Optional[int] = Field(default=None, sa_column=Column("amount", Integer, server_default=text("0")))
-    carryover: Optional[int] = Field(default=None, sa_column=Column("carryover", Integer, server_default=text("0")))
-    goal: Optional[int] = Field(default=None, sa_column=Column("goal", Integer, server_default=text("null")))
-    long_goal: Optional[int] = Field(default=None, sa_column=Column("long_goal", Integer, server_default=text("null")))
+    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    month: int | None = Field(default=None, sa_column=Column("month", Integer))
+    category_id: str | None = Field(default=None, sa_column=Column("category", ForeignKey("categories.id")))
+    amount: int | None = Field(default=None, sa_column=Column("amount", Integer, server_default=text("0")))
+    carryover: int | None = Field(default=None, sa_column=Column("carryover", Integer, server_default=text("0")))
+    goal: int | None = Field(default=None, sa_column=Column("goal", Integer, server_default=text("null")))
+    long_goal: int | None = Field(default=None, sa_column=Column("long_goal", Integer, server_default=text("null")))
 
     category: "Categories" = Relationship(
         back_populates="zero_budgets",
@@ -899,11 +893,11 @@ class ZeroBudgets(BaseBudgets, table=True):
 class PendingTransactions(SQLModel, table=True):
     __tablename__ = "pending_transactions"
 
-    id: Optional[str] = Field(default=None, sa_column=Column("id", Text, primary_key=True))
-    acct: Optional[int] = Field(default=None, sa_column=Column("acct", ForeignKey("accounts.id")))
-    amount: Optional[int] = Field(default=None, sa_column=Column("amount", Integer))
-    description: Optional[str] = Field(default=None, sa_column=Column("description", Text))
-    date: Optional[str] = Field(default=None, sa_column=Column("date", Text))
+    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    acct: int | None = Field(default=None, sa_column=Column("acct", ForeignKey("accounts.id")))
+    amount: int | None = Field(default=None, sa_column=Column("amount", Integer))
+    description: str | None = Field(default=None, sa_column=Column("description", Text))
+    date: str | None = Field(default=None, sa_column=Column("date", Text))
 
 
 for t_entry in SQLModel._sa_registry.mappers:

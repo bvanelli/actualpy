@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import enum
-from typing import Dict, Literal, Optional, Union
+from typing import Literal
 
 from pydantic import BaseModel, Field, TypeAdapter
 
@@ -86,7 +86,7 @@ class StatusDTO(BaseModel):
 
 class ErrorStatusDTO(BaseModel):
     status: StatusCode
-    reason: Optional[str] = None
+    reason: str | None = None
 
 
 class TokenDTO(BaseModel):
@@ -97,8 +97,8 @@ class TokenDTO(BaseModel):
     you will get a return_url.
     """
 
-    token: Optional[str] = None
-    return_url: Optional[str] = Field(None, alias="returnUrl")
+    token: str | None = None
+    return_url: str | None = Field(None, alias="returnUrl")
 
 
 class LoginDTO(StatusDTO):
@@ -116,13 +116,13 @@ class UploadUserFileDTO(StatusDTO):
 class IsValidatedDTO(BaseModel):
     """Response model for the validation of a budget file."""
 
-    validated: Optional[bool]
+    validated: bool | None
     # optional OpenID fields
-    user_name: Optional[str] = Field(None, alias="userName")
-    permission: Optional[str] = None
-    user_id: Optional[str] = Field(None, alias="userId")
-    display_name: Optional[str] = Field(None, alias="displayName")
-    login_method: Optional[str] = Field(default="password", alias="loginMethod")
+    user_name: str | None = Field(None, alias="userName")
+    permission: str | None = None
+    user_id: str | None = Field(None, alias="userId")
+    display_name: str | None = Field(None, alias="displayName")
+    login_method: str | None = Field(default="password", alias="loginMethod")
 
 
 class ValidateDTO(StatusDTO):
@@ -134,10 +134,10 @@ class ValidateDTO(StatusDTO):
 class EncryptMetaDTO(BaseModel):
     """Encryption metadata."""
 
-    key_id: Optional[str] = Field(..., alias="keyId")
-    algorithm: Optional[str]
-    iv: Optional[str]
-    auth_tag: Optional[str] = Field(..., alias="authTag")
+    key_id: str | None = Field(..., alias="keyId")
+    algorithm: str | None
+    iv: str | None
+    auth_tag: str | None = Field(..., alias="authTag")
 
 
 class EncryptionTestDTO(BaseModel):
@@ -150,9 +150,9 @@ class EncryptionTestDTO(BaseModel):
 class EncryptionDTO(BaseModel):
     """Encryption information including the salt and test data (with encryption metadata)."""
 
-    id: Optional[str]
-    salt: Optional[str]
-    test: Optional[str]
+    id: str | None
+    salt: str | None
+    test: str | None
 
     def meta(self) -> EncryptionTestDTO:
         return EncryptionTestDTO.model_validate_json(self.test)
@@ -161,10 +161,10 @@ class EncryptionDTO(BaseModel):
 class FileDTO(BaseModel):
     """Base file model."""
 
-    deleted: Optional[int]
-    file_id: Optional[str] = Field(..., alias="fileId")
-    group_id: Optional[str] = Field(..., alias="groupId")
-    name: Optional[str]
+    deleted: int | None
+    file_id: str | None = Field(..., alias="fileId")
+    group_id: str | None = Field(..., alias="groupId")
+    name: str | None
 
 
 class RemoteFileListDTO(FileDTO):
@@ -176,18 +176,16 @@ class RemoteFileListDTO(FileDTO):
     If OpenID is enabled and the file is owned by certain users, the `owner` field will be present.
     """
 
-    encrypt_key_id: Optional[str] = Field(..., alias="encryptKeyId")
+    encrypt_key_id: str | None = Field(..., alias="encryptKeyId")
     # optional OpenId fields
-    owner: Optional[str] = None
-    users_with_access: Optional[list[BaseOpenIDUserFileAccessDTO]] = Field(
-        default_factory=list, alias="usersWithAccess"
-    )
+    owner: str | None = None
+    users_with_access: list[BaseOpenIDUserFileAccessDTO] | None = Field(default_factory=list, alias="usersWithAccess")
 
 
 class RemoteFileDTO(FileDTO):
     """Remote file model (including encryption metadata)."""
 
-    encrypt_meta: Optional[EncryptMetaDTO] = Field(..., alias="encryptMeta")
+    encrypt_meta: EncryptMetaDTO | None = Field(..., alias="encryptMeta")
 
 
 class GetUserFileInfoDTO(StatusDTO):
@@ -212,8 +210,8 @@ class BuildDTO(BaseModel):
     """Build information from the Actual server, including the name, version and description."""
 
     name: str
-    description: Optional[str]
-    version: Optional[str]
+    description: str | None
+    version: str | None
 
 
 class InfoDTO(BaseModel):
@@ -234,9 +232,9 @@ class IsBootstrapedDTO(BaseModel):
     """Bootstrap information, including available login methods and whether multi-user is enabled."""
 
     bootstrapped: bool
-    login_method: Optional[str] = Field(default="password", alias="loginMethod")
-    multi_user: Optional[bool] = Field(default=False, alias="multiuser")
-    available_login_methods: Optional[list[LoginMethodDTO]] = Field(default=None, alias="availableLoginMethods")
+    login_method: str | None = Field(default="password", alias="loginMethod")
+    multi_user: bool | None = Field(default=False, alias="multiuser")
+    available_login_methods: list[LoginMethodDTO] | None = Field(default=None, alias="availableLoginMethods")
 
 
 class LoginMethodsDTO(StatusDTO):
@@ -294,8 +292,8 @@ class OpenIDConfigDTO(BaseModel):
     """OpenID configuration."""
 
     doc: str = Field(default="OpenID authentication settings.", description="Documentation string")
-    discovery_url: Optional[str] = Field(alias="discoveryURL")
-    issuer: Optional[IssuerConfig]
+    discovery_url: str | None = Field(alias="discoveryURL")
+    issuer: IssuerConfig | None
     client_id: str
     client_secret: str
     server_hostname: str
@@ -305,7 +303,7 @@ class OpenIDConfigDTO(BaseModel):
 class OpenIDConfigResponseDTO(StatusDTO):
     """OpenID configuration response model."""
 
-    data: Dict[str, OpenIDConfigDTO]
+    data: dict[str, OpenIDConfigDTO]
 
 
 class OpenIDBootstrapDTO(BaseModel):
@@ -313,9 +311,7 @@ class OpenIDBootstrapDTO(BaseModel):
 
     client_id: str = Field(..., description="OAuth2 client ID")
     client_secret: str = Field(..., description="OAuth2 client secret")
-    discovery_url: Optional[IssuerConfig] = Field(
-        default=None, alias="discoveryURL", description="OpenID discovery URL"
-    )
+    discovery_url: IssuerConfig | None = Field(default=None, alias="discoveryURL", description="OpenID discovery URL")
     server_hostname: str
 
 
@@ -324,10 +320,10 @@ class OpenIDUserDTO(BaseModel):
 
     id: str
     user_name: str = Field(..., alias="userName")
-    display_name: Optional[str] = Field(..., alias="displayName")
+    display_name: str | None = Field(..., alias="displayName")
     enabled: bool
     owner: bool
-    role: Optional[str] = Field(..., description="User role (ADMIN or BASIC)")
+    role: str | None = Field(..., description="User role (ADMIN or BASIC)")
 
 
 class OpenIDDeleteUserDTO(BaseModel):
@@ -347,7 +343,7 @@ class BaseOpenIDUserFileAccessDTO(BaseModel):
 
     user_id: str = Field(..., alias="userId")
     user_name: str = Field(..., alias="userName")
-    display_name: Optional[str] = Field(..., alias="displayName")
+    display_name: str | None = Field(..., alias="displayName")
     owner: bool
 
 
@@ -358,5 +354,5 @@ class OpenIDUserFileAccessDTO(BaseOpenIDUserFileAccessDTO):
 
 
 """Type adapters for the response models."""
-BankSyncAccountResponseDTO = TypeAdapter(Union[BankSyncErrorDTO, BankSyncAccountDTO])
-BankSyncResponseDTO = TypeAdapter(Union[BankSyncErrorDTO, BankSyncTransactionResponseDTO])
+BankSyncAccountResponseDTO = TypeAdapter(BankSyncErrorDTO | BankSyncAccountDTO)
+BankSyncResponseDTO = TypeAdapter(BankSyncErrorDTO | BankSyncTransactionResponseDTO)

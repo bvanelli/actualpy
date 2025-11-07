@@ -1,7 +1,6 @@
 import os
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Optional
 
 import pydantic
 import yaml
@@ -29,14 +28,14 @@ class BudgetConfig(pydantic.BaseModel):
     url: str = pydantic.Field(..., description="")
     password: str = pydantic.Field(..., description="")
     file_id: str = pydantic.Field(..., alias="fileId")
-    encryption_password: Optional[str] = pydantic.Field(None, alias="encryptionPassword")
+    encryption_password: str | None = pydantic.Field(None, alias="encryptionPassword")
 
     model_config = pydantic.ConfigDict(populate_by_name=True)
 
 
 class Config(pydantic.BaseModel):
     default_context: str = pydantic.Field("", alias="defaultContext", description="Default budget context for CLI.")
-    budgets: Dict[str, BudgetConfig] = pydantic.Field(
+    budgets: dict[str, BudgetConfig] = pydantic.Field(
         default_factory=dict, description="Dict of configured budgets on CLI."
     )
 
