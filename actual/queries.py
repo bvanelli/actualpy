@@ -253,6 +253,8 @@ def create_transaction_from_ids(
     s.add(t)
     if process_payee:
         set_transaction_payee(s, t, payee_id)
+    else:  # simply set the field without evaluating as a transfer
+        t.payee_id = payee_id
     return t
 
 
@@ -346,7 +348,6 @@ def set_transaction_payee(s: Session, transaction: Transactions, payee: Payees |
         )
         transaction.category_id = None
         transfer.transferred_id, transaction.transferred_id = transaction.id, transfer.id
-        transfer.payee_id = transaction.account.payee.id
 
     # finally set the payee
     transaction.payee_id = payee.id if payee else None
@@ -380,12 +381,12 @@ def reconcile_transaction(
     s: Session,
     date: datetime.date,
     account: str | Accounts,
-    payee: str | Payees = "",
-    notes: str = "",
+    payee: str | Payees | None = None,
+    notes: str | None = None,
     category: str | Categories | None = None,
     amount: decimal.Decimal | float | int = 0,
     imported_id: str | None = None,
-    cleared: bool = False,
+    cleared: bool | None = None,
     imported_payee: str | None = None,
     update_existing: bool = True,
     already_matched: list[Transactions] | None = None,
@@ -417,17 +418,27 @@ def reconcile_transaction(
     if match:
         # try to update fields
         if update_existing:
-            match.notes = notes
-            match.cleared = cleared
+            if notes is not None:
+                match.notes = notes
+            if cleared is not None:
+                match.cleared = cleared
             if category:
                 match.category_id = get_or_create_category(s, category).id
+            if payee:
+                match.payee_id = get_or_create_payee(s, payee).id
+            if imported_id:
+                match.financial_id = imported_id
             match.set_date(date)
         return match
+    if cleared is None:
+        cleared = False
+    if notes is None:
+        notes = ""
     return create_transaction(s, date, account, payee, notes, category, amount, imported_id, cleared, imported_payee)
 
 
 def create_splits(
-    s: Session, transactions: typing.Sequence[Transactions], payee: str | Payees = "", notes: str = ""
+    s: Session, transactions: typing.Sequence[Transactions], payee: str | Payees = None, notes: str = ""
 ) -> Transactions:
     """
     Creates a transaction with splits based on the list of transactions.
@@ -436,18 +447,22 @@ def create_splits(
 
     :param s: Session from the Actual local database.
     :param transactions: List of transactions that will be added to the splits.
-    :param payee: Name or object of the payee from the transaction. Will be created if missing.
+    :param payee: (Deprecated) Name or object of the payee from the transaction. Ignored for all purposes, since
+        only the child transactions have a payee.
     :param notes: Optional description for the transaction.
     :return: The generated transaction object for the parent transaction.
     """
+    if payee:
+        warnings.warn(
+            "Transactions parents shall have no payee defined, only individual splits.", category=DeprecationWarning
+        )
     if not all(transactions[0].date == t.date for t in transactions) or not all(
         transactions[0].acct == t.acct for t in transactions
     ):
         raise ActualError("`date` and `acct` must be the same for all transactions in splits")
-    payee = get_or_create_payee(s, payee)
     split_amount = decimal.Decimal(sum(t.get_amount() for t in transactions))
     split_transaction = create_transaction_from_ids(
-        s, transactions[0].get_date(), transactions[0].acct, payee.id, notes, None, split_amount
+        s, transactions[0].get_date(), transactions[0].acct, None, notes, None, split_amount
     )
     split_transaction.is_parent = 1
     split_transaction.is_child = 0
@@ -931,9 +946,6 @@ def create_transfer(
     # swap the transferred ids
     source_transaction.transferred_id = dest_transaction.id
     dest_transaction.transferred_id = source_transaction.id
-    # set payees
-    source_transaction.payee_id = dest.payee.id
-    dest_transaction.payee_id = source.payee.id
     # add and return objects
     s.add(source_transaction)
     s.add(dest_transaction)
