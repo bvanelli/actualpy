@@ -107,21 +107,28 @@ def test_transfer(session):
 
 def test_reconcile_transaction(session):
     create_account(session, "Bank")
-    rent_payment = create_transaction(
-        session, today, "Bank", "Landlord", "Paying rent", "Expenses", -1200, imported_id="unique"
-    )
+    rent_payment = create_transaction(session, today, "Bank", "Landlord", "Paying rent", "Expenses", -1200)
     unrelated = create_transaction(
         session, today - timedelta(days=5), "Bank", "Carshop", "Car maintenance", "Car", -1200
     )
     session.commit()
     assert (
-        reconcile_transaction(session, today + timedelta(days=1), "Bank", category="Rent", amount=-1200).id
+        reconcile_transaction(
+            session,
+            today + timedelta(days=1),
+            "Bank",
+            category="Rent",
+            amount=-1200,
+            notes="New notes",
+            imported_id="unique",
+        ).id
         == rent_payment.id
     )
     session.commit()
     # check if the property was updated
     assert rent_payment.get_date() == today + timedelta(days=1)
     assert rent_payment.category.name == "Rent"
+    assert rent_payment.financial_id == "unique"
     assert rent_payment.payee.name == "Landlord"  # payee stayed the same
     # should still be able to match if the payee is defined, as the match is stronger
     assert (
@@ -151,7 +158,7 @@ def test_reconcile_transaction(session):
     )
 
 
-def test_reconcile_transaction_update_payee(session):
+def test_reconcile_transaction_update(session):
     # Here, we want to test if using reconcile actually updates all fields that it should
     create_account(session, "Bank")
     rent_payment = reconcile_transaction(
@@ -170,6 +177,12 @@ def test_reconcile_transaction_update_payee(session):
     assert reconciled.payee.name == "Landlord"
     assert rent_payment.notes == "Paying rent"
     assert bool(rent_payment.cleared) is True
+    reconciled = reconcile_transaction(
+        session, today, payee="Landlord", account="Bank", amount=-1200, notes="New notes", update_existing=True
+    )
+    session.commit()
+    assert bool(rent_payment.cleared) is True  # Should not reset the cleared flag
+    assert reconciled.notes == "New notes"
 
 
 def test_create_splits(session):

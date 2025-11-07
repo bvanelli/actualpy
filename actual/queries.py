@@ -427,7 +427,7 @@ def reconcile_transaction(
             if payee:
                 match.payee_id = get_or_create_payee(s, payee).id
             if imported_id:
-                match.imported_id = imported_id
+                match.financial_id = imported_id
             match.set_date(date)
         return match
     if cleared is None:
