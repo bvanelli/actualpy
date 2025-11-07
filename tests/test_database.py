@@ -468,6 +468,18 @@ def test_set_payee_to_transfer(session):
     assert t.transfer.payee_id == bank.payee.id
 
 
+def test_set_payee_to_transfer_off_budget(session):
+    bank = create_account(session, "Bank")
+    off_budget = create_account(session, "Off Budget", off_budget=True)
+    category = get_or_create_category(session, "Groceries")
+    session.commit()
+    create_transaction(session, date.today(), bank, off_budget.payee, category=category, amount=-50)
+    transactions = get_transactions(session)
+    assert len(transactions) == 2
+    assert bank.transactions[0].category == category
+    assert off_budget.transactions[0].category is None
+
+
 def test_tags(session):
     create_account(session, "Wallet")
     tag = create_tag(session, "#happy", "For the happy moments in life")

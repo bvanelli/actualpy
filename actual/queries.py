@@ -346,7 +346,11 @@ def set_transaction_payee(s: Session, transaction: Transactions, payee: Payees |
             amount=-transaction.get_amount(),
             process_payee=False,
         )
-        transaction.category_id = None
+
+        # Clear the category for on-budget account transfers, keep it untouched for off-budget account transfers
+        if not payee.account.offbudget:
+            transaction.category_id = None
+
         transfer.transferred_id, transaction.transferred_id = transaction.id, transfer.id
 
     # finally set the payee
