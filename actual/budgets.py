@@ -53,8 +53,8 @@ class BudgetCategoryGroup:
 
     @property
     def balance(self) -> decimal.Decimal:
-        """Sum of all balances from the categories under this category group."""
-        return sum([c.balance for c in self.categories], start=decimal.Decimal(0))
+        """Sum of all accumulated balances from the categories under this category group."""
+        return sum([c.accumulated_balance for c in self.categories], start=decimal.Decimal(0))
 
 
 @dataclasses.dataclass
@@ -73,6 +73,20 @@ class BaseBudget:
         return sum([c.budgeted for c in self.category_groups], start=decimal.Decimal(0))
 
     @property
+    def balance(self) -> decimal.Decimal:
+        """Sum of all balances from all categories."""
+        return sum([c.balance for c in self.category_groups], start=decimal.Decimal(0))
+
+    @property
+    def expenses(self):
+        """
+        Expenses for the current month.
+
+        It is the sum of all money spent on the month.
+        """
+        return sum([c.spent for c in self.category_groups], start=decimal.Decimal(0))
+
+    @property
     def categories(self) -> Iterator[BudgetCategory]:
         """List all categories in this budget."""
         for cg in self.category_groups:
@@ -89,10 +103,9 @@ class BaseBudget:
 
 @dataclasses.dataclass
 class EnvelopeBudget(BaseBudget):
-    available_funds: decimal.Decimal  # The sum of all incomes plus the budget held from a previous month
     for_next_month: decimal.Decimal  # The amount of money held for the next month
     overspent_prev_month: decimal.Decimal  # The exact same as `overspent`, but from a previous month
-    # todo: Implement category rollover for tracking budget
+    from_last_month: decimal.Decimal  # The amount of money `inherited` from a previous month
 
     def __str__(self):
         ret = ""
@@ -119,8 +132,16 @@ class EnvelopeBudget(BaseBudget):
         number (or zero if there is no overspending).
         """
         return sum(
-            [c.accumulated_balance for c in self.categories if c.accumulated_balance < 0], start=decimal.Decimal(0)
+            [c.accumulated_balance for c in self.categories if c.accumulated_balance < 0 and not c.carryover],
+            start=decimal.Decimal(0),
         )
+
+    @property
+    def available_funds(self) -> decimal.Decimal:
+        """
+        The sum of all incomes plus the budget held from a previous month
+        """
+        return self.income + self.from_last_month
 
     @property
     def to_budget(self):
@@ -136,6 +157,7 @@ class EnvelopeBudget(BaseBudget):
 @dataclasses.dataclass
 class TrackingBudget(BaseBudget):
     budgeted_income: decimal.Decimal  # The amount of income that was budgeted.
+    # todo: Implement category rollover for tracking budget
 
     def __str__(self):
         ret = ""
@@ -153,15 +175,6 @@ class TrackingBudget(BaseBudget):
         return ret
 
     @property
-    def expenses(self):
-        """
-        Expenses for the current month.
-
-        It is the sum of all money spent on the month.
-        """
-        return sum([c.spent for c in self.category_groups], start=decimal.Decimal(0))
-
-    @property
     def overspent(self) -> decimal.Decimal:
         """
         The amount of money overspent for the current month.
@@ -176,6 +189,32 @@ class BudgetList(list[EnvelopeBudget | TrackingBudget]):
     def __init__(self, iterable, is_tracking_budget: bool = False):
         super().__init__(iterable)
         self.is_tracking_budget: bool = is_tracking_budget
+
+    @property
+    def income(self) -> decimal.Decimal:
+        """
+        Returns the total income for all months in the list.
+
+        This is not a relevant metric in general as it is the simple sum of all income amounts.
+        """
+        return sum([budget.income for budget in self], start=decimal.Decimal(0))
+
+    @property
+    def budgeted(self) -> decimal.Decimal:
+        """
+        Returns the total budgeted for all months in the list.
+
+        This is not a relevant metric in general as it is the simple sum of all budgeted amounts.
+        """
+        return sum([budget.budgeted for budget in self], start=decimal.Decimal(0))
+
+    def from_month(self, month: datetime.date) -> EnvelopeBudget | TrackingBudget | None:
+        """Returns the budget for a particular month. If missing, will return None."""
+        month = month.replace(day=1)
+        for budget in self:
+            if budget.month == month:
+                return budget
+        return None
 
 
 def get_category_detailed_budget(s: Session, month: datetime.date, category: Categories) -> BudgetCategory:
@@ -262,10 +301,12 @@ def get_envelope_budget_info(s: Session, until: datetime.date) -> list[EnvelopeB
         income = get_income(s, current_month)
         for_next_month = get_held_budget(s, current_month)
         # we set a first value to both available_funds and to overspent_prev_month
-        budget = EnvelopeBudget(current_month, income, cat_group_list, income, for_next_month, decimal.Decimal(0))
+        budget = EnvelopeBudget(
+            current_month, income, cat_group_list, for_next_month, decimal.Decimal(0), decimal.Decimal(0)
+        )
         # calculate available funds and overspent_prev_month
         if last_budget:
-            budget.available_funds += last_budget.to_budget + last_budget.for_next_month
+            budget.from_last_month = last_budget.to_budget + last_budget.for_next_month
             budget.overspent_prev_month = last_budget.overspent
         budget_list.append(budget)
         # go to the next month
@@ -305,14 +346,18 @@ def get_tracking_budget_info(s: Session, until: datetime.date) -> list[TrackingB
     return budget_list
 
 
-def get_budget_history(s: Session, until: datetime.date) -> BudgetList:
+def get_budget_history(s: Session, until: datetime.date = None) -> BudgetList:
     """
     Returns the budget history from the first available month to the given month, as iterable.
+
+    If no month is given, the current month is used.
 
     :param s: Session from the Actual local database.
     :param until: Month to get budgets for, as a date for that month. Use `datetime.date.today()` if you want current
                   data.
     """
+    if until is None:
+        until = datetime.date.today()
     is_tracking_budget = _get_budget_table(s) is ReflectBudgets
     if is_tracking_budget:
         return BudgetList(get_tracking_budget_info(s, until), is_tracking_budget=True)
