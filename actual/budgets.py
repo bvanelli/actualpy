@@ -21,6 +21,22 @@ from actual.utils.conversions import cents_to_decimal, month_range, next_month
 
 @dataclasses.dataclass
 class BudgetCategory:
+    """
+    Represents budget information for a single category in a specific month.
+
+    This dataclass contains both the budgeted amount and actual spending information for a category,
+    along with balance calculations.
+
+    :param category: The category this budget information applies to.
+    :param budgeted: The amount budgeted for this category in this month.
+    :param spent: The actual amount spent in this category this month (typically negative).
+    :param balance: The simple balance (budgeted + spent) for this month only.
+    :param accumulated_balance: The balance including carryover from previous months.
+    :param carryover: Whether this category has carryover enabled (rolls over balance to next month).
+    :param budget: The underlying budget database record, if it exists. If a budget was not set for the month, it will
+        be set to `None`, and budgeted amount assumed to be zero.
+    """
+
     category: Categories
     budgeted: decimal.Decimal
     spent: decimal.Decimal
@@ -38,6 +54,15 @@ class BudgetCategory:
 
 @dataclasses.dataclass
 class BudgetCategoryGroup:
+    """
+    Represents budget information for a category group and all its categories in a specific month.
+
+    A category group contains multiple categories and aggregates their budget information.
+
+    :param category_group: The category group this budget information applies to.
+    :param categories: List of BudgetCategory objects for all categories in this group.
+    """
+
     category_group: CategoryGroups
     categories: list[BudgetCategory]
 
@@ -59,6 +84,17 @@ class BudgetCategoryGroup:
 
 @dataclasses.dataclass
 class BaseBudget:
+    """
+    Base class for budget information for a single month.
+
+    This is the parent class for both EnvelopeBudget and TrackingBudget, containing common properties
+    and methods for budget calculations.
+
+    :param month: The month this budget applies to (always the first day of the month).
+    :param income: Total income for this month.
+    :param category_groups: List of BudgetCategoryGroup objects containing all budget categories.
+    """
+
     month: datetime.date
     income: decimal.Decimal
     category_groups: list[BudgetCategoryGroup]  # List of individual category group budgets
@@ -103,6 +139,17 @@ class BaseBudget:
 
 @dataclasses.dataclass
 class EnvelopeBudget(BaseBudget):
+    """
+    Budget information for envelope budgeting mode for a single month.
+
+    Envelope budgeting is the default budgeting mode in Actual Budget, where money is allocated to
+    specific categories and can be carried over between months.
+
+    :param for_next_month: The amount of money held for the next month.
+    :param overspent_prev_month: The overspent amount from the previous month.
+    :param from_last_month: The amount of money inherited from the previous month.
+    """
+
     for_next_month: decimal.Decimal  # The amount of money held for the next month
     overspent_prev_month: decimal.Decimal  # The exact same as `overspent`, but from a previous month
     from_last_month: decimal.Decimal  # The amount of money `inherited` from a previous month
@@ -156,6 +203,14 @@ class EnvelopeBudget(BaseBudget):
 
 @dataclasses.dataclass
 class TrackingBudget(BaseBudget):
+    """
+    Budget information for tracking budgeting mode for a single month.
+
+    Tracking budgeting is an alternative budgeting mode that focuses on simplicity of tracking expenses.
+
+    :param budgeted_income: The amount of income that was budgeted.
+    """
+
     budgeted_income: decimal.Decimal  # The amount of income that was budgeted.
     # todo: Implement category rollover for tracking budget
 
@@ -186,6 +241,16 @@ class TrackingBudget(BaseBudget):
 
 
 class BudgetList(list[EnvelopeBudget | TrackingBudget]):
+    """
+    A list of budget objects with helper methods for accessing budget information.
+
+    This class extends the built-in list to provide convenient methods for working with
+    multiple months of budget data.
+
+    :param iterable: The list of EnvelopeBudget or TrackingBudget objects.
+    :param is_tracking_budget: Whether the budgets are tracking budgets (True) or envelope budgets (False).
+    """
+
     def __init__(self, iterable, is_tracking_budget: bool = False):
         super().__init__(iterable)
         self.is_tracking_budget: bool = is_tracking_budget
@@ -217,7 +282,20 @@ class BudgetList(list[EnvelopeBudget | TrackingBudget]):
         return None
 
 
-def get_category_detailed_budget(s: Session, month: datetime.date, category: Categories) -> BudgetCategory:
+def _get_category_detailed_budget(s: Session, month: datetime.date, category: Categories) -> BudgetCategory:
+    """
+    Gets detailed budget information for a specific category and month.
+
+    This function retrieves or creates a BudgetCategory object containing budget and spending
+    information for the specified category and month.
+
+    The function **does not evaluate some fields**, as they can only be evaluated by taking other months
+    into account.
+
+    :param s: Session from the Actual local database.
+    :param month: The month to get budget information for.
+    :param category: The category to get budget information for.
+    """
     budget = get_budget(s, month, category)
     if not budget:
         # create a temporary budget
@@ -237,6 +315,14 @@ def get_category_detailed_budget(s: Session, month: datetime.date, category: Cat
 
 
 def get_income(s: Session, month: datetime.date) -> decimal.Decimal:
+    """
+    Gets the total income for a specific month.
+
+    This function calculates the total income across all income categories for the specified month.
+
+    :param s: Session from the Actual local database.
+    :param month: The month to get income for.
+    """
     total_income = decimal.Decimal(0)
     range_start, range_end = month_range(month)
     for category in get_categories(s, is_income=True):
@@ -264,7 +350,16 @@ def get_held_budget(s: Session, month: datetime.date) -> decimal.Decimal:
     return ret
 
 
-def get_envelope_budget_info(s: Session, until: datetime.date) -> list[EnvelopeBudget]:
+def _get_envelope_budget_info(s: Session, until: datetime.date) -> list[EnvelopeBudget]:
+    """
+    Gets envelope budget information from the first available month to the specified month.
+
+    This function computes all envelope budget data including carryover, overspending, and
+    accumulated balances across multiple months.
+
+    :param s: Session from the Actual local database.
+    :param until: The last month to include in the budget history.
+    """
     budgets = get_budgets(s)
     first_budget_month = budgets[0].get_date() if budgets else None
     # Get first positive transaction
@@ -291,7 +386,7 @@ def get_envelope_budget_info(s: Session, until: datetime.date) -> list[EnvelopeB
                     last_budget.from_category(category).accumulated_balance if last_budget else decimal.Decimal(0)
                 )
                 # reset the accumulated balance if it's under 0
-                category_detailed_budget = get_category_detailed_budget(s, current_month, category)
+                category_detailed_budget = _get_category_detailed_budget(s, current_month, category)
                 if not category_detailed_budget.carryover and category_accumulated_balance < 0:
                     category_accumulated_balance = decimal.Decimal(0)
                 category_accumulated_balance += category_detailed_budget.balance
@@ -315,7 +410,16 @@ def get_envelope_budget_info(s: Session, until: datetime.date) -> list[EnvelopeB
     return budget_list
 
 
-def get_tracking_budget_info(s: Session, until: datetime.date) -> list[TrackingBudget]:
+def _get_tracking_budget_info(s: Session, until: datetime.date) -> list[TrackingBudget]:
+    """
+    Gets tracking budget information from the first available month to the specified month.
+
+    This function computes all tracking budget data, which tracks expenses against budgeted amounts
+    without carryover between months.
+
+    :param s: Session from the Actual local database.
+    :param until: The last month to include in the budget history.
+    """
     budgets = get_budgets(s)
     if not budgets:
         return []
@@ -330,7 +434,7 @@ def get_tracking_budget_info(s: Session, until: datetime.date) -> list[TrackingB
         for category_group in category_groups:
             cat_list = []
             for category in category_group.categories:
-                category_detailed_budget = get_category_detailed_budget(s, current_month, category)
+                category_detailed_budget = _get_category_detailed_budget(s, current_month, category)
                 # for tracking budget balance and accumulated balance are the same
                 category_detailed_budget.accumulated_balance = category_detailed_budget.balance
                 cat_list.append(category_detailed_budget)
@@ -339,7 +443,7 @@ def get_tracking_budget_info(s: Session, until: datetime.date) -> list[TrackingB
         budgeted_income = decimal.Decimal(0)
         for category_group in income_category_groups:
             for category in category_group.categories:
-                budget = get_category_detailed_budget(s, current_month, category)
+                budget = _get_category_detailed_budget(s, current_month, category)
                 budgeted_income += budget.budgeted
         budget_list.append(TrackingBudget(current_month, get_income(s, current_month), cat_group_list, budgeted_income))
         current_month = next_month(current_month)
@@ -352,6 +456,20 @@ def get_budget_history(s: Session, until: datetime.date = None) -> BudgetList:
 
     If no month is given, the current month is used.
 
+    Example:
+
+    ```python
+    import datetime
+    from actual import Actual
+    from actual.budgets import get_budget_history
+
+    with Actual("http://localhost:5006", password="mypass", file="Budget") as actual:
+        # get the history until the latest month
+        history = get_budget_history(actual.session)
+        # select the latest month
+        print(history[-1])
+    ```
+
     :param s: Session from the Actual local database.
     :param until: Month to get budgets for, as a date for that month. Use `datetime.date.today()` if you want current
                   data.
@@ -360,6 +478,6 @@ def get_budget_history(s: Session, until: datetime.date = None) -> BudgetList:
         until = datetime.date.today()
     is_tracking_budget = _get_budget_table(s) is ReflectBudgets
     if is_tracking_budget:
-        return BudgetList(get_tracking_budget_info(s, until), is_tracking_budget=True)
+        return BudgetList(_get_tracking_budget_info(s, until), is_tracking_budget=True)
     else:
-        return BudgetList(get_envelope_budget_info(s, until))
+        return BudgetList(_get_envelope_budget_info(s, until))
