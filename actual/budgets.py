@@ -3,10 +3,9 @@ import datetime
 import decimal
 from collections.abc import Iterator
 
-from sqlalchemy import select
 from sqlmodel import Session
 
-from actual.database import BaseBudgets, Categories, CategoryGroups, ReflectBudgets, ZeroBudgetMonths
+from actual.database import BaseBudgets, Categories, CategoryGroups, ReflectBudgets
 from actual.queries import (
     _balance_base_query,
     _get_budget_table,
@@ -15,6 +14,7 @@ from actual.queries import (
     get_budgets,
     get_categories,
     get_category_groups,
+    get_held_budget,
 )
 from actual.utils.conversions import cents_to_decimal, month_range, next_month
 
@@ -32,7 +32,6 @@ class BudgetCategory:
     :param spent: The actual amount spent in this category this month (typically negative).
     :param balance: The simple balance (budgeted + spent) for this month only.
     :param accumulated_balance: The balance including carryover from previous months.
-    :param carryover: Whether this category has carryover enabled (rolls over balance to next month).
     :param budget: The underlying budget database record, if it exists. If a budget was not set for the month, it will
         be set to `None`, and budgeted amount assumed to be zero.
     """
@@ -42,8 +41,14 @@ class BudgetCategory:
     spent: decimal.Decimal
     balance: decimal.Decimal
     accumulated_balance: decimal.Decimal
-    carryover: bool
     budget: ReflectBudgets | BaseBudgets | None = None  # If the budget value
+
+    @property
+    def carryover(self) -> bool:
+        """Whether this category has carryover enabled (rolls over balance to next month)."""
+        if not self.budget:
+            return False
+        return bool(self.budget.carryover)
 
     def __str__(self):
         budgeted = float(self.budgeted)
@@ -212,7 +217,6 @@ class TrackingBudget(BaseBudget):
     """
 
     budgeted_income: decimal.Decimal  # The amount of income that was budgeted.
-    # todo: Implement category rollover for tracking budget
 
     def __str__(self):
         ret = ""
@@ -303,15 +307,13 @@ def _get_category_detailed_budget(s: Session, month: datetime.date, category: Ca
         balance = s.scalar(_balance_base_query(s, range_start, range_end, category=category))
         budgeted = decimal.Decimal(0)
         spent = cents_to_decimal(balance)
-        carryover = False
     else:
         budgeted = budget.get_amount()
         spent = budget.balance
-        carryover = bool(budget.carryover)
     # Balance is the simple subtraction of the spent from the budget amount
     balance = budgeted + spent
     # The accumulated balance relates to a previous budget, so it has to be computed later
-    return BudgetCategory(category, budgeted, spent, balance, decimal.Decimal(0), carryover, budget)
+    return BudgetCategory(category, budgeted, spent, balance, decimal.Decimal(0), budget)
 
 
 def get_income(s: Session, month: datetime.date) -> decimal.Decimal:
@@ -331,23 +333,17 @@ def get_income(s: Session, month: datetime.date) -> decimal.Decimal:
     return total_income
 
 
-def get_held_budget(s: Session, month: datetime.date) -> decimal.Decimal:
+def _get_held_budget_amount(s: Session, month: datetime.date) -> decimal.Decimal:
     """
-    Gets the budget held for a budget month from the database.
+    Gets the budget held, in a decimal, for a budget month from the database. If the held does not exist, returns 0.
 
     The held budget only applies to envelope budgeting.
-
-    :param s: Session from the Actual local database.
-    :param month: Month to get budgets for, as a date for that month. Use `datetime.date.today()` if you want
-                  the current month.
     """
-    ret = decimal.Decimal(0)
-    converted_month = datetime.date.strftime(month, "%Y-%m")
-    query = select(ZeroBudgetMonths).where(ZeroBudgetMonths.id == converted_month)
-    for_next_month = s.exec(query).scalar_one_or_none()
+    for_next_month = get_held_budget(s, month)
     if for_next_month:
-        ret = for_next_month.get_amount()
-    return ret
+        return for_next_month.get_amount()
+    else:
+        return decimal.Decimal(0)
 
 
 def _get_envelope_budget_info(s: Session, until: datetime.date) -> list[EnvelopeBudget]:
@@ -394,7 +390,7 @@ def _get_envelope_budget_info(s: Session, until: datetime.date) -> list[Envelope
                 cat_list.append(category_detailed_budget)
             cat_group_list.append(BudgetCategoryGroup(category_group, cat_list))
         income = get_income(s, current_month)
-        for_next_month = get_held_budget(s, current_month)
+        for_next_month = _get_held_budget_amount(s, current_month)
         # we set a first value to both available_funds and to overspent_prev_month
         budget = EnvelopeBudget(
             current_month, income, cat_group_list, for_next_month, decimal.Decimal(0), decimal.Decimal(0)

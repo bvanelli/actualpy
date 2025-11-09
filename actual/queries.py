@@ -29,6 +29,7 @@ from actual.database import (
     Schedules,
     Tags,
     Transactions,
+    ZeroBudgetMonths,
     ZeroBudgets,
 )
 from actual.exceptions import ActualError
@@ -955,6 +956,22 @@ def get_accumulated_budgeted_balance(s: Session, month: datetime.date, category:
         # go to the next month
         current_month = (current_month.replace(day=1) + datetime.timedelta(days=31)).replace(day=1)
     return accumulated_balance
+
+
+def get_held_budget(s: Session, month: datetime.date) -> ZeroBudgetMonths | None:
+    """
+    Gets the budget held for a budget month from the database.
+
+    The held budget only applies to envelope budgeting.
+
+    :param s: Session from the Actual local database.
+    :param month: Month to get budgets for, as a date for that month. Use `datetime.date.today()` if you want
+                  the current month.
+    :return: Returns the held budget object.
+    """
+    converted_month = datetime.date.strftime(month, "%Y-%m")
+    query = select(ZeroBudgetMonths).where(ZeroBudgetMonths.id == converted_month)
+    return s.exec(query).one_or_none()
 
 
 def create_transfer(

@@ -18,6 +18,17 @@ from actual.queries import (
 )
 
 
+@pytest.mark.parametrize("budget_name", ["Expenses", None])
+def test_empty_budgets(session, budget_name):
+    if budget_name:
+        category = get_or_create_category(session, budget_name)
+        assert len(get_budgets(session, date(2025, 10, 1), budget_name)) == 0
+        assert get_accumulated_budgeted_balance(session, date(2025, 10, 1), category) == decimal.Decimal(0)
+    assert len(get_budgets(session)) == 0
+    assert len(get_budgets(session, date(2025, 10, 1))) == 0
+    assert get_budget_history(session, date(2025, 10, 1)) == []
+
+
 @pytest.mark.parametrize(
     "budget_type,budget_table",
     [("rollover", ZeroBudgets), ("report", ReflectBudgets), ("envelope", ZeroBudgets), ("tracking", ReflectBudgets)],
