@@ -570,7 +570,7 @@ def test_schedule_config(session):
 
 
 def test_include_closed_accounts(session):
-    """ "Test filtering with the include_closed set to True and False"""
+    """Test filtering with the include_closed set to True and False"""
     closed_account = create_account(session, "Checking", off_budget=False)
     open_account = create_account(session, "Checking", off_budget=False)
 
