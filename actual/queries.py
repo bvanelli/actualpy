@@ -510,10 +510,14 @@ def _base_query(
         query = query.filter(sqlalchemy.func.coalesce(instance.tombstone, 0) == 0)
     if not include_closed:
         query = query.filter(sqlalchemy.func.coalesce(instance.closed, 0) == 0)
-    if not include_on_budget:
-        query = query.filter(sqlalchemy.func.coalesce(instance.offbudget, 0) == 1)
-    if not include_off_budget:
-        query = query.filter(sqlalchemy.func.coalesce(instance.offbudget, 0) == 0)
+
+    # Apply offbudget filters if instance is Accounts
+    if hasattr(instance, "offbudget"):
+        if not include_on_budget:
+            query = query.filter(sqlalchemy.func.coalesce(instance.offbudget, 0) == 1)
+        if not include_off_budget:
+            query = query.filter(sqlalchemy.func.coalesce(instance.offbudget, 0) == 0)
+
     if name:
         query = query.filter(instance.name.ilike(f"%{sqlalchemy.text(name).compile()}%"))
     return query

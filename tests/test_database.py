@@ -21,10 +21,12 @@ from actual.queries import (
     get_accounts,
     get_accumulated_budgeted_balance,
     get_budgets,
+    get_categories,
     get_or_create_category,
     get_or_create_clock,
     get_or_create_payee,
     get_or_create_preference,
+    get_payees,
     get_preferences,
     get_ruleset,
     get_schedules,
@@ -569,43 +571,220 @@ def test_schedule_config(session):
         create_schedule_config(today, end_mode="after_n_occurrences")
 
 
-def test_include_closed_accounts(session):
-    """Test filtering with the include_closed set to True and False"""
-    closed_account = create_account(session, "Checking", off_budget=False)
-    open_account = create_account(session, "Checking", off_budget=False)
-
-    create_transaction(session, date.today(), closed_account, amount=-9001)
-    create_transaction(session, date.today(), open_account, amount=-9002)
-
-    closed_account.closed = 1
-
-    session.commit()
-
-    assert len(get_accounts(session)) == 2
-    assert len(get_accounts(session, include_closed=False)) == 1
-    assert len(get_accounts(session, include_closed=True)) == 2
-
-
-def test_include_on_budget_and_off_budget(session):
-    """Test filtering with the include_on_budget set to True and false"""
-    off_budget_account = create_account(session, "Checking", off_budget=True)
+def test_filter_accounts_by_budget_status(session):
+    """Test filtering accounts by on-budget and off-budget status."""
+    off_budget_account = create_account(session, "Mortgage", off_budget=True)
     on_budget_account = create_account(session, "Checking", off_budget=False)
 
     create_transaction(session, date.today(), on_budget_account, amount=-9001)
     create_transaction(session, date.today(), off_budget_account, amount=-9002)
-
     session.commit()
 
-    # default is unchanged
-    assert len(get_accounts(session)) == 2
+    # Test default behavior
+    all_accounts = get_accounts(session)
+    assert len(all_accounts) == 2, "Default should return all accounts"
 
-    # test include_on_budget
-    assert len(get_accounts(session, include_on_budget=False)) == 1
-    assert len(get_accounts(session, include_on_budget=True)) == 2
+    # Test only on-budget accounts
+    on_budget_only = get_accounts(session, include_off_budget=False)
+    assert len(on_budget_only) == 1, "Should only return on-budget accounts"
+    assert on_budget_only[0].name == "Checking"
+    assert on_budget_only[0].offbudget == 0
 
-    # test include_off_budget
-    assert len(get_accounts(session, include_off_budget=False)) == 1
-    assert len(get_accounts(session, include_off_budget=True)) == 2
+    # Test only off-budget accounts
+    off_budget_only = get_accounts(session, include_on_budget=False)
+    assert len(off_budget_only) == 1, "Should only return off-budget accounts"
+    assert off_budget_only[0].name == "Mortgage"
+    assert off_budget_only[0].offbudget == 1
 
-    # test both not include
-    assert len(get_accounts(session, include_on_budget=False, include_off_budget=False)) == 0
+    # Test excluding both (edge case - returns empty list)
+    no_accounts = get_accounts(session, include_on_budget=False, include_off_budget=False)
+    assert len(no_accounts) == 0, "Both False should return empty list"
+
+
+def test_filter_accounts_combined_filters(session):
+    """Test combining closed and budget status filters."""
+    open_on_budget = create_account(session, "Checking", off_budget=False)
+    open_off_budget = create_account(session, "Investment", off_budget=True)
+    closed_on_budget = create_account(session, "Old Savings", off_budget=False)
+    closed_off_budget = create_account(session, "Old Mortgage", off_budget=True)
+
+    closed_on_budget.closed = 1
+    closed_off_budget.closed = 1
+    session.commit()
+
+    # Only open on-budget accounts
+    result = get_accounts(session, include_closed=False, include_off_budget=False)
+    assert len(result) == 1
+    assert result[0].name == open_on_budget.name
+
+    # Only open off-budget accounts
+    result = get_accounts(session, include_closed=False, include_on_budget=False)
+    assert len(result) == 1
+    assert result[0].name == open_off_budget.name
+
+    # All open accounts
+    result = get_accounts(session, include_closed=False)
+    assert len(result) == 2
+
+    # All accounts
+    result = get_accounts(session, include_closed=True)
+    assert len(result) == 4
+
+
+def test_filter_accounts_backward_compatibility(session):
+    """Test that default behavior is unchanged for backward compatibility."""
+    create_account(session, "Checking", off_budget=False)
+    create_account(session, "Savings", off_budget=False)
+    create_account(session, "Mortgage", off_budget=True)
+    closed = create_account(session, "Old Account", off_budget=False)
+    closed.closed = 1
+    session.commit()
+
+    # Calling without new parameters should work exactly as before
+    accounts_no_params = get_accounts(session)
+    accounts_explicit_defaults = get_accounts(
+        session, include_closed=True, include_on_budget=True, include_off_budget=True
+    )
+
+    assert len(accounts_no_params) == len(accounts_explicit_defaults)
+    assert len(accounts_no_params) == 4
+
+
+def test_filter_accounts_with_name_pattern(session):
+    """Test that budget filters work with name pattern filtering."""
+    create_account(session, "Checking Account", off_budget=False)
+    create_account(session, "Savings Account", off_budget=False)
+    create_account(session, "Mortgage Account", off_budget=True)
+    session.commit()
+
+    # Name filter with budget filter
+    on_budget_with_account = get_accounts(session, name="Account", include_off_budget=False)
+    assert len(on_budget_with_account) == 2
+    assert all(acc.offbudget == 0 for acc in on_budget_with_account)
+
+    # Only off-budget with specific name
+    mortgage = get_accounts(session, name="Mortgage", include_on_budget=False)
+    assert len(mortgage) == 1
+    assert mortgage[0].offbudget == 1
+
+
+def test_filter_accounts_with_deleted(session):
+    """Test that budget filters work with deleted account filtering."""
+    on_budget = create_account(session, "Checking", off_budget=False)
+    off_budget = create_account(session, "Mortgage", off_budget=True)
+
+    on_budget.delete()
+    session.commit()
+
+    # Default excludes deleted
+    accounts = get_accounts(session)
+    assert len(accounts) == 1
+    assert accounts[0].name == off_budget.name
+
+    # Include deleted shows both
+    all_accounts = get_accounts(session, include_deleted=True)
+    assert len(all_accounts) == 2
+
+    # Budget filter with deleted filter
+    deleted_on_budget = get_accounts(session, include_deleted=True, include_off_budget=False)
+    assert len(deleted_on_budget) == 1
+    assert deleted_on_budget[0].name == on_budget.name
+    assert deleted_on_budget[0].tombstone == 1
+
+
+def test_base_query_hasattr_with_payees(session):
+    """Test that _base_query doesn't break when called with Payees (no offbudget attribute)."""
+    # Create some payees
+    payee1 = get_or_create_payee(session, "Starbucks")
+    payee2 = get_or_create_payee(session, "Landlord")
+    session.commit()
+
+    # get_payees internally calls _base_query with Payees model
+    # Payees doesn't have 'offbudget' attribute, so hasattr should be False
+    # and no offbudget filter should be applied
+    payees = get_payees(session)
+    assert len(payees) == 2
+    assert payee1 in payees
+    assert payee2 in payees
+
+
+def test_base_query_hasattr_with_categories(session):
+    """Test that _base_query doesn't break when called with Categories (no offbudget attribute)."""
+    # Create some categories
+    cat1 = get_or_create_category(session, "Groceries")
+    cat2 = get_or_create_category(session, "Rent")
+    session.commit()
+
+    # get_categories internally calls _base_query with Categories model
+    # Categories doesn't have 'offbudget' attribute
+    categories = get_categories(session)
+    assert len(categories) >= 2  # At least our two categories
+    assert cat1 in categories
+    assert cat2 in categories
+
+
+def test_base_query_payees_with_name_filter(session):
+    """Test that name filtering works for Payees (no offbudget attribute)."""
+    get_or_create_payee(session, "Starbucks")
+    get_or_create_payee(session, "Starwood Hotels")
+    get_or_create_payee(session, "Landlord")
+    session.commit()
+
+    # Should work - name filter doesn't depend on offbudget
+    star_payees = get_payees(session, name="Star")
+    assert len(star_payees) == 2
+    assert all("Star" in p.name for p in star_payees)
+
+
+def test_base_query_categories_with_name_filter(session):
+    """Test that name filtering works for Categories (no offbudget attribute)."""
+    get_or_create_category(session, "Groceries")
+    get_or_create_category(session, "Grocery Store")
+    get_or_create_category(session, "Rent")
+    session.commit()
+
+    # Should work - name filter doesn't depend on offbudget
+    grocery_categories = get_categories(session, name="Grocer")
+    assert len(grocery_categories) == 2
+    assert all("Grocer" in c.name for c in grocery_categories)
+
+
+def test_base_query_payees_with_deleted_filter(session):
+    """Test that deleted filtering works for Payees (no offbudget attribute)."""
+    payee1 = get_or_create_payee(session, "Active Payee")
+    payee2 = get_or_create_payee(session, "Deleted Payee")
+    session.commit()
+
+    # Delete one payee
+    payee2.delete()
+    session.commit()
+
+    # Default should exclude deleted
+    active_payees = get_payees(session)
+    assert len(active_payees) == 1
+    assert payee1 in active_payees
+
+    # Including deleted should show both
+    all_payees = get_payees(session, include_deleted=True)
+    assert len(all_payees) == 2
+
+
+def test_base_query_categories_with_deleted_filter(session):
+    """Test that deleted filtering works for Categories (no offbudget attribute)."""
+    cat1 = get_or_create_category(session, "Active Category")
+    cat2 = get_or_create_category(session, "Deleted Category")
+    session.commit()
+
+    # Delete one category
+    cat2.delete()
+    session.commit()
+
+    # Default should exclude deleted
+    active_categories = get_categories(session)
+    assert cat1 in active_categories
+    assert cat2 not in active_categories
+
+    # Including deleted should show both
+    all_categories = get_categories(session, include_deleted=True)
+    assert cat1 in all_categories
+    assert cat2 in all_categories
