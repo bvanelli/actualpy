@@ -567,3 +567,45 @@ def test_schedule_config(session):
         create_schedule_config(today, end_mode="on_date")
     with pytest.raises(ActualError, match="the end_occurrences must be provided"):
         create_schedule_config(today, end_mode="after_n_occurrences")
+
+
+def test_include_closed_accounts(session):
+    """ "Test filtering with the include_closed set to True and False"""
+    closed_account = create_account(session, "Checking", off_budget=False)
+    open_account = create_account(session, "Checking", off_budget=False)
+
+    create_transaction(session, date.today(), closed_account, amount=-9001)
+    create_transaction(session, date.today(), open_account, amount=-9002)
+
+    closed_account.closed = 1
+
+    session.commit()
+
+    assert len(get_accounts(session)) == 2
+    assert len(get_accounts(session, include_closed=False)) == 1
+    assert len(get_accounts(session, include_closed=True)) == 2
+
+
+def test_include_on_budget_and_off_budget(session):
+    """Test filtering with the include_on_budget set to True and false"""
+    off_budget_account = create_account(session, "Checking", off_budget=True)
+    on_budget_account = create_account(session, "Checking", off_budget=False)
+
+    create_transaction(session, date.today(), on_budget_account, amount=-9001)
+    create_transaction(session, date.today(), off_budget_account, amount=-9002)
+
+    session.commit()
+
+    # default is unchanged
+    assert len(get_accounts(session)) == 2
+
+    # test include_on_budget
+    assert len(get_accounts(session, include_on_budget=False)) == 1
+    assert len(get_accounts(session, include_on_budget=True)) == 2
+
+    # test include_off_budget
+    assert len(get_accounts(session, include_off_budget=False)) == 1
+    assert len(get_accounts(session, include_off_budget=True)) == 2
+
+    # test both not include
+    assert len(get_accounts(session, include_on_budget=False, include_off_budget=False)) == 0
