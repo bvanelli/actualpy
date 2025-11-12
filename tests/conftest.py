@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import tempfile
 
 import pytest
 from sqlmodel import Session, create_engine
@@ -29,10 +28,9 @@ class RequestsMock:
 
 
 @pytest.fixture
-def session():
-    with tempfile.NamedTemporaryFile() as f:
-        sqlite_url = f"sqlite:///{f.name}"
-        engine = create_engine(sqlite_url, connect_args={"check_same_thread": False})
-        SQLModel.metadata.create_all(engine)
-        with Session(engine, autoflush=True) as session:
-            yield strong_reference_session(session)
+def session(tmp_path):
+    sqlite_url = f"sqlite:///{tmp_path}/pytest.sqlite"
+    engine = create_engine(sqlite_url, connect_args={"check_same_thread": False})
+    SQLModel.metadata.create_all(engine)
+    with Session(engine, autoflush=True) as session:
+        yield strong_reference_session(session)
