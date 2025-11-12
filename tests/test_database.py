@@ -567,3 +567,28 @@ def test_schedule_config(session):
         create_schedule_config(today, end_mode="on_date")
     with pytest.raises(ActualError, match="the end_occurrences must be provided"):
         create_schedule_config(today, end_mode="after_n_occurrences")
+
+
+def test_get_transactions_with_cleared_filter(session):
+    acct = create_account(session, "ClearedTxs")
+    create_transaction(session, date=today, account=acct, amount=10, cleared=False)
+    create_transaction(session, date=today, account=acct, amount=11, cleared=False)
+    create_transaction(session, date=today, account=acct, amount=12, cleared=False)
+    create_transaction(session, date=today, account=acct, amount=21, cleared=True)
+    create_transaction(session, date=today, account=acct, amount=22, cleared=True)
+
+    # Request all transactions
+    txs = get_transactions(session, account=acct)
+    assert len(txs) == 5
+
+    # Request only non-cleared transactions
+    txs = get_transactions(session, account=acct, cleared=False)
+    assert len(txs) == 3
+    for t in txs:
+        assert not t.cleared
+
+    # Request only cleared transactions
+    txs = get_transactions(session, account=acct, cleared=True)
+    assert len(txs) == 2
+    for t in txs:
+        assert t.cleared
