@@ -124,6 +124,7 @@ def get_transactions(
     is_parent: bool = False,
     include_deleted: bool = False,
     budget: ZeroBudgets | None = None,
+    cleared: bool = None,
 ) -> typing.Sequence[Transactions]:
     """
     Returns a list of all available transactions, sorted by date in descending order.
@@ -143,12 +144,16 @@ def get_transactions(
     :param budget: Optional budget filter for the transactions. The budget range and category will be used to filter the
                    final results. **Usually not used together with the `start_date` and `end_date` filters, as they
                    might hide results.
+    :param cleared: Optional cleared filter for the transactions. Defaults to None, meaning both cleared
+                    and non-cleared transactions are included.
     :return: List of transactions with `account`, `category` and `payee` preloaded.
     """
     query = _transactions_base_query(s, start_date, end_date, account, category, include_deleted)
     query = query.filter(Transactions.is_parent == int(is_parent))
     if notes:
         query = query.filter(Transactions.notes.ilike(f"%{sqlalchemy.text(notes).compile()}%"))
+    if cleared is not None:
+        query = query.filter(Transactions.cleared == int(cleared))
     if budget:
         budget_start, budget_end = budget.range
         if (start_date and start_date >= budget_end) or (end_date and end_date < budget_start):
