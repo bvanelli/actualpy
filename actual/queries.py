@@ -144,6 +144,8 @@ def get_transactions(
     :param budget: Optional budget filter for the transactions. The budget range and category will be used to filter the
                    final results. **Usually not used together with the `start_date` and `end_date` filters, as they
                    might hide results.
+    :param cleared: Optional cleared filter for the transactions. Defaults to None, meaning both cleared
+                    and non-cleared transactions are included.
     :return: List of transactions with `account`, `category` and `payee` preloaded.
     """
     query = _transactions_base_query(s, start_date, end_date, account, category, include_deleted)
