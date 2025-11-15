@@ -1,5 +1,6 @@
 import datetime
 import json
+import os
 import pathlib
 
 import pytest
@@ -87,7 +88,7 @@ def test_init_interactive(actual_server, mocker):
 def test_load_config(actual_server):
     cfg = Config.load()
     assert cfg.default_context == "test"
-    assert str(default_config_path()).endswith(".actualpy/config.yaml")
+    assert str(default_config_path()).endswith(".actualpy" + os.sep + "config.yaml")
     # if the context does not exist, it should fail to load the server
     cfg.default_context = "foo"
     with pytest.raises(ValueError, match="Could not find budget with context"):
