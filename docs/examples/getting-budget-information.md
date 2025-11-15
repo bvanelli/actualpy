@@ -76,8 +76,8 @@ budget_general_info = {
     "toBudget": decimal_to_cents(budget.to_budget),
     "fromLastMonth": decimal_to_cents(budget.from_last_month),
     "totalIncome": decimal_to_cents(budget.income),
-    "totalSpent": decimal_to_cents(budget.expenses),
-    "totalBalance": decimal_to_cents(budget.balance),
+    "totalSpent": decimal_to_cents(budget.spent),
+    "totalBalance": decimal_to_cents(budget.accumulated_balance),
     "categories": [],
 }
 ```
@@ -98,7 +98,7 @@ for category in category_group.categories:
         "group_id": category_group.category_group.id,
         "budgeted": decimal_to_cents(category.budgeted),
         "spent": decimal_to_cents(category.spent),
-        "balance": decimal_to_cents(category.balance),
+        "balance": decimal_to_cents(category.accumulated_balance),
         "carryover": category.carryover,
     }
     category_group_balance["categories"].append(category_balance)
@@ -132,8 +132,8 @@ with Actual("http://localhost:5006", password="mypass", file="Budget") as actual
         "toBudget": decimal_to_cents(budget.to_budget),
         "fromLastMonth": decimal_to_cents(budget.from_last_month),
         "totalIncome": decimal_to_cents(budget.income),
-        "totalSpent": decimal_to_cents(budget.expenses),
-        "totalBalance": decimal_to_cents(budget.balance),
+        "totalSpent": decimal_to_cents(budget.spent),
+        "totalBalance": decimal_to_cents(budget.accumulated_balance),
         "categoryGroups": [],
     }
     # For each category group, we will now also have to build the information from the JSON object individually
@@ -146,7 +146,7 @@ with Actual("http://localhost:5006", password="mypass", file="Budget") as actual
             "hidden": bool(category_group.category_group.hidden),
             "budgeted": decimal_to_cents(category_group.budgeted),
             "spent": decimal_to_cents(category_group.spent),
-            "balance": decimal_to_cents(category_group.balance),
+            "balance": decimal_to_cents(category_group.accumulated_balance),
             "categories": [],
         }
         # We can also iterate over the categories and fill those properties too

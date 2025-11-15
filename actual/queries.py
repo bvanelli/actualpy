@@ -944,15 +944,14 @@ def get_accumulated_budgeted_balance(s: Session, month: datetime.date, category:
     # current month is the least of those two dates
     current_month = min(first_budget_month, first_transaction_month)
     accumulated_balance = decimal.Decimal(0)
+    last_carryover = False
     while current_month <= month:
         budget = [b for b in budgets if b.get_date() == current_month]
-        carryover = False
-        if budget and budget[0].carryover:
-            carryover = True
-        if not carryover and accumulated_balance < 0:
+        if not last_carryover and accumulated_balance < 0:
             accumulated_balance = decimal.Decimal(0)
         current_month_balance = get_budgeted_balance(s, current_month, category)
         accumulated_balance += current_month_balance
+        last_carryover = budget[0].carryover if budget else False
         # go to the next month
         current_month = (current_month.replace(day=1) + datetime.timedelta(days=31)).replace(day=1)
     return accumulated_balance

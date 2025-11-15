@@ -5,9 +5,12 @@ import warnings
 import typer
 from rich.console import Console
 from rich.json import JSON
+from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
 
 from actual import Actual, get_accounts, get_transactions
+from actual.budgets import get_budget_history
 from actual.cli.config import BudgetConfig, Config, OutputType, State
 from actual.queries import get_payees
 from actual.version import __version__
@@ -214,6 +217,64 @@ def payees():
         console.print(table)
     else:
         console.print(JSON.from_data(payees_data))
+
+
+@app.command()
+def budget(month: datetime.datetime | None = typer.Argument(default=None, help="Month for which to show the budget")):
+    """
+    Shows the budget for a certain month.
+    """
+    if month is None:
+        month = datetime.date.today()
+    else:
+        month = month.date()
+    with config.actual() as actual:
+        budget_history = get_budget_history(actual.session, month)
+        if not budget_history:
+            raise ValueError("No budget history found for the given month.")
+        detail_budget = budget_history[-1]
+        budget_data = detail_budget
+
+    if state.output == OutputType.table:
+        width = 80
+        summary = Text(justify="center")
+        summary.append("\n")
+        summary.append(f"{budget_data.available_funds:.2f}", style="bold green")
+        summary.append(" Available funds\n", style="dim")
+        summary.append(f"{budget_data.overspent_prev_month:.2f}", style="bold red")
+        summary.append(" Overspent in previous month\n", style="dim")
+        summary.append(f"{budget_data.budgeted:.2f}", style="bold blue")
+        summary.append(" Budgeted\n", style="dim")
+        summary.append(f"{budget_data.for_next_month:.2f}", style="bold blue")
+        summary.append(" For next month\n", style="dim")
+        panel = Panel(summary, title=budget_data.month.strftime("%B (%m/%Y)"), title_align="center", width=width)
+        console.print(panel)
+        table = Table(show_header=True, header_style="bold", width=width)
+        table.add_column("Category\n", justify="left", width=45)
+        table.add_column(f"Budgeted\n{budget_data.budgeted:.2f}", justify="right", width=12)
+        table.add_column(f"Spent\n{budget_data.spent:.2f}", justify="right", width=12)
+        table.add_column(f"Balance\n{budget_data.accumulated_balance:.2f}", justify="right", width=12)
+        # add a row with totals for expenses
+        for category_group in budget_data.category_groups:
+            table.add_row(
+                f"▼ {category_group.category_group.name}",
+                f"{category_group.budgeted:.2f}",
+                f"{category_group.spent:.2f}",
+                f"{category_group.accumulated_balance:.2f}",
+                style="bold",
+            )
+            for category in category_group.categories:
+                table.add_row(
+                    f"    {category.category.name}",
+                    f"{category.budgeted:.2f}",
+                    f"{category.spent:.2f}",
+                    f"{category.accumulated_balance:.2f}",
+                    style="dim",
+                )
+        console.print(table)
+    else:
+        # todo: fix this still
+        console.print(JSON.from_data(budget_data))
 
 
 @app.command()

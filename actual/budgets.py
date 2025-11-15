@@ -82,7 +82,7 @@ class BudgetCategoryGroup:
         return sum([c.spent for c in self.categories], start=decimal.Decimal(0))
 
     @property
-    def balance(self) -> decimal.Decimal:
+    def accumulated_balance(self) -> decimal.Decimal:
         """Sum of all accumulated balances from the categories under this category group."""
         return sum([c.accumulated_balance for c in self.categories], start=decimal.Decimal(0))
 
@@ -114,12 +114,12 @@ class BaseBudget:
         return sum([c.budgeted for c in self.category_groups], start=decimal.Decimal(0))
 
     @property
-    def balance(self) -> decimal.Decimal:
+    def accumulated_balance(self) -> decimal.Decimal:
         """Sum of all balances from all categories."""
-        return sum([c.balance for c in self.category_groups], start=decimal.Decimal(0))
+        return sum([c.accumulated_balance for c in self.category_groups], start=decimal.Decimal(0))
 
     @property
-    def expenses(self):
+    def spent(self):
         """
         Expenses for the current month.
 
@@ -211,7 +211,7 @@ class TrackingBudget(BaseBudget):
     """
     Budget information for tracking budgeting mode for a single month.
 
-    Tracking budgeting is an alternative budgeting mode that focuses on simplicity of tracking expenses.
+    Tracking budgeting is an alternative budgeting mode that focuses on the simplicity of tracking expenses.
 
     :param budgeted_income: The amount of income that was budgeted.
     """
@@ -222,7 +222,7 @@ class TrackingBudget(BaseBudget):
         ret = ""
         income = float(self.income)
         budgeted_income = float(self.budgeted_income)
-        expenses = float(self.expenses)
+        expenses = float(self.spent)
         budgeted = float(self.budgeted)
         ret += f"\n{self.month}: {income=} of {budgeted_income=}\n"
         ret += f"{expenses=} of {budgeted=}\n"
@@ -241,7 +241,7 @@ class TrackingBudget(BaseBudget):
         This is equivalent to the sum of income (positive) and expenses (negative). If you end up with a positive
         value, you have saved money, otherwise you have overspent.
         """
-        return self.budgeted_income + self.expenses
+        return self.income + self.spent
 
 
 class BudgetList(list[EnvelopeBudget | TrackingBudget]):
@@ -378,12 +378,14 @@ def _get_envelope_budget_info(s: Session, until: datetime.date) -> list[Envelope
             cat_list = []
             for category in category_group.categories:
                 # todo: refactor this
+                last_budget_category = last_budget.from_category(category) if last_budget else None
+                last_budget_carryover = last_budget_category.carryover if last_budget_category else False
                 category_accumulated_balance = (
-                    last_budget.from_category(category).accumulated_balance if last_budget else decimal.Decimal(0)
+                    last_budget_category.accumulated_balance if last_budget_category else decimal.Decimal(0)
                 )
                 # reset the accumulated balance if it's under 0
                 category_detailed_budget = _get_category_detailed_budget(s, current_month, category)
-                if not category_detailed_budget.carryover and category_accumulated_balance < 0:
+                if not last_budget_carryover and category_accumulated_balance < 0:
                     category_accumulated_balance = decimal.Decimal(0)
                 category_accumulated_balance += category_detailed_budget.balance
                 category_detailed_budget.accumulated_balance = category_accumulated_balance

@@ -121,14 +121,15 @@ def test_accumulated_budget_amount(
     assert get_accumulated_budgeted_balance(session, date(2025, 3, 1), category) == expected_value_current_month
 
 
-def test_accumulated_budget_amount_with_carryover(session):
+@pytest.mark.parametrize("last_month_carryover", (True, False))
+def test_accumulated_budget_amount_with_carryover(session, last_month_carryover):
     get_or_create_preference(session, "budgetType", "envelope")
 
     category = get_or_create_category(session, "Expenses")
     bank = create_account(session, "Bank")
     create_budget(session, date(2025, 1, 1), category, 10.0, carryover=True)
     create_budget(session, date(2025, 2, 1), category, 10.0, carryover=True)
-    create_budget(session, date(2025, 3, 1), category, 0.0, carryover=True)
+    create_budget(session, date(2025, 3, 1), category, 0.0, carryover=last_month_carryover)
 
     # Add a transaction and check final value
     create_transaction(session, date(2025, 1, 1), bank, category=category, amount=-30.0)
@@ -136,4 +137,5 @@ def test_accumulated_budget_amount_with_carryover(session):
     assert history[-1].from_category(category).accumulated_balance == -10
     assert history[-2].from_category(category).accumulated_balance == -10
     # Check also the accumulated balance method
+    assert get_accumulated_budgeted_balance(session, date(2025, 2, 1), category) == -10
     assert get_accumulated_budgeted_balance(session, date(2025, 3, 1), category) == -10
