@@ -592,3 +592,51 @@ def test_get_transactions_with_cleared_filter(session):
     assert len(txs) == 2
     for t in txs:
         assert t.cleared
+
+
+def test_get_accounts_with_closed_filter(session):
+    """Test get_accounts filtering by closed attribute."""
+    open_account = create_account(session, "Investment")
+    closed_account = create_account(session, "Checking")
+
+    closed_account.closed = 1
+    session.commit()
+
+    # Test getting all accounts
+    result = get_accounts(session)
+    assert len(result) == 2, "Default should return all accounts"
+
+    # Test getting open accounts
+    result = get_accounts(session, closed=False)
+    assert len(result) == 1, "Should only return open account"
+    assert result[0].name == open_account.name
+    assert result[0].closed == open_account.closed
+
+    # Test getting closed accounts
+    result = get_accounts(session, closed=True)
+    assert len(result) == 1, "Should only return closed account"
+    assert result[0].name == closed_account.name
+    assert result[0].closed == closed_account.closed
+
+
+def test_get_accounts_with_off_budget_filter(session):
+    """Test get_accounts filtering by off_budget attribute."""
+    on_budget_account = create_account(session, "Checking", off_budget=False)
+    off_budget_account = create_account(session, "Mortgage", off_budget=True)
+    session.commit()
+
+    # Test getting all accounts
+    all_accounts = get_accounts(session)
+    assert len(all_accounts) == 2, "Default should return all accounts"
+
+    # Test getting on-budget accounts
+    on_budget_only = get_accounts(session, off_budget=False)
+    assert len(on_budget_only) == 1, "Should only return on-budget account"
+    assert on_budget_only[0].name == on_budget_account.name
+    assert on_budget_only[0].offbudget == on_budget_account.offbudget
+
+    # Test getting off-budget accounts
+    off_budget_only = get_accounts(session, off_budget=True)
+    assert len(off_budget_only) == 1, "Should only return off-budget account"
+    assert off_budget_only[0].name == off_budget_account.name
+    assert off_budget_only[0].offbudget == off_budget_account.offbudget
