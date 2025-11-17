@@ -134,7 +134,6 @@ def test_reimport_file_from_zip(actual_server, tmp_path):
         assert len(get_accounts(actual.session)) == 1
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="fails due to file locking issues which are specific for win32")
 def test_redownload_file(actual_server, tmp_path):
     port = actual_server.get_exposed_port(5006)
     with Actual(f"http://localhost:{port}", password="mypass", bootstrap=True) as actual:

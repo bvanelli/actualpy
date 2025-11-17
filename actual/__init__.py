@@ -145,6 +145,8 @@ class Actual(ActualServer):
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self._session:
             self._session.close()
+        if self.engine:
+            self.engine.dispose()
         self._in_context = False
 
     @property
@@ -186,22 +188,22 @@ class Actual(ActualServer):
         the base database, and the following files are migrations. Migrations can also be `.js` files. In this case,
         we have to extract and execute queries from the standard JS.
         """
-        conn = sqlite3.connect(self._data_dir / "db.sqlite")
-        for file in migration_files:
-            if not file.startswith("migrations"):
-                continue  # in case db.sqlite file gets passed as one of the migrations files
-            file_id = file.split("_")[0].split("/")[1]
-            if conn.execute(f"SELECT id FROM __migrations__ WHERE id = '{file_id}';").fetchall():
-                continue  # skip migration as it was already ran
-            migration = self.data_file(file)  # retrieves file from actual server
-            sql_statements = migration.decode()
-            if file.endswith(".js"):
-                # there is one migration which is Javascript. All entries inside db.execQuery(`...`) must be executed
-                exec_entries = js_migration_statements(sql_statements)
-                sql_statements = "\n".join(exec_entries)
-            conn.executescript(sql_statements)
-            conn.execute(f"INSERT INTO __migrations__ (id) VALUES ({file_id});")
-        conn.commit()
+        with sqlite3.connect(self._data_dir / "db.sqlite") as conn:
+            for file in migration_files:
+                if not file.startswith("migrations"):
+                    continue  # in case db.sqlite file gets passed as one of the migrations files
+                file_id = file.split("_")[0].split("/")[1]
+                if conn.execute(f"SELECT id FROM __migrations__ WHERE id = '{file_id}';").fetchall():
+                    continue  # skip migration as it was already ran
+                migration = self.data_file(file)  # retrieves file from actual server
+                sql_statements = migration.decode()
+                if file.endswith(".js"):
+                    # there is one migration which is Javascript. All entries inside db.execQuery(`...`) must be executed
+                    exec_entries = js_migration_statements(sql_statements)
+                    sql_statements = "\n".join(exec_entries)
+                conn.executescript(sql_statements)
+                conn.execute(f"INSERT INTO __migrations__ (id) VALUES ({file_id});")
+            conn.commit()
         conn.close()
         # update the metadata by reflecting the model
         self._meta = reflect_model(self.engine)
@@ -287,6 +289,7 @@ class Actual(ActualServer):
                 VACUUM;
             """
             )
+        conn.close()
 
     def export_data(self, output_file: str | PathLike[str] | IO[bytes] | None = None, cleanup: bool = True) -> bytes:
         """
