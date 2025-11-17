@@ -592,3 +592,49 @@ def test_get_transactions_with_cleared_filter(session):
     assert len(txs) == 2
     for t in txs:
         assert t.cleared
+
+
+def test_get_accounts_with_closed_filter(session):
+    """Test getting accounts filtering by closed attribute."""
+    closed_budget = create_account(session, "Checking")
+    open_budget = create_account(session, "Investment")
+
+    closed_budget.closed = 1
+    session.commit()
+
+    # Test only open accounts
+    result = get_accounts(session, closed=False)
+    assert len(result) == 1
+    assert result[0].name == open_budget.name
+
+    # Test only open accounts
+    result = get_accounts(session, closed=True)
+    assert len(result) == 1
+    assert result[0].name == closed_budget.name
+
+    # All accounts
+    result = get_accounts(session)
+    assert len(result) == 2
+
+
+def test_get_accounts_with_off_budget_filter(session):
+    """Test getting accounts filtering by off_budget attribute."""
+    off_budget_account = create_account(session, "Mortgage", off_budget=True)
+    on_budget_account = create_account(session, "Checking", off_budget=False)
+    session.commit()
+
+    # Test default behavior
+    all_accounts = get_accounts(session)
+    assert len(all_accounts) == 2, "Default should return all accounts"
+
+    # Test only on-budget accounts
+    on_budget_only = get_accounts(session, off_budget=False)
+    assert len(on_budget_only) == 1, "Should only return on-budget account"
+    assert on_budget_only[0].name == on_budget_account.name
+    assert on_budget_only[0].offbudget == 0
+
+    # Test only off-budget accounts
+    off_budget_only = get_accounts(session, off_budget=True)
+    assert len(off_budget_only) == 1, "Should only return off-budget account"
+    assert off_budget_only[0].name == off_budget_account.name
+    assert off_budget_only[0].offbudget == 1
