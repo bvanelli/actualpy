@@ -496,28 +496,11 @@ def create_split(s: Session, transaction: Transactions, amount: float | decimal.
     return split
 
 
-def _base_query(
-    instance: type[T],
-    name: str | None = None,
-    include_deleted: bool = False,
-    include_closed: bool = True,
-    include_on_budget: bool = True,
-    include_off_budget: bool = True,
-) -> Select:
+def _base_query(instance: type[T], name: str | None = None, include_deleted: bool = False) -> Select:
     """Internal method to reduce querying complexity on sub-functions."""
     query = select(instance)
     if not include_deleted:
         query = query.filter(sqlalchemy.func.coalesce(instance.tombstone, 0) == 0)
-    if not include_closed:
-        query = query.filter(sqlalchemy.func.coalesce(instance.closed, 0) == 0)
-
-    # Apply offbudget filters if instance is Accounts
-    if hasattr(instance, "offbudget"):
-        if not include_on_budget:
-            query = query.filter(sqlalchemy.func.coalesce(instance.offbudget, 0) == 1)
-        if not include_off_budget:
-            query = query.filter(sqlalchemy.func.coalesce(instance.offbudget, 0) == 0)
-
     if name:
         query = query.filter(instance.name.ilike(f"%{sqlalchemy.text(name).compile()}%"))
     return query
@@ -661,9 +644,8 @@ def get_accounts(
     s: Session,
     name: str | None = None,
     include_deleted: bool = False,
-    include_closed: bool = True,
-    include_on_budget: bool = True,
-    include_off_budget: bool = True,
+    closed: bool = None,
+    off_budget: bool = None,
 ) -> typing.Sequence[Accounts]:
     """
     Returns a list of all available accounts.
@@ -671,14 +653,17 @@ def get_accounts(
     :param s: Session from the Actual local database.
     :param name: Pattern name of the payee, case-insensitive.
     :param include_deleted: Includes all payees deleted via frontend. They would not show normally.
-    :param include_closed: Optional; Defaults to True. Whether to include closed accounts.
-    :param include_on_budget: Optional; Defaults to True. Whether to include on-budget accounts.
-    :param include_off_budget: Optional; Defaults to True. Whether to include off-budget accounts.
+    :param closed: Optional; Defaults to None (no closed filter). Whether to limit to open or closed accounts.
+    :param off_budget: Optional; Defaults to None (no off_budget filter). Whether to limit to off or on budget accounts.
     :return: List of accounts with `transactions` already loaded.
     """
-    query = _base_query(Accounts, name, include_deleted, include_closed, include_on_budget, include_off_budget).options(
-        joinedload(Accounts.transactions)
-    )
+    query = _base_query(Accounts, name, include_deleted).options(joinedload(Accounts.transactions))
+
+    if closed is not None:
+        query = query.filter(Accounts.closed == int(closed))
+    if off_budget is not None:
+        query = query.filter(Accounts.offbudget == int(off_budget))
+
     return s.exec(query).unique().all()
 
 
