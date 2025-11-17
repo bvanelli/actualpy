@@ -595,7 +595,7 @@ def test_get_transactions_with_cleared_filter(session):
 
 
 def test_get_accounts_with_closed_filter(session):
-    """Test getting accounts filtering by closed attribute."""
+    """Test get_accounts filtering by closed attribute."""
     closed_budget = create_account(session, "Checking")
     open_budget = create_account(session, "Investment")
 
@@ -618,7 +618,7 @@ def test_get_accounts_with_closed_filter(session):
 
 
 def test_get_accounts_with_off_budget_filter(session):
-    """Test getting accounts filtering by off_budget attribute."""
+    """Test get_accounts filtering by off_budget attribute."""
     off_budget_account = create_account(session, "Mortgage", off_budget=True)
     on_budget_account = create_account(session, "Checking", off_budget=False)
     session.commit()
