@@ -658,8 +658,8 @@ def get_accounts(
     :param s: Session from the Actual local database.
     :param name: Pattern name of the payee, case-insensitive.
     :param include_deleted: Includes all payees deleted via frontend. They would not show normally.
-    :param closed: Optional; Defaults to None (no closed filter). Whether to limit to open or closed accounts.
-    :param off_budget: Optional; Defaults to None (no off_budget filter). Whether to limit to off or on budget accounts.
+    :param closed: Optional closed filter; Defaults to None (includes open and closed accounts).
+    :param off_budget: Optional off_budget filter; Defaults to None (includes off and on budget accounts).
     :return: List of accounts with `transactions` already loaded.
     """
     query = _base_query(Accounts, name, include_deleted).options(joinedload(Accounts.transactions))
