@@ -198,7 +198,8 @@ class Actual(ActualServer):
                 migration = self.data_file(file)  # retrieves file from actual server
                 sql_statements = migration.decode()
                 if file.endswith(".js"):
-                    # there is one migration which is Javascript. All entries inside db.execQuery(`...`) must be executed
+                    # There is at least one migration which is a Javascript file.
+                    # All entries inside db.execQuery(`...`) must be executed
                     exec_entries = js_migration_statements(sql_statements)
                     sql_statements = "\n".join(exec_entries)
                 conn.executescript(sql_statements)
