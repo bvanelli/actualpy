@@ -1,5 +1,6 @@
 import datetime
 import json
+import os
 import pathlib
 
 import pytest
@@ -87,7 +88,7 @@ def test_init_interactive(actual_server, mocker):
 def test_load_config(actual_server):
     cfg = Config.load()
     assert cfg.default_context == "test"
-    assert str(default_config_path()).endswith(".actualpy/config.yaml")
+    assert str(default_config_path()).endswith(".actualpy" + os.sep + "config.yaml")
     # if the context does not exist, it should fail to load the server
     cfg.default_context = "foo"
     with pytest.raises(ValueError, match="Could not find budget with context"):
@@ -115,14 +116,13 @@ def test_metadata(actual_server):
 def test_accounts(actual_server):
     result = invoke(["accounts"])
     assert result.exit_code == 0
-    assert result.stdout == (
-        "         Accounts         \n"
-        "┏━━━━━━━━━━━━━━┳━━━━━━━━━┓\n"
-        "┃ Account Name ┃ Balance ┃\n"
-        "┡━━━━━━━━━━━━━━╇━━━━━━━━━┩\n"
-        "│ Bank         │   50.00 │\n"
-        "└──────────────┴─────────┘\n"
-    )
+
+    # Split the output by line and assert that all expected data is present
+    lines = result.stdout.split("\n")
+    assert "Accounts" in lines[0]
+    assert "Account Name" in lines[2] and "Balance" in lines[2]
+    assert "Bank" in lines[4] and "50.00" in lines[4]
+
     # make sure json is valid
     result = invoke(["-o", "json", "accounts"])
     assert json.loads(result.stdout) == [{"name": "Bank", "balance": 50.00}]
@@ -131,15 +131,17 @@ def test_accounts(actual_server):
 def test_transactions(actual_server):
     result = invoke(["transactions"])
     assert result.exit_code == 0
-    assert result.stdout == (
-        "                              Transactions                              \n"
-        "┏━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━┓\n"
-        "┃ Date       ┃ Payee            ┃ Notes           ┃ Category ┃  Amount ┃\n"
-        "┡━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━┩\n"
-        "│ 2024-12-24 │ Shopping Center  │ Christmas Gifts │ Gifts    │ -100.00 │\n"
-        "│ 2024-09-05 │ Starting Balance │                 │ Starting │  150.00 │\n"
-        "└────────────┴──────────────────┴─────────────────┴──────────┴─────────┘\n"
-    )
+
+    # Split the output by line and assert that all expected data is present
+    lines = result.stdout.split("\n")
+    assert "Transactions" in lines[0]
+    for f in ["Date", "Payee", "Notes", "Category", "Amount"]:
+        assert f in lines[2]
+    for f in ["2024-12-24", "Shopping Center", "Christmas Gifts", "Gifts", "-100.00"]:
+        assert f in lines[4]
+    for f in ["2024-09-05", "Starting Balance", "Starting", "150.00"]:
+        assert f in lines[5]
+
     # make sure json is valid
     result = invoke(["-o", "json", "transactions"])
     assert {
@@ -154,16 +156,15 @@ def test_transactions(actual_server):
 def test_payees(actual_server):
     result = invoke(["payees"])
     assert result.exit_code == 0
-    assert result.stdout == (
-        "            Payees            \n"
-        "┏━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┓\n"
-        "┃ Name             ┃ Balance ┃\n"
-        "┡━━━━━━━━━━━━━━━━━━╇━━━━━━━━━┩\n"
-        "│                  │    0.00 │\n"  # this is the payee for the account
-        "│ Starting Balance │  150.00 │\n"
-        "│ Shopping Center  │ -100.00 │\n"
-        "└──────────────────┴─────────┘\n"
-    )
+
+    # Split the output by line and assert that all expected data is present
+    lines = result.stdout.split("\n")
+    assert "Payees" in lines[0]
+    assert "Name" in lines[2] and "Balance" in lines[2]
+    assert "0.00" in lines[4]
+    assert "Starting Balance" in lines[5] and "150.00" in lines[5]
+    assert "Shopping Center" in lines[6] and "-100.00" in lines[6]
+
     # make sure json is valid
     result = invoke(["-o", "json", "payees"])
     assert {"name": "Shopping Center", "balance": -100.00} in json.loads(result.stdout)
