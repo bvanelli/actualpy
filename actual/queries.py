@@ -929,6 +929,7 @@ def get_accumulated_budgeted_balance(s: Session, month: datetime.date, category:
     :return: A decimal representing the budget real balance for the category. This is evaluated by adding all
              previous leftover budgets that have a value greater than 0.
     """
+    category = get_category(s, category)
     budgets = get_budgets(s, category=category)
     is_tracking_budget = _get_budget_table(s) is ReflectBudgets
     # the first ever budget is the longest we have to look for when searching for the running balance

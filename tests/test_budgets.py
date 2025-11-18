@@ -118,7 +118,8 @@ def test_accumulated_budget_amount(
 
     # check also the accumulated balance method
     assert get_accumulated_budgeted_balance(session, date(2025, 2, 1), category) == expected_value_previous_month
-    assert get_accumulated_budgeted_balance(session, date(2025, 3, 1), category) == expected_value_current_month
+    # should also work with name
+    assert get_accumulated_budgeted_balance(session, date(2025, 3, 1), category.name) == expected_value_current_month
 
 
 @pytest.mark.parametrize("last_month_carryover", (True, False))
