@@ -127,6 +127,7 @@ def get_transactions(
     is_parent: bool = False,
     include_deleted: bool = False,
     budget: ZeroBudgets | None = None,
+    cleared: bool = None,
 ) -> typing.Sequence[Transactions]:
     """
     Returns a list of all available transactions, sorted by date in descending order.
@@ -146,12 +147,16 @@ def get_transactions(
     :param budget: Optional budget filter for the transactions. The budget range and category will be used to filter the
                    final results. **Usually not used together with the `start_date` and `end_date` filters, as they
                    might hide results.
+    :param cleared: Optional cleared filter for the transactions. Defaults to None, meaning both cleared
+                    and non-cleared transactions are included.
     :return: List of transactions with `account`, `category` and `payee` preloaded.
     """
     query = _transactions_base_query(s, start_date, end_date, account, category, include_deleted)
     query = query.filter(Transactions.is_parent == int(is_parent))
     if notes:
         query = query.filter(Transactions.notes.ilike(f"%{sqlalchemy.text(notes).compile()}%"))
+    if cleared is not None:
+        query = query.filter(Transactions.cleared == int(cleared))
     if budget:
         budget_start, budget_end = budget.range
         if (start_date and start_date >= budget_end) or (end_date and end_date < budget_start):
@@ -664,16 +669,30 @@ def get_or_create_category(
     return category
 
 
-def get_accounts(s: Session, name: str | None = None, include_deleted: bool = False) -> typing.Sequence[Accounts]:
+def get_accounts(
+    s: Session,
+    name: str | None = None,
+    include_deleted: bool = False,
+    closed: bool = None,
+    off_budget: bool = None,
+) -> typing.Sequence[Accounts]:
     """
     Returns a list of all available accounts.
 
     :param s: Session from the Actual local database.
     :param name: Pattern name of the payee, case-insensitive.
     :param include_deleted: Includes all payees deleted via frontend. They would not show normally.
+    :param closed: Optional closed filter; Defaults to None (includes open and closed accounts).
+    :param off_budget: Optional off_budget filter; Defaults to None (includes off and on budget accounts).
     :return: List of accounts with `transactions` already loaded.
     """
     query = _base_query(Accounts, name, include_deleted).options(joinedload(Accounts.transactions))
+
+    if closed is not None:
+        query = query.filter(Accounts.closed == int(closed))
+    if off_budget is not None:
+        query = query.filter(Accounts.offbudget == int(off_budget))
+
     return s.exec(query).unique().all()
 
 
