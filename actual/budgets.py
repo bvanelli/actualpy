@@ -26,22 +26,27 @@ class BudgetCategory:
 
     This dataclass contains both the budgeted amount and actual spending information for a category,
     along with balance calculations.
-
-    :param category: The category this budget information applies to.
-    :param budgeted: The amount budgeted for this category in this month.
-    :param spent: The actual amount spent in this category this month (typically negative).
-    :param balance: The simple balance (budgeted + spent) for this month only.
-    :param accumulated_balance: The balance including carryover from previous months.
-    :param budget: The underlying budget database record, if it exists. If a budget was not set for the month, it will
-        be set to `None`, and budgeted amount assumed to be zero.
     """
 
     category: Categories
+    """The category this budget information applies to."""
+
     budgeted: decimal.Decimal
+    """The amount budgeted for this category in this month."""
+
     spent: decimal.Decimal
+    """The actual amount spent in this category this month (typically negative)."""
+
     balance: decimal.Decimal
+    """The simple balance (budgeted + spent) for this month only."""
+
     accumulated_balance: decimal.Decimal
+    """The balance including carryover from previous months."""
+
     budget: ReflectBudgets | BaseBudgets | None = None  # If the budget value
+    """The underlying budget database record, if it exists.
+    If a budget was not set for the month, it will be set to `None`, and budgeted amount assumed to be zero.
+    """
 
     @property
     def carryover(self) -> bool:
@@ -63,13 +68,12 @@ class BudgetCategoryGroup:
     Represents budget information for a category group and all its categories in a specific month.
 
     A category group contains multiple categories and aggregates their budget information.
-
-    :param category_group: The category group this budget information applies to.
-    :param categories: List of BudgetCategory objects for all categories in this group.
     """
 
     category_group: CategoryGroups
+    """The category group this budget information applies to."""
     categories: list[BudgetCategory]
+    """List of BudgetCategory objects for all categories in this group."""
 
     @property
     def budgeted(self) -> decimal.Decimal:
@@ -94,15 +98,16 @@ class BaseBudget:
 
     This is the parent class for both EnvelopeBudget and TrackingBudget, containing common properties
     and methods for budget calculations.
-
-    :param month: The month this budget applies to (always the first day of the month).
-    :param income: Total income for this month.
-    :param category_groups: List of BudgetCategoryGroup objects containing all budget categories.
     """
 
     month: datetime.date
+    """The month this budget applies to (always the first day of the month)."""
+
     income: decimal.Decimal
-    category_groups: list[BudgetCategoryGroup]  # List of individual category group budgets
+    """Total income for this month."""
+
+    category_groups: list[BudgetCategoryGroup]
+    """List of BudgetCategoryGroup objects containing all budget categories."""
 
     @property
     def budgeted(self) -> decimal.Decimal:
@@ -149,15 +154,14 @@ class EnvelopeBudget(BaseBudget):
 
     Envelope budgeting is the default budgeting mode in Actual Budget, where money is allocated to
     specific categories and can be carried over between months.
-
-    :param for_next_month: The amount of money held for the next month.
-    :param overspent_prev_month: The overspent amount from the previous month.
-    :param from_last_month: The amount of money inherited from the previous month.
     """
 
-    for_next_month: decimal.Decimal  # The amount of money held for the next month
-    overspent_prev_month: decimal.Decimal  # The exact same as `overspent`, but from a previous month
-    from_last_month: decimal.Decimal  # The amount of money `inherited` from a previous month
+    for_next_month: decimal.Decimal
+    """The amount of money held for the next month."""
+    last_month_overspent: decimal.Decimal
+    """The overspent amount from the previous month."""
+    from_last_month: decimal.Decimal
+    """The amount of money inherited from the previous month."""
 
     def __str__(self):
         ret = ""
@@ -203,7 +207,7 @@ class EnvelopeBudget(BaseBudget):
         This is equivalent to the available funds minus the budgeted amount, minus the budget for the next month. If
         you had overspending from the previous month, it will also subtract from the total value.
         """
-        return self.available_funds - self.budgeted - self.for_next_month + self.overspent_prev_month
+        return self.available_funds - self.budgeted - self.for_next_month + self.last_month_overspent
 
 
 @dataclasses.dataclass
@@ -212,11 +216,10 @@ class TrackingBudget(BaseBudget):
     Budget information for tracking budgeting mode for a single month.
 
     Tracking budgeting is an alternative budgeting mode that focuses on the simplicity of tracking expenses.
-
-    :param budgeted_income: The amount of income that was budgeted.
     """
 
-    budgeted_income: decimal.Decimal  # The amount of income that was budgeted.
+    budgeted_income: decimal.Decimal
+    """The amount of income that was budgeted."""
 
     def __str__(self):
         ret = ""
@@ -260,7 +263,7 @@ class BudgetList(list[EnvelopeBudget | TrackingBudget]):
         self.is_tracking_budget: bool = is_tracking_budget
 
     @property
-    def income(self) -> decimal.Decimal:
+    def total_income(self) -> decimal.Decimal:
         """
         Returns the total income for all months in the list.
 
@@ -269,7 +272,7 @@ class BudgetList(list[EnvelopeBudget | TrackingBudget]):
         return sum([budget.income for budget in self], start=decimal.Decimal(0))
 
     @property
-    def budgeted(self) -> decimal.Decimal:
+    def total_budgeted(self) -> decimal.Decimal:
         """
         Returns the total budgeted for all months in the list.
 
@@ -364,7 +367,7 @@ def _get_envelope_budget_info(s: Session, until: datetime.date) -> list[Envelope
         first_positive_transaction.get_date() if first_positive_transaction else first_budget_month
     )
     if first_transaction_month is None:
-        return []  # handle separately
+        return []  # todo: handle separately to return one entry here
     # load category groups
     category_groups = get_category_groups(s, is_income=False)
     # Set the first month from the budgeting, then
@@ -393,14 +396,14 @@ def _get_envelope_budget_info(s: Session, until: datetime.date) -> list[Envelope
             cat_group_list.append(BudgetCategoryGroup(category_group, cat_list))
         income = get_income(s, current_month)
         for_next_month = _get_held_budget_amount(s, current_month)
-        # we set a first value to both available_funds and to overspent_prev_month
+        # we set a first value to both available_funds and to last_month_overspent
         budget = EnvelopeBudget(
             current_month, income, cat_group_list, for_next_month, decimal.Decimal(0), decimal.Decimal(0)
         )
-        # calculate available funds and overspent_prev_month
+        # calculate available funds and last_month_overspent
         if last_budget:
             budget.from_last_month = last_budget.to_budget + last_budget.for_next_month
-            budget.overspent_prev_month = last_budget.overspent
+            budget.last_month_overspent = last_budget.overspent
         budget_list.append(budget)
         # go to the next month
         current_month = next_month(current_month)

@@ -251,7 +251,7 @@ def budget(month: datetime.datetime | None = typer.Argument(default=None, help="
         else:
             summary.append(f"{budget_data.available_funds:.2f}", style="bold green")
             summary.append(" Available funds\n", style="dim")
-            summary.append(f"{budget_data.overspent_prev_month:.2f}", style="bold red")
+            summary.append(f"{budget_data.last_month_overspent:.2f}", style="bold red")
             summary.append(" Overspent in previous month\n", style="dim")
             summary.append(f"{budget_data.budgeted:.2f}", style="bold blue")
             summary.append(" Budgeted\n", style="dim")
