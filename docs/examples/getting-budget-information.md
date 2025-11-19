@@ -72,13 +72,13 @@ budget_general_info = {
     "incomeAvailable": decimal_to_cents(budget.available_funds),
     "lastMonthOverspent": decimal_to_cents(budget.last_month_overspent),
     "forNextMonth": decimal_to_cents(budget.for_next_month),
-    "totalBudgeted": decimal_to_cents(-budget.total_budgeted),
+    "totalBudgeted": decimal_to_cents(-budget.budgeted),
     "toBudget": decimal_to_cents(budget.to_budget),
     "fromLastMonth": decimal_to_cents(budget.from_last_month),
-    "totalIncome": decimal_to_cents(budget.total_income),
+    "totalIncome": decimal_to_cents(budget.income),
     "totalSpent": decimal_to_cents(budget.spent),
     "totalBalance": decimal_to_cents(budget.accumulated_balance),
-    "categories": [],
+    "categoryGroups": [],
 }
 ```
 
@@ -91,11 +91,11 @@ Afterward, we can iterate over the category groups and build the information for
 ```python
 for category in category_group.categories:
     category_balance = {
-        "id": category.category.id,
-        "name": category.category.name,
-        "is_income": bool(category.category.is_income),
-        "hidden": bool(category.category.hidden),
-        "group_id": category_group.category_group.id,
+        "id": category.id,
+        "name": category.name,
+        "is_income": category.is_income,
+        "hidden": category.hidden,
+        "group_id": category_group.id,
         "budgeted": decimal_to_cents(category.budgeted),
         "spent": decimal_to_cents(category.spent),
         "balance": decimal_to_cents(category.accumulated_balance),
@@ -140,10 +140,10 @@ with Actual("http://localhost:5006", password="mypass", file="Budget") as actual
     for category_group in budget.category_groups:
         # the object is stored in category_group.category_group
         category_group_balance = {
-            "id": category_group.category_group.id,
+            "id": category_group.id,
             "name": category_group.category_group.name,
-            "is_income": bool(category_group.category_group.is_income),
-            "hidden": bool(category_group.category_group.hidden),
+            "is_income": category_group.is_income,
+            "hidden": category_group.hidden,
             "budgeted": decimal_to_cents(category_group.budgeted),
             "spent": decimal_to_cents(category_group.spent),
             "balance": decimal_to_cents(category_group.accumulated_balance),
@@ -152,11 +152,11 @@ with Actual("http://localhost:5006", password="mypass", file="Budget") as actual
         # We can also iterate over the categories and fill those properties too
         for category in category_group.categories:
             category_balance = {
-                "id": category.category.id,
-                "name": category.category.name,
-                "is_income": bool(category.category.is_income),
-                "hidden": bool(category.category.hidden),
-                "group_id": category_group.category_group.id,
+                "id": category.id,
+                "name": category.name,
+                "is_income": category.is_income,
+                "hidden": category.hidden,
+                "group_id": category_group.id,
                 "budgeted": decimal_to_cents(category.budgeted),
                 "spent": decimal_to_cents(category.spent),
                 "balance": decimal_to_cents(category.balance),

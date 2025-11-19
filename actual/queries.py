@@ -673,8 +673,8 @@ def get_accounts(
     s: Session,
     name: str | None = None,
     include_deleted: bool = False,
-    closed: bool = None,
-    off_budget: bool = None,
+    closed: bool | None = None,
+    off_budget: bool | None = None,
 ) -> typing.Sequence[Accounts]:
     """
     Returns a list of all available accounts.

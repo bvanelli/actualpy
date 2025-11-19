@@ -268,7 +268,7 @@ def budget(month: datetime.datetime | None = typer.Argument(default=None, help="
         # add a row with totals for expenses
         for category_group in budget_data.category_groups:
             table.add_row(
-                f"▼ {category_group.category_group.name}",
+                f"▼ {category_group.name}",
                 f"{category_group.budgeted:.2f}",
                 f"{category_group.spent:.2f}",
                 f"{category_group.accumulated_balance:.2f}",
@@ -276,13 +276,36 @@ def budget(month: datetime.datetime | None = typer.Argument(default=None, help="
             )
             for category in category_group.categories:
                 table.add_row(
-                    f"    {category.category.name}",
+                    f"    {category.name}",
                     f"{category.budgeted:.2f}",
                     f"{category.spent:.2f}",
                     f"{category.accumulated_balance:.2f}",
                     style="dim",
                 )
         console.print(table)
+        income_table = Table(show_header=True, header_style="bold", width=width)
+        income_table.add_column("Income\n", justify="left", width=45)
+        income_table.add_column(
+            f"Budgeted\n{budget_data.budgeted_income:.2f}" if budget_history.is_tracking_budget else "",
+            justify="right",
+            width=18,
+        )
+        income_table.add_column(f"Received\n{budget_data.income:.2f}", justify="right", width=18)
+        for income_category_group in budget_data.income_category_groups:
+            income_table.add_row(
+                f"▼ {income_category_group.name}",
+                f"{income_category_group.budgeted}:.2f" if budget_history.is_tracking_budget else "",  # todo
+                f"{income_category_group.received:.2f}",
+                style="bold",
+            )
+            for category in income_category_group.categories:
+                income_table.add_row(
+                    f"    {category.name}",
+                    f"{category.budgeted:.2f}" if budget_history.is_tracking_budget else "",  # todo
+                    f"{category.received:.2f}",
+                    style="dim",
+                )
+        console.print(income_table)
     else:
         # todo: fix this still
         console.print(JSON.from_data(budget_data))
