@@ -3,6 +3,7 @@ import decimal
 import json
 import warnings
 from datetime import date, timedelta
+from decimal import Decimal
 
 import pytest
 
@@ -640,3 +641,53 @@ def test_get_accounts_with_off_budget_filter(session):
     assert len(off_budget_only) == 1, "Should only return off-budget account"
     assert off_budget_only[0].name == off_budget_account.name
     assert off_budget_only[0].offbudget == off_budget_account.offbudget
+
+
+def test_get_transactions_with_payee_id_filter(session):
+    """Test get_transactions filtering by payee_id attribute."""
+    account = create_account(session, "Checking")
+    payee_name_1 = "Walmart"
+    payee_name_2 = "Target"
+    create_transaction(session, date=today, account=account, payee=payee_name_1, amount=10)
+    create_transaction(session, date=today, account=account, payee=payee_name_1, amount=11.5)
+    create_transaction(session, date=today, account=account, payee=payee_name_2, amount=11.50)
+
+    # Test getting all transactions
+    all_transactions = get_transactions(session, account=account)
+    assert len(all_transactions) == 3, "Default should return all transactions"
+
+    # Test getting only transactions matching payee_id
+    payee_id = get_or_create_payee(session, payee_name_1).id
+    transactions = get_transactions(session, account=account, payee_id=payee_id)
+    assert len(transactions) == 2, "Should only return transactions with Walmart payee"
+    for transaction in transactions:
+        assert transaction.payee.name == payee_name_1
+
+
+def test_get_transactions_with_amount_filter(session):
+    """Test get_transactions filtering by amount attribute."""
+    account = create_account(session, "Checking")
+    create_transaction(session, date=today, account=account, amount=10)
+    create_transaction(session, date=today, account=account, amount=11.5)
+    create_transaction(session, date=today, account=account, amount=11.50)
+
+    # Test getting all transactions
+    all_transactions = get_transactions(session, account=account)
+    assert len(all_transactions) == 3, "Default should return all transactions"
+
+    # Testing getting only transactions matching 10 (passed as int)
+    transactions = get_transactions(session, account=account, amount=10)
+    assert len(transactions) == 1, "Should only return transaction of value 10"
+    assert transactions[0].amount == 10 * 100
+
+    # Testing getting only transactions matching 11.50 (passed as float)
+    transactions = get_transactions(session, account=account, amount=11.50)
+    assert len(transactions) == 2, "Should only return transactions of value 11.50"
+    for transaction in transactions:
+        assert transaction.amount == 11.50 * 100
+
+    # Testing getting only transactions matching 11.50 (passed as Decimal)
+    transactions = get_transactions(session, account=account, amount=Decimal(11.50))
+    assert len(transactions) == 2, "Should only return transactions of value 11.50"
+    for transaction in transactions:
+        assert transaction.amount == 11.50 * 100

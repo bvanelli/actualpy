@@ -118,9 +118,11 @@ def get_transactions(
     s: Session,
     start_date: datetime.date | None = None,
     end_date: datetime.date | None = None,
+    payee_id: str | None = None,
     notes: str | None = None,
     account: Accounts | str | None = None,
     category: Categories | str | None = None,
+    amount: decimal.Decimal | float | int | None = None,
     is_parent: bool = False,
     include_deleted: bool = False,
     budget: ZeroBudgets | None = None,
@@ -150,8 +152,12 @@ def get_transactions(
     """
     query = _transactions_base_query(s, start_date, end_date, account, category, include_deleted)
     query = query.filter(Transactions.is_parent == int(is_parent))
+    if payee_id:
+        query = query.filter(Transactions.payee_id == payee_id)
     if notes:
         query = query.filter(Transactions.notes.ilike(f"%{sqlalchemy.text(notes).compile()}%"))
+    if amount:
+        query = query.filter(Transactions.amount == int(amount * 100))
     if cleared is not None:
         query = query.filter(Transactions.cleared == int(cleared))
     if budget:
