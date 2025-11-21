@@ -3,7 +3,6 @@ import decimal
 import json
 import warnings
 from datetime import date, timedelta
-from decimal import Decimal
 
 import pytest
 
@@ -687,7 +686,7 @@ def test_get_transactions_with_amount_filter(session):
         assert transaction.amount == 11.50 * 100
 
     # Testing getting only transactions matching 11.50 (passed as Decimal)
-    transactions = get_transactions(session, account=account, amount=Decimal(11.50))
+    transactions = get_transactions(session, account=account, amount=decimal.Decimal(11.50))
     assert len(transactions) == 2, "Should only return transactions of value 11.50"
     for transaction in transactions:
         assert transaction.amount == 11.50 * 100
