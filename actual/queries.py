@@ -118,15 +118,15 @@ def get_transactions(
     s: Session,
     start_date: datetime.date | None = None,
     end_date: datetime.date | None = None,
-    payee_id: str | None = None,
     notes: str | None = None,
     account: Accounts | str | None = None,
     category: Categories | str | None = None,
-    amount: decimal.Decimal | float | int | None = None,
     is_parent: bool = False,
     include_deleted: bool = False,
     budget: ZeroBudgets | None = None,
     cleared: bool = None,
+    payee_id: str | None = None,
+    amount: decimal.Decimal | float | int | None = None,
 ) -> typing.Sequence[Transactions]:
     """
     Returns a list of all available transactions, sorted by date in descending order.
@@ -134,12 +134,10 @@ def get_transactions(
     :param s: Session from the Actual local database.
     :param start_date: Optional start date for the transaction period (inclusive)
     :param end_date: optional end date for the transaction period (exclusive)
-    :param payee_id: optional payee_id filter for the transactions.
     :param notes: optional notes filter for the transactions. This looks for a case-insensitive pattern rather than for
     the exact match, i.e. 'foo' would match 'Foo Bar'.
     :param account: Optional account (either Account object or Account name) filter for the transactions.
     :param category: Optional category (either Category object or Category name) filter for the transactions.
-    :param amount: Optional amount filter for the transactions.
     :param is_parent: Optional boolean flag to indicate if a transaction is a parent. Parent transactions are either
                       single transactions or the main transaction with the `Transactions.splits` property. The default
                       is to return all individual splits, and the parent can be retrieved by
@@ -150,6 +148,8 @@ def get_transactions(
                    might hide results.
     :param cleared: Optional cleared filter for the transactions. Defaults to None, meaning both cleared
                     and non-cleared transactions are included.
+    :param payee_id: optional payee_id filter for the transactions.
+    :param amount: Optional amount filter for the transactions.
     :return: List of transactions with `account`, `category` and `payee` preloaded.
     """
     query = _transactions_base_query(s, start_date, end_date, account, category, include_deleted)
