@@ -48,6 +48,13 @@ def day_to_ordinal(day: int) -> str:
     return f"{day}{suffix}"
 
 
+def next_month(month: datetime.date) -> datetime.date:
+    """
+    Returns the next month after the provided `month`. [Original source](https://stackoverflow.com/a/59199379/12681470).
+    """
+    return (month.replace(day=1) + datetime.timedelta(days=32)).replace(day=1)
+
+
 def month_range(month: datetime.date) -> tuple[datetime.date, datetime.date]:
     """
     Range of the provided `month` as a tuple `[start, end)`.
@@ -55,8 +62,7 @@ def month_range(month: datetime.date) -> tuple[datetime.date, datetime.date]:
     The end date is not inclusive, as it represents the start of the next month.
     """
     range_start = month.replace(day=1)
-    # conversion taken from https://stackoverflow.com/a/59199379/12681470
-    range_end = (range_start + datetime.timedelta(days=32)).replace(day=1)
+    range_end = next_month(month)
     return range_start, range_end
 
 
