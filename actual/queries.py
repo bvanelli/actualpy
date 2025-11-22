@@ -524,7 +524,11 @@ def get_category_groups(s: Session, name: str = None, include_deleted: bool = Fa
     :param is_income: If set, it will filter by the `is_income` property of the category.
     :return: List of category groups with `categories` already loaded.
     """
-    query = _base_query(CategoryGroups, name, include_deleted).options(joinedload(CategoryGroups.categories))
+    query = (
+        _base_query(CategoryGroups, name, include_deleted)
+        .order_by(CategoryGroups.sort_order)
+        .options(joinedload(CategoryGroups.categories))
+    )
     if is_income is not None:
         query = query.filter(CategoryGroups.is_income == is_income)
     return s.exec(query).unique().all()
@@ -568,7 +572,11 @@ def get_categories(
     :param is_income: If set, it will filter by the `is_income` property of the category.
     :return: List of categories with `transactions` already loaded.
     """
-    query = _base_query(Categories, name, include_deleted).options(joinedload(Categories.transactions))
+    query = (
+        _base_query(Categories, name, include_deleted)
+        .order_by(Categories.sort_order)
+        .options(joinedload(Categories.transactions))
+    )
     if is_income is not None:
         query = query.filter(Categories.is_income == is_income)
     return s.exec(query).unique().all()
@@ -686,7 +694,11 @@ def get_accounts(
     :param off_budget: Optional off_budget filter; Defaults to None (includes off and on budget accounts).
     :return: List of accounts with `transactions` already loaded.
     """
-    query = _base_query(Accounts, name, include_deleted).options(joinedload(Accounts.transactions))
+    query = (
+        _base_query(Accounts, name, include_deleted)
+        .order_by(Accounts.sort_order)
+        .options(joinedload(Accounts.transactions))
+    )
 
     if closed is not None:
         query = query.filter(Accounts.closed == int(closed))
@@ -914,20 +926,6 @@ def get_budgeted_balance(s: Session, month: datetime.date, category: str | Categ
     return budget_leftover
 
 
-def _get_first_positive_transaction(s: Session, category: Categories | None = None) -> Transactions | None:
-    """
-    Returns the first positive transaction in a certain category.
-
-    If the category is missing, the first positive transaction in the entire budget is returned.
-
-    This is used to find the month to start the budgeting calculation, since it makes the budget positive.
-    """
-    query = select(Transactions).where(Transactions.amount > 0).order_by(Transactions.date.asc())
-    if category is not None:
-        query = query.where(Transactions.category_id == category.id)
-    return s.exec(query).first()
-
-
 def get_accumulated_budgeted_balance(s: Session, month: datetime.date, category: str | Categories) -> decimal.Decimal:
     """
     Returns the budgeted balance as shown by the Actual UI under the category.
@@ -949,32 +947,12 @@ def get_accumulated_budgeted_balance(s: Session, month: datetime.date, category:
              previous leftover budgets that have a value greater than 0.
     """
     category = get_category(s, category)
-    budgets = get_budgets(s, category=category)
-    is_tracking_budget = _get_budget_table(s) is ReflectBudgets
-    # the first ever budget is the longest we have to look for when searching for the running balance
-    # If the budget is set to tracking, the accumulated value will always be the month's balance
-    if not budgets or is_tracking_budget:
-        return get_budgeted_balance(s, month, category)
-    first_budget_month = budgets[0].get_date()
-    # Get first positive transaction
-    first_positive_transaction = _get_first_positive_transaction(s, category)
-    first_transaction_month = (
-        first_positive_transaction.get_date() if first_positive_transaction else first_budget_month
-    )
-    # current month is the least of those two dates
-    current_month = min(first_budget_month, first_transaction_month)
-    accumulated_balance = decimal.Decimal(0)
-    last_carryover = False
-    while current_month <= month:
-        budget = [b for b in budgets if b.get_date() == current_month]
-        if not last_carryover and accumulated_balance < 0:
-            accumulated_balance = decimal.Decimal(0)
-        current_month_balance = get_budgeted_balance(s, current_month, category)
-        accumulated_balance += current_month_balance
-        last_carryover = budget[0].carryover if budget else False
-        # go to the next month
-        current_month = (current_month.replace(day=1) + datetime.timedelta(days=31)).replace(day=1)
-    return accumulated_balance
+    from actual.budgets import get_budget_history
+
+    history = get_budget_history(s, month)
+    if not history:
+        return decimal.Decimal(0)
+    return history[-1].from_category(category).accumulated_balance
 
 
 def get_held_budget(s: Session, month: datetime.date) -> ZeroBudgetMonths | None:

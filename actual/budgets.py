@@ -3,13 +3,12 @@ import datetime
 import decimal
 from collections.abc import Iterator
 
-from sqlmodel import Session
+from sqlmodel import Session, select
 
-from actual.database import Categories, CategoryGroups, ReflectBudgets, ZeroBudgets
+from actual.database import Categories, CategoryGroups, ReflectBudgets, Transactions, ZeroBudgets
 from actual.queries import (
     _balance_base_query,
     _get_budget_table,
-    _get_first_positive_transaction,
     get_budget,
     get_budgets,
     get_category_groups,
@@ -43,7 +42,7 @@ class _HasDatabaseObject:
         return bool(self.database_object.is_income)
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class BudgetCategory(_HasDatabaseObject):
     """
     Represents budget information for a single category in a specific month.
@@ -55,22 +54,37 @@ class BudgetCategory(_HasDatabaseObject):
     database_object: Categories
     """The category database object this budget information applies to."""
 
-    budgeted: decimal.Decimal
-    """The amount budgeted for this category in this month."""
-
     spent: decimal.Decimal
     """The actual amount spent in this category this month (typically negative)."""
 
-    balance: decimal.Decimal
-    """The simple balance (budgeted + spent) for this month only."""
-
     accumulated_balance: decimal.Decimal
-    """The balance including carryover from previous months."""
+    """
+    The balance including carryover from previous months.
+
+    This reflects the values displayed on the Actual frontend.
+    """
 
     budget: ReflectBudgets | ZeroBudgets | None = None
-    """The underlying budget database record, if it exists.
+    """
+    The underlying budget database record, if it exists.
+
     If a budget was not set for the month, it will be set to `None`, and budgeted amount assumed to be zero.
     """
+
+    @property
+    def budgeted(self) -> decimal.Decimal:
+        """The amount budgeted for this category in this month."""
+        return self.budget.get_amount() if self.budget else decimal.Decimal(0)
+
+    @property
+    def balance(self) -> decimal.Decimal:
+        """
+        The simple balance (budgeted plus spent) for this month only.
+
+        If you are looking for the accumulated balance (taking into account previous months and carryover flags,
+        use `accumulated_balance` instead.
+        """
+        return self.budgeted + self.spent
 
     @property
     def carryover(self) -> bool:
@@ -80,7 +94,7 @@ class BudgetCategory(_HasDatabaseObject):
         return bool(self.budget.carryover)
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class BudgetCategoryGroup(_HasDatabaseObject):
     """
     Represents budget information for a category group and all its categories in a specific month.
@@ -110,7 +124,7 @@ class BudgetCategoryGroup(_HasDatabaseObject):
         return sum([c.accumulated_balance for c in self.categories], start=decimal.Decimal(0))
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class IncomeCategory(_HasDatabaseObject):
     """
     Represents budget information for a single income category in a specific month.
@@ -129,13 +143,14 @@ class IncomeCategory(_HasDatabaseObject):
     """The amount budgeted for this category in this month. Only exists for **TrackingBudget**."""
 
     budget: ReflectBudgets | None = None
-    """The underlying budget database record, if it exists. Only exists for **TrackingBudget**
+    """
+    The underlying budget database record, if it exists. Only exists for **TrackingBudget**
 
     If a budget was not set for the month, it will be set to `None`, and budgeted amount assumed to be zero.
     """
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class IncomeCategoryGroup(_HasDatabaseObject):
     """
     Represents income information for a category group and all its categories in a specific month.
@@ -164,7 +179,7 @@ class IncomeCategoryGroup(_HasDatabaseObject):
         return sum([c.budgeted for c in self.categories], start=decimal.Decimal(0))
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class BaseBudget:
     """
     Base class for budget information for a single month.
@@ -175,9 +190,6 @@ class BaseBudget:
 
     month: datetime.date
     """The month this budget applies to (always the first day of the month)."""
-
-    income: decimal.Decimal
-    """Total income for this month."""
 
     category_groups: list[BudgetCategoryGroup]
     """List of BudgetCategoryGroup objects containing all budget categories."""
@@ -230,7 +242,7 @@ class BaseBudget:
         return None
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class EnvelopeBudget(BaseBudget):
     """
     Budget information for envelope budgeting mode for a single month.
@@ -266,7 +278,7 @@ class EnvelopeBudget(BaseBudget):
         """
         The sum of all incomes plus the budget held from a previous month
         """
-        return self.income + self.from_last_month
+        return self.received + self.from_last_month
 
     @property
     def to_budget(self):
@@ -279,16 +291,13 @@ class EnvelopeBudget(BaseBudget):
         return self.available_funds - self.budgeted - self.for_next_month + self.last_month_overspent
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class TrackingBudget(BaseBudget):
     """
     Budget information for tracking budgeting mode for a single month.
 
     Tracking budgeting is an alternative budgeting mode that focuses on the simplicity of tracking expenses.
     """
-
-    budgeted_income: decimal.Decimal
-    """The amount of income that was budgeted."""
 
     @property
     def overspent(self) -> decimal.Decimal:
@@ -298,7 +307,12 @@ class TrackingBudget(BaseBudget):
         This is equivalent to the sum of income (positive) and expenses (negative). If you end up with a positive
         value, you have saved money, otherwise you have overspent.
         """
-        return self.income + self.spent
+        return self.received + self.spent
+
+    @property
+    def budgeted_income(self) -> decimal.Decimal:
+        """The amount of income budgeted for the current month."""
+        return sum([cat.budgeted for cat in self.income_category_groups], start=decimal.Decimal(0))
 
 
 class BudgetList(list[EnvelopeBudget | TrackingBudget]):
@@ -323,7 +337,7 @@ class BudgetList(list[EnvelopeBudget | TrackingBudget]):
 
         This is not a relevant metric in general as it is the simple sum of all income amounts.
         """
-        return sum([budget.income for budget in self], start=decimal.Decimal(0))
+        return sum([budget.received for budget in self], start=decimal.Decimal(0))
 
     @property
     def total_spent(self) -> decimal.Decimal:
@@ -350,15 +364,14 @@ class BudgetList(list[EnvelopeBudget | TrackingBudget]):
         return None
 
 
-def _get_category_detailed_budget(s: Session, month: datetime.date, category: Categories) -> BudgetCategory:
+def _get_category_detailed_budget(
+    s: Session, month: datetime.date, category: Categories, previous_category: BudgetCategory | None, is_tracking: bool
+) -> BudgetCategory:
     """
     Gets detailed budget information for a specific category and month.
 
     This function retrieves or creates a BudgetCategory object containing budget and spending
     information for the specified category and month.
-
-    The function **does not evaluate some fields**, as they can only be evaluated by taking other months
-    into account.
 
     :param s: Session from the Actual local database.
     :param month: The month to get budget information for.
@@ -376,8 +389,13 @@ def _get_category_detailed_budget(s: Session, month: datetime.date, category: Ca
         spent = budget.balance
     # Balance is the simple subtraction of the spent from the budget amount
     balance = budgeted + spent
-    # The accumulated balance relates to a previous budget, so it has to be computed later
-    return BudgetCategory(category, budgeted, spent, balance, decimal.Decimal(0), budget)
+    # The accumulated balance relates to a previous budget
+    return BudgetCategory(
+        category,
+        spent,
+        _calculate_accumulated_balance(balance, previous_category, is_tracking),
+        budget,
+    )
 
 
 def _get_held_budget_amount(s: Session, month: datetime.date) -> decimal.Decimal:
@@ -393,72 +411,145 @@ def _get_held_budget_amount(s: Session, month: datetime.date) -> decimal.Decimal
         return decimal.Decimal(0)
 
 
+def _get_first_positive_transaction(s: Session, category: Categories | None = None) -> Transactions | None:
+    """
+    Returns the first positive transaction in a certain category.
+
+    If the category is missing, the first positive transaction in the entire budget is returned.
+
+    This is used to find the month to start the budgeting calculation, since it makes the budget positive.
+    """
+    query = select(Transactions).where(Transactions.amount > 0).order_by(Transactions.date.asc())
+    if category is not None:
+        query = query.where(Transactions.category_id == category.id)
+    return s.exec(query).first()
+
+
+def _get_first_budget_month(s: Session) -> datetime.date | None:
+    """
+    Determines the first month to start budget processing from.
+
+    This is the earlier of:
+    - The first budget entry in the database
+    - The first positive transaction
+    """
+    budgets = get_budgets(s)
+    first_budget_month = budgets[0].get_date() if budgets else None
+    first_positive_transaction = _get_first_positive_transaction(s)
+    first_transaction_month = (
+        first_positive_transaction.get_date() if first_positive_transaction else first_budget_month
+    )
+    if first_transaction_month is None:
+        return None
+    return min(first_budget_month, first_transaction_month) if first_budget_month else first_transaction_month
+
+
+def _calculate_accumulated_balance(
+    current_balance: decimal.Decimal, previous_category: BudgetCategory | None, is_tracking: bool
+) -> decimal.Decimal:
+    """
+    Calculates the accumulated balance for a category including carryover from previous months.
+
+    For envelope budgeting:
+    - If the previous month had carryover enabled, the accumulated balance carries forward
+    - If carryover was disabled and the balance was negative, it resets to 0
+    - The current month's balance is then added to the accumulated balance
+    For tracking budgeting:
+    - Only carries accumulated balance over if the previous month had carryover enabled.
+    """
+    if previous_category is None:
+        return current_balance
+
+    has_carryover = previous_category.carryover
+
+    if is_tracking:
+        previous_balance = previous_category.accumulated_balance if has_carryover else decimal.Decimal(0)
+    else:
+        previous_balance = previous_category.accumulated_balance
+        if not has_carryover and previous_balance < 0:
+            previous_balance = decimal.Decimal(0)
+    return previous_balance + current_balance
+
+
+def _process_expense_categories(
+    s: Session,
+    month: datetime.date,
+    category_groups: list[CategoryGroups],
+    previous_budget: EnvelopeBudget | TrackingBudget | None,
+    is_tracking: bool,
+) -> list[BudgetCategoryGroup]:
+    """Processes all expense category groups for a given month."""
+    cat_group_list: list[BudgetCategoryGroup] = []
+    for category_group in category_groups:
+        cat_list = []
+        for category in category_group.categories:
+            previous_category = previous_budget.from_category(category) if previous_budget else None
+            category_budget = _get_category_detailed_budget(s, month, category, previous_category, is_tracking)
+            cat_list.append(category_budget)
+        cat_group_list.append(BudgetCategoryGroup(category_group, cat_list))
+    return cat_group_list
+
+
+def _process_income_categories(
+    s: Session, month: datetime.date, income_category_groups: list[CategoryGroups], is_tracking: bool
+) -> list[IncomeCategoryGroup]:
+    """Processes all income category groups for a given month."""
+    income_cat_group_list: list[IncomeCategoryGroup] = []
+    for category_group in income_category_groups:
+        income_cat_list = []
+        for category in category_group.categories:
+            # todo: adapt this method to function correctly without accumulated value calculation
+            budget = _get_category_detailed_budget(s, month, category, None, True)
+            if is_tracking:
+                # Tracking budget: include budgeted income
+                income_cat_list.append(IncomeCategory(category, budget.spent, budget.budgeted, budget.budget))
+            else:
+                # Envelope budget: only track received income
+                income_cat_list.append(IncomeCategory(category, budget.spent))
+        income_cat_group_list.append(IncomeCategoryGroup(category_group, income_cat_list))
+    return income_cat_group_list
+
+
 def _get_envelope_budget_info(s: Session, until: datetime.date) -> list[EnvelopeBudget]:
     """
     Gets envelope budget information from the first available month to the specified month.
 
     This function computes all envelope budget data, including carryover, overspending, and
     accumulated balances across multiple months.
-
-    :param s: Session from the Actual local database.
-    :param until: The last month included in the budget history.
     """
-    budgets = get_budgets(s)
-    first_budget_month = budgets[0].get_date() if budgets else None
-    # Get the first positive transaction to start our history evaluation
-    first_positive_transaction = _get_first_positive_transaction(s)
-    first_transaction_month = (
-        first_positive_transaction.get_date() if first_positive_transaction else first_budget_month
-    )
-    if first_transaction_month is None:
-        return []  # todo: handle separately to return one entry here
+    current_month = _get_first_budget_month(s)
+    if current_month is None or current_month > until:
+        current_month = until
     # load category groups
     category_groups = get_category_groups(s, is_income=False)
     income_category_groups = get_category_groups(s, is_income=True)
     # Set the first month from the budgeting, then loop through the category groups
     budget_list: list[EnvelopeBudget] = []
-    current_month = min(first_budget_month, first_transaction_month)
+    last_budget = None
     while current_month <= until:
-        last_budget = budget_list[-1] if budget_list else None
-        cat_group_list: list[BudgetCategoryGroup] = []
-        for category_group in category_groups:
-            cat_list = []
-            for category in category_group.categories:
-                # todo: refactor this
-                last_budget_category = last_budget.from_category(category) if last_budget else None
-                last_budget_carryover = last_budget_category.carryover if last_budget_category else False
-                category_accumulated_balance = (
-                    last_budget_category.accumulated_balance if last_budget_category else decimal.Decimal(0)
-                )
-                # reset the accumulated balance if it's under 0
-                category_detailed_budget = _get_category_detailed_budget(s, current_month, category)
-                if not last_budget_carryover and category_accumulated_balance < 0:
-                    category_accumulated_balance = decimal.Decimal(0)
-                category_accumulated_balance += category_detailed_budget.balance
-                category_detailed_budget.accumulated_balance = category_accumulated_balance
-                cat_list.append(category_detailed_budget)
-            cat_group_list.append(BudgetCategoryGroup(category_group, cat_list))
-        income_cat_group_list: list[IncomeCategoryGroup] = []
-        income = decimal.Decimal(0)
-        for category_group in income_category_groups:
-            income_cat_list = []
-            for category in category_group.categories:
-                budget = _get_category_detailed_budget(s, current_month, category)
-                income_cat_list.append(IncomeCategory(category, budget.spent))
-                income += budget.spent
-            income_cat_group_list.append(IncomeCategoryGroup(category_group, income_cat_list))
+        # Process expense and income categories
+        cat_group_list = _process_expense_categories(s, current_month, category_groups, last_budget, False)
+        income_cat_group_list = _process_income_categories(s, current_month, income_category_groups, False)
+        # Calculate envelope-budget specific information
         for_next_month = _get_held_budget_amount(s, current_month)
-        budget = EnvelopeBudget(
+        if last_budget is None:
+            # First month: no carryover
+            last_month_overspent = decimal.Decimal(0)
+            from_last_month = decimal.Decimal(0)
+        else:
+            # Calculate overspent carryover and leftover budget from a previous month
+            last_month_overspent = last_budget.overspent
+            from_last_month = last_budget.to_budget + last_budget.for_next_month
+        # Create the envelope budget for this month
+        last_budget = EnvelopeBudget(
             current_month,
-            income,
             cat_group_list,
             income_cat_group_list,
             for_next_month,
-            # we set a first value to both available_funds and to last_month_overspent, if missing
-            last_budget.overspent if last_budget else decimal.Decimal(0),
-            last_budget.to_budget + last_budget.for_next_month if last_budget else decimal.Decimal(0),
+            last_month_overspent,
+            from_last_month,
         )
-        budget_list.append(budget)
+        budget_list.append(last_budget)
         # go to the next month
         current_month = next_month(current_month)
 
@@ -476,38 +567,23 @@ def _get_tracking_budget_info(s: Session, until: datetime.date) -> list[Tracking
     :param until: The last month included in the budget history.
     """
     budgets = get_budgets(s)
-    if not budgets:
-        return []
-    first_budget_month = budgets[0].get_date()
-    current_month = first_budget_month
+    if budgets:
+        current_month = min(until, budgets[0].get_date())
+    else:
+        current_month = until
     # load category groups
     budget_list: list[TrackingBudget] = []
     category_groups = get_category_groups(s, is_income=False)
     income_category_groups = get_category_groups(s, is_income=True)
+    last_budget = None
     while current_month <= until:
-        cat_group_list: list[BudgetCategoryGroup] = []
-        income_cat_group_list: list[IncomeCategoryGroup] = []
-        for category_group in category_groups:
-            cat_list = []
-            for category in category_group.categories:
-                category_detailed_budget = _get_category_detailed_budget(s, current_month, category)
-                # the tracking budget balance and accumulated balance are the same
-                category_detailed_budget.accumulated_balance = category_detailed_budget.balance
-                cat_list.append(category_detailed_budget)
-            cat_group_list.append(BudgetCategoryGroup(category_group, cat_list))
-        # calculate budget set for income categories
-        budgeted_income, income = decimal.Decimal(0), decimal.Decimal(0)
-        for category_group in income_category_groups:
-            income_cat_list = []
-            for category in category_group.categories:
-                budget = _get_category_detailed_budget(s, current_month, category)
-                income_cat_list.append(IncomeCategory(category, budget.spent, budget.budgeted, budget.budget))
-                budgeted_income += budget.budgeted
-                income += budget.spent
-            income_cat_group_list.append(IncomeCategoryGroup(category_group, income_cat_list))
-        budget_list.append(
-            TrackingBudget(current_month, income, cat_group_list, income_cat_group_list, budgeted_income)
-        )
+        # Process expense and income categories
+        cat_group_list = _process_expense_categories(s, current_month, category_groups, last_budget, True)
+        income_cat_group_list = _process_income_categories(s, current_month, income_category_groups, True)
+        # Create the tracking budget for this month
+        last_budget = TrackingBudget(current_month, cat_group_list, income_cat_group_list)
+        budget_list.append(last_budget)
+        # Go forward to the next month
         current_month = next_month(current_month)
     return budget_list
 

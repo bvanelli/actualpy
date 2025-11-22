@@ -386,6 +386,7 @@ class CategoryGroups(BaseModel, table=True):
         back_populates="group",
         sa_relationship_kwargs={
             "primaryjoin": "and_(CategoryGroups.id == Categories.cat_group, Categories.tombstone == 0)",
+            "order_by": "Categories.sort_order",
         },
     )
 

@@ -11,7 +11,7 @@ from typer.testing import CliRunner
 
 from actual import Actual, __version__
 from actual.cli.config import Config, default_config_path
-from actual.queries import create_account, create_transaction
+from actual.queries import create_account, create_budget, create_transaction
 from tests.conftest import ACTUAL_SERVER_INTEGRATION_VERSIONS
 
 runner = CliRunner()
@@ -27,6 +27,7 @@ def base_dataset(actual: Actual, budget_name: str = "Test", encryption_password:
     create_transaction(
         actual.session, datetime.date(2024, 12, 24), bank, "Shopping Center", "Christmas Gifts", "Gifts", -100
     )
+    create_budget(actual.session, datetime.date(2024, 12, 1), "Gifts", 120)
     actual.commit()
     actual.upload_budget()
     if encryption_password:
@@ -76,6 +77,9 @@ def test_init_interactive(actual_server, mocker):
     mock_prompt = mocker.patch("typer.prompt")
     mock_prompt.side_effect = [f"http://localhost:{port}", "mypass", 2, "mypass", "myextra"]
     assert invoke(["init"]).exit_code == 0
+    # you can show contexts
+    assert invoke(["get-contexts"]).exit_code == 0
+    # you can use context
     assert invoke(["use-context", "myextra"]).exit_code == 0
     assert invoke(["use-context", "test"]).exit_code == 0
     # remove extra context
@@ -168,6 +172,19 @@ def test_payees(actual_server):
     # make sure json is valid
     result = invoke(["-o", "json", "payees"])
     assert {"name": "Shopping Center", "balance": -100.00} in json.loads(result.stdout)
+
+
+def test_budgets(actual_server):
+    result = invoke(["budget", "2024-12-01"])
+    assert result.exit_code == 0
+
+    lines = result.stdout.split("\n")
+    assert "0.00" in lines[2] and "Available funds" in lines[2]
+    assert "0.00" in lines[3] and "Overspent in previous month" in lines[3]
+    assert "120.00" in lines[4] and "Budgeted" in lines[4]
+    assert "0.00" in lines[5] and "For next month" in lines[5]
+    assert "-120.00" in lines[8] and "To Budget" in lines[7]
+    assert "Gifts" in lines[17] and "120.00" in lines[17] and "-100.00" in lines[17]
 
 
 def test_export(actual_server, mocker):

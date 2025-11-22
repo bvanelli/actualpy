@@ -26,7 +26,13 @@ def test_empty_budgets(session, budget_name):
         assert get_accumulated_budgeted_balance(session, date(2025, 10, 1), category) == decimal.Decimal(0)
     assert len(get_budgets(session)) == 0
     assert len(get_budgets(session, date(2025, 10, 1))) == 0
-    assert get_budget_history(session, date(2025, 10, 1)) == []
+    # history should have one entry
+    history = get_budget_history(session, date(2025, 10, 1))
+    assert len(history) == 1
+    if budget_name:
+        assert history[-1].category_groups[0].categories[0].name == budget_name
+        category = get_or_create_category(session, budget_name)
+        assert history[0].from_category(category).accumulated_balance == decimal.Decimal(0)
 
 
 @pytest.mark.parametrize(
@@ -122,9 +128,12 @@ def test_accumulated_budget_amount(
     assert get_accumulated_budgeted_balance(session, date(2025, 3, 1), category.name) == expected_value_current_month
 
 
-@pytest.mark.parametrize("last_month_carryover", (True, False))
-def test_accumulated_budget_amount_with_carryover(session, last_month_carryover):
-    get_or_create_preference(session, "budgetType", "envelope")
+@pytest.mark.parametrize(
+    "last_month_carryover,budget_type",
+    [(True, "envelope"), (False, "envelope"), (True, "tracking"), (False, "tracking")],
+)
+def test_accumulated_budget_amount_with_carryover(session, last_month_carryover, budget_type):
+    get_or_create_preference(session, "budgetType", budget_type)
 
     category = get_or_create_category(session, "Expenses")
     bank = create_account(session, "Bank")
@@ -132,7 +141,7 @@ def test_accumulated_budget_amount_with_carryover(session, last_month_carryover)
     create_budget(session, date(2025, 2, 1), category, 10.0, carryover=True)
     create_budget(session, date(2025, 3, 1), category, 0.0, carryover=last_month_carryover)
 
-    # Add a transaction and check final value
+    # Add a transaction and check the final value
     create_transaction(session, date(2025, 1, 1), bank, category=category, amount=-30.0)
     history = get_budget_history(session, date(2025, 3, 1))
     assert history[-1].from_category(category).accumulated_balance == -10
