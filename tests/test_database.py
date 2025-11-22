@@ -645,22 +645,21 @@ def test_get_accounts_with_off_budget_filter(session):
 def test_get_transactions_with_payee_id_filter(session):
     """Test get_transactions filtering by payee_id attribute."""
     account = create_account(session, "Checking")
-    payee_name_1 = "Walmart"
-    payee_name_2 = "Target"
-    create_transaction(session, date=today, account=account, payee=payee_name_1, amount=10)
-    create_transaction(session, date=today, account=account, payee=payee_name_1, amount=11.5)
-    create_transaction(session, date=today, account=account, payee=payee_name_2, amount=11.50)
+    payee_name = "Walmart"
+    create_transaction(session, date=today, account=account, payee=payee_name, amount=10)
+    create_transaction(session, date=today, account=account, payee=payee_name, amount=11.5)
+    create_transaction(session, date=today, account=account, payee="Target", amount=11.50)
 
     # Test getting all transactions
     all_transactions = get_transactions(session, account=account)
     assert len(all_transactions) == 3, "Default should return all transactions"
 
     # Test getting only transactions matching payee_id
-    payee_id = get_or_create_payee(session, payee_name_1).id
+    payee_id = get_or_create_payee(session, payee_name).id
     transactions = get_transactions(session, account=account, payee_id=payee_id)
-    assert len(transactions) == 2, "Should only return transactions with Walmart payee"
+    assert len(transactions) == 2, f"Should only return transactions with {payee_name} payee"
     for transaction in transactions:
-        assert transaction.payee.name == payee_name_1
+        assert transaction.payee.name == payee_name
 
 
 def test_get_transactions_with_amount_filter(session):
@@ -690,3 +689,38 @@ def test_get_transactions_with_amount_filter(session):
     assert len(transactions) == 2, "Should only return transactions of value 11.50"
     for transaction in transactions:
         assert transaction.amount == 11.50 * 100
+
+
+def test_get_transactions_with_positional_args(session):
+    """Test get_transactions using positional arguments."""
+    account = create_account(session, "Checking")
+    category = get_or_create_category(session, "Utilities")
+    yesterday = today - timedelta(days=1)
+    tomorrow = today + timedelta(days=1)
+    notes = "Late payment"
+    payee = "City"
+    payee_id = get_or_create_payee(session, payee).id
+    amount = 9001
+    imported_id = "Imported ID"
+    cleared = True
+    imported_payee = "Imported Payee"
+
+    transaction = create_transaction(
+        session, today, account, payee, notes, category, amount, imported_id, cleared, imported_payee
+    )
+    transaction.delete()
+
+    transactions = get_transactions(
+        session, yesterday, tomorrow, notes, account, category, False, True, None, cleared, payee_id, amount
+    )
+    assert len(transactions) == 1, "Should return the transaction"
+    assert transactions[0].date == transaction.date
+    assert transactions[0].notes == transaction.notes
+    assert transactions[0].account == transaction.account
+    assert transactions[0].category == transaction.category
+    assert not transactions[0].is_parent
+    assert transactions[0].tombstone
+    assert transactions[0].type is None
+    assert transactions[0].cleared == transaction.cleared
+    assert transactions[0].payee_id == transaction.payee_id
+    assert transactions[0].amount == transaction.amount
