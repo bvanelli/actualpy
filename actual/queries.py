@@ -125,8 +125,9 @@ def get_transactions(
     include_deleted: bool = False,
     budget: ZeroBudgets | None = None,
     cleared: bool = None,
-    payee_id: str | None = None,
+    payee: str | None = None,
     amount: decimal.Decimal | float | int | None = None,
+    transfer: bool = None,
 ) -> typing.Sequence[Transactions]:
     """
     Returns a list of all available transactions, sorted by date in descending order.
@@ -148,8 +149,9 @@ def get_transactions(
                    might hide results.
     :param cleared: Optional cleared filter for the transactions. Defaults to None, meaning both cleared
                     and non-cleared transactions are included.
-    :param payee_id: optional payee_id filter for the transactions.
+    :param payee: optional payee filter for the transactions.
     :param amount: Optional amount filter for the transactions.
+    :param transfer: Optional transfer filter for the transactions.
     :return: List of transactions with `account`, `category` and `payee` preloaded.
     """
     query = _transactions_base_query(s, start_date, end_date, account, category, include_deleted)
@@ -158,10 +160,14 @@ def get_transactions(
         query = query.filter(Transactions.notes.ilike(f"%{sqlalchemy.text(notes).compile()}%"))
     if cleared is not None:
         query = query.filter(Transactions.cleared == int(cleared))
-    if payee_id:
-        query = query.filter(Transactions.payee_id == payee_id)
+    if payee:
+        query = query.filter(Transactions.payee_id == get_payee(s, payee).id)
     if amount:
         query = query.filter(Transactions.amount == int(amount * 100))
+    if transfer is not None:
+        query = query.filter(
+            Transactions.transferred_id.is_not(None) if transfer else Transactions.transferred_id.is_(None)
+        )
     if budget:
         budget_start, budget_end = budget.range
         if (start_date and start_date >= budget_end) or (end_date and end_date < budget_start):

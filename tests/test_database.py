@@ -642,24 +642,23 @@ def test_get_accounts_with_off_budget_filter(session):
     assert off_budget_only[0].offbudget == off_budget_account.offbudget
 
 
-def test_get_transactions_with_payee_id_filter(session):
-    """Test get_transactions filtering by payee_id attribute."""
+def test_get_transactions_with_payee_filter(session):
+    """Test get_transactions filtering by payee attribute."""
     account = create_account(session, "Checking")
-    payee_name = "Walmart"
-    create_transaction(session, date=today, account=account, payee=payee_name, amount=10)
-    create_transaction(session, date=today, account=account, payee=payee_name, amount=11.5)
+    payee = "Walmart"
+    create_transaction(session, date=today, account=account, payee=payee, amount=10)
+    create_transaction(session, date=today, account=account, payee=payee, amount=11.5)
     create_transaction(session, date=today, account=account, payee="Target", amount=11.50)
 
     # Test getting all transactions
     all_transactions = get_transactions(session, account=account)
     assert len(all_transactions) == 3, "Default should return all transactions"
 
-    # Test getting only transactions matching payee_id
-    payee_id = get_or_create_payee(session, payee_name).id
-    transactions = get_transactions(session, account=account, payee_id=payee_id)
-    assert len(transactions) == 2, f"Should only return transactions with {payee_name} payee"
+    # Test getting only transactions matching payee
+    transactions = get_transactions(session, account=account, payee=payee)
+    assert len(transactions) == 2, f"Should only return transactions with {payee} payee"
     for transaction in transactions:
-        assert transaction.payee.name == payee_name
+        assert transaction.payee.name == payee
 
 
 def test_get_transactions_with_amount_filter(session):
@@ -699,7 +698,6 @@ def test_get_transactions_with_positional_args(session):
     tomorrow = today + timedelta(days=1)
     notes = "Late payment"
     payee = "City"
-    payee_id = get_or_create_payee(session, payee).id
     amount = 9001
     imported_id = "Imported ID"
     cleared = True
@@ -711,7 +709,7 @@ def test_get_transactions_with_positional_args(session):
     transaction.delete()
 
     transactions = get_transactions(
-        session, yesterday, tomorrow, notes, account, category, False, True, None, cleared, payee_id, amount
+        session, yesterday, tomorrow, notes, account, category, False, True, None, cleared, payee, amount, False
     )
     assert len(transactions) == 1, "Should return the transaction"
     assert transactions[0].date == transaction.date
@@ -724,3 +722,27 @@ def test_get_transactions_with_positional_args(session):
     assert transactions[0].cleared == transaction.cleared
     assert transactions[0].payee_id == transaction.payee_id
     assert transactions[0].amount == transaction.amount
+
+
+def test_get_transactions_with_transfer_filter(session):
+    """Test get_transactions filtering by amount attribute."""
+    account_checking = create_account(session, "Checking")
+    account_savings = create_account(session, "Savings")
+    create_transfer(session, date=today, source_account=account_savings.id, dest_account=account_checking.id, amount=10)
+    create_transaction(session, date=today, account=account_checking, amount=11.5)
+    create_transaction(session, date=today, account=account_checking, amount=11.50)
+
+    # Test getting all transactions
+    all_transactions = get_transactions(session, account=account_checking)
+    assert len(all_transactions) == 3, "Default should return all transactions"
+
+    # Testing getting only the transfer transactions
+    transactions = get_transactions(session, account=account_checking, amount=10, transfer=True)
+    assert len(transactions) == 1, "Should only return the transfer transaction"
+    assert transactions[0].amount == 10 * 100
+
+    # Testing getting only the non-transfer transactions
+    transactions = get_transactions(session, account=account_checking, amount=11.50, transfer=False)
+    assert len(transactions) == 2, "Should only return non-transfer transactions"
+    for transaction in transactions:
+        assert transaction.amount == 11.50 * 100
