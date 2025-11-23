@@ -725,7 +725,7 @@ def test_get_transactions_with_positional_args(session):
 
 
 def test_get_transactions_with_transfer_filter(session):
-    """Test get_transactions filtering by amount attribute."""
+    """Test get_transactions filtering by transfer attribute."""
     account_checking = create_account(session, "Checking")
     account_savings = create_account(session, "Savings")
     create_transfer(session, date=today, source_account=account_savings.id, dest_account=account_checking.id, amount=10)
