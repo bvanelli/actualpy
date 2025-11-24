@@ -125,7 +125,7 @@ def get_transactions(
     include_deleted: bool = False,
     budget: ZeroBudgets | None = None,
     cleared: bool = None,
-    payee: str | None = None,
+    payee: Payees | str | None = None,
     amount: decimal.Decimal | float | int | None = None,
     transfer: bool = None,
 ) -> typing.Sequence[Transactions]:
@@ -149,7 +149,7 @@ def get_transactions(
                    might hide results.
     :param cleared: Optional cleared filter for the transactions. Defaults to None, meaning both cleared
                     and non-cleared transactions are included.
-    :param payee: optional payee filter for the transactions.
+    :param payee: Optional payee filter for the transactions.
     :param amount: Optional amount filter for the transactions.
     :param transfer: Optional transfer filter for the transactions.
     :return: List of transactions with `account`, `category` and `payee` preloaded.
@@ -161,7 +161,11 @@ def get_transactions(
     if cleared is not None:
         query = query.filter(Transactions.cleared == int(cleared))
     if payee:
-        query = query.filter(Transactions.payee_id == get_payee(s, payee).id)
+        if isinstance(payee, str):
+            payee = get_payee(s, payee)
+        if not payee:
+            return []
+        query = query.filter(Transactions.payee_id == payee.id)
     if amount:
         query = query.filter(Transactions.amount == int(amount * 100))
     if transfer is not None:

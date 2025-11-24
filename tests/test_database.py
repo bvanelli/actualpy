@@ -25,6 +25,7 @@ from actual.queries import (
     get_or_create_clock,
     get_or_create_payee,
     get_or_create_preference,
+    get_payee,
     get_preferences,
     get_ruleset,
     get_schedules,
@@ -645,20 +646,36 @@ def test_get_accounts_with_off_budget_filter(session):
 def test_get_transactions_with_payee_filter(session):
     """Test get_transactions filtering by payee attribute."""
     account = create_account(session, "Checking")
-    payee = "Walmart"
-    create_transaction(session, date=today, account=account, payee=payee, amount=10)
-    create_transaction(session, date=today, account=account, payee=payee, amount=11.5)
+    payee_name = "Walmart"
+    create_transaction(session, date=today, account=account, payee=payee_name, amount=10)
+    create_transaction(session, date=today, account=account, payee=payee_name, amount=11.5)
     create_transaction(session, date=today, account=account, payee="Target", amount=11.50)
 
     # Test getting all transactions
     all_transactions = get_transactions(session, account=account)
     assert len(all_transactions) == 3, "Default should return all transactions"
 
-    # Test getting only transactions matching payee
-    transactions = get_transactions(session, account=account, payee=payee)
-    assert len(transactions) == 2, f"Should only return transactions with {payee} payee"
+    # Test getting only transactions matching payee name
+    transactions = get_transactions(session, account=account, payee=payee_name)
+    assert len(transactions) == 2, f"Should only return transactions with {payee_name} payee"
     for transaction in transactions:
-        assert transaction.payee.name == payee
+        assert transaction.payee.name == payee_name
+
+    # Test getting only transactions matching payee
+    payee = get_payee(session, payee_name)
+    transactions = get_transactions(session, account=account, payee=payee)
+    assert len(transactions) == 2, f"Should only return transactions with {payee} as payee"
+    for transaction in transactions:
+        assert transaction.payee == payee
+
+    # Test getting transactions when payee name matches nothing
+    transactions = get_transactions(session, account=account, payee="Amazon")
+    assert len(transactions) == 0, "Should not return any transactions"
+
+    # Test getting transactions when payee matches nothing
+    payee = get_or_create_payee(session, "Amazon")
+    transactions = get_transactions(session, account=account, payee=payee)
+    assert len(transactions) == 0, "Should not return any transactions"
 
 
 def test_get_transactions_with_amount_filter(session):
