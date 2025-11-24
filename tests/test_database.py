@@ -739,6 +739,7 @@ def test_get_transactions_with_positional_args(session):
     assert transactions[0].cleared == transaction.cleared
     assert transactions[0].payee_id == transaction.payee_id
     assert transactions[0].amount == transaction.amount
+    assert transactions[0].transferred_id is None
 
 
 def test_get_transactions_with_transfer_filter(session):
