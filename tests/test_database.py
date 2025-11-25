@@ -7,7 +7,7 @@ from datetime import date, timedelta
 import pytest
 
 from actual import Actual, ActualError, reflect_model
-from actual.database import Notes, Transactions
+from actual.database import Notes, Transactions, ZeroBudgetMonths
 from actual.queries import (
     create_account,
     create_rule,
@@ -18,6 +18,7 @@ from actual.queries import (
     create_transaction,
     create_transfer,
     get_accounts,
+    get_held_budget,
     get_or_create_category,
     get_or_create_clock,
     get_or_create_payee,
@@ -555,3 +556,20 @@ def test_get_accounts_with_off_budget_filter(session):
     assert len(off_budget_only) == 1, "Should only return off-budget account"
     assert off_budget_only[0].name == off_budget_account.name
     assert off_budget_only[0].offbudget == off_budget_account.offbudget
+
+
+def test_held_budget(session):
+    # Test getting a held budget for a month that doesn't have one
+    held_budget = ZeroBudgetMonths()
+    held_budget.set_month(date(2025, 1, 1))
+    held_budget.set_amount(decimal.Decimal(20.0))
+    session.add(held_budget)
+    session.commit()
+
+    # Verify we can retrieve the held budget
+    retrieved_held = get_held_budget(session, date(2025, 1, 1))
+    assert retrieved_held is not None
+    assert retrieved_held.get_amount() == decimal.Decimal("20.0")
+    assert retrieved_held.get_month() == date(2025, 1, 1)
+    non_existent_held = get_held_budget(session, date(2025, 12, 1))
+    assert non_existent_held is None

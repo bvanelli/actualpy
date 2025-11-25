@@ -186,6 +186,19 @@ def test_budgets(actual_server):
     assert "-120.00" in lines[8] and "To Budget" in lines[7]
     assert "Gifts" in lines[17] and "120.00" in lines[17] and "-100.00" in lines[17]
 
+    # make sure json is valid
+    result = invoke(["-o", "json", "budget", "2024-12-01"])
+    response = json.loads(result.stdout)
+    assert "incomeAvailable" in response and response["incomeAvailable"] == 0.0
+    assert "lastMonthOverspent" in response and response["lastMonthOverspent"] == 0.0
+    assert "totalBudgeted" in response and response["totalBudgeted"] == 120.0
+    assert "forNextMonth" in response and response["forNextMonth"] == 0.0
+    assert "toBudget" in response and response["toBudget"] == -120.0
+    assert "categoryGroups" in response
+    # find the gift group
+    gifts = [c for cg in response["categoryGroups"] for c in cg["categories"] if c["name"] == "Gifts"]
+    assert len(gifts) == 1 and gifts[0]["budgeted"] == 120.0 and gifts[0]["spent"] == -100.0
+
 
 def test_export(actual_server, mocker):
     export_data = mocker.patch("actual.Actual.export_data")

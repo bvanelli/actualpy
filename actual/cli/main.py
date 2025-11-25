@@ -334,7 +334,7 @@ def budget(month: datetime.datetime | None = typer.Argument(default=None, help="
                 )
         console.print(income_table)
     else:
-        raise ValueError("JSON output not yet supported for budget command.")
+        console.print(JSON.from_data(budget_data.as_dict(), default=float))
 
 
 @app.command()

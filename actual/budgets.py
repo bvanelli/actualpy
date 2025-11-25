@@ -93,6 +93,23 @@ class BudgetCategory(_HasDatabaseObject):
             return False
         return bool(self.budget.carryover)
 
+    def as_dict(self) -> dict:
+        """
+        Converts the budget category to a dictionary representation.
+
+        It's important to note that the property `balance` represents the `accumulated_balance`.
+        """
+        return {
+            "id": self.id,
+            "name": self.name,
+            "is_income": self.is_income,
+            "hidden": self.hidden,
+            "budgeted": self.budgeted,
+            "spent": self.spent,
+            "balance": self.accumulated_balance,
+            "carryover": self.carryover,
+        }
+
 
 @dataclasses.dataclass(frozen=True)
 class BudgetCategoryGroup(_HasDatabaseObject):
@@ -123,6 +140,23 @@ class BudgetCategoryGroup(_HasDatabaseObject):
         """Sum of all accumulated balances from the categories under this category group."""
         return sum([c.accumulated_balance for c in self.categories], start=decimal.Decimal(0))
 
+    def as_dict(self) -> dict:
+        """
+        Converts the budget category group to a dictionary representation, including nested categories.
+
+        It's important to note that the property `balance` represents the `accumulated_balance`.
+        """
+        return {
+            "id": self.id,
+            "name": self.name,
+            "is_income": self.is_income,
+            "hidden": self.hidden,
+            "budgeted": self.budgeted,
+            "spent": self.spent,
+            "balance": self.accumulated_balance,
+            "categories": [c.as_dict() for c in self.categories],
+        }
+
 
 @dataclasses.dataclass(frozen=True)
 class IncomeCategory(_HasDatabaseObject):
@@ -148,6 +182,19 @@ class IncomeCategory(_HasDatabaseObject):
 
     If a budget was not set for the month, it will be set to `None`, and budgeted amount assumed to be zero.
     """
+
+    def as_dict(self) -> dict:
+        """
+        Converts the income category to a dictionary representation.
+        """
+        return {
+            "id": self.id,
+            "name": self.name,
+            "is_income": self.is_income,
+            "hidden": self.hidden,
+            "received": self.received,
+            "budgeted": self.budgeted,
+        }
 
 
 @dataclasses.dataclass(frozen=True)
@@ -177,6 +224,20 @@ class IncomeCategoryGroup(_HasDatabaseObject):
         Only exists for **TrackingBudget**.
         """
         return sum([c.budgeted for c in self.categories], start=decimal.Decimal(0))
+
+    def as_dict(self) -> dict:
+        """
+        Converts the income category group to a dictionary representation, including nested categories.
+        """
+        return {
+            "id": self.id,
+            "name": self.name,
+            "is_income": self.is_income,
+            "hidden": self.hidden,
+            "received": self.received,
+            "budgeted": self.budgeted,
+            "categories": [c.as_dict() for c in self.categories],
+        }
 
 
 @dataclasses.dataclass(frozen=True)
@@ -290,6 +351,31 @@ class EnvelopeBudget(BaseBudget):
         """
         return self.available_funds - self.budgeted - self.for_next_month + self.last_month_overspent
 
+    def as_dict(self) -> dict:
+        """
+        Converts the envelope budget to a dictionary representation, including all category groups.
+
+        For simplicity, both the expenses and income category groups are combined into a single list,
+        similar to how the JS API does it.
+        """
+        # Combine expense and income category groups
+        all_category_groups = [cg.as_dict() for cg in self.category_groups]
+        all_category_groups.extend([cg.as_dict() for cg in self.income_category_groups])
+
+        return {
+            "month": self.month.strftime("%Y-%m"),
+            "incomeAvailable": self.available_funds,
+            "lastMonthOverspent": self.last_month_overspent,
+            "forNextMonth": self.for_next_month,
+            "totalBudgeted": self.budgeted,
+            "toBudget": self.to_budget,
+            "fromLastMonth": self.from_last_month,
+            "totalIncome": self.received,
+            "totalSpent": self.spent,
+            "totalBalance": self.accumulated_balance,
+            "categoryGroups": all_category_groups,
+        }
+
 
 @dataclasses.dataclass(frozen=True)
 class TrackingBudget(BaseBudget):
@@ -313,6 +399,28 @@ class TrackingBudget(BaseBudget):
     def budgeted_income(self) -> decimal.Decimal:
         """The amount of income budgeted for the current month."""
         return sum([cat.budgeted for cat in self.income_category_groups], start=decimal.Decimal(0))
+
+    def as_dict(self) -> dict:
+        """
+        Converts the tracking budget to a dictionary representation, including all category groups.
+
+        For simplicity, both the expenses and income category groups are combined into a single list,
+        similar to how the JS API does it.
+        """
+        # Combine expense and income category groups
+        all_category_groups = [cg.as_dict() for cg in self.category_groups]
+        all_category_groups.extend([cg.as_dict() for cg in self.income_category_groups])
+
+        return {
+            "month": self.month.strftime("%Y-%m"),
+            "totalIncome": self.received,
+            "totalSpent": self.spent,
+            "totalBalance": self.accumulated_balance,
+            "budgeted": self.budgeted,
+            "budgetedIncome": self.budgeted_income,
+            "overspent": self.overspent,
+            "categoryGroups": all_category_groups,
+        }
 
 
 class BudgetList(list[EnvelopeBudget | TrackingBudget]):
@@ -606,6 +714,8 @@ def get_budget_history(s: Session, until: datetime.date = None) -> BudgetList:
         history = get_budget_history(actual.session)
         # select the latest month
         print(history[-1])
+        # If you want a similar object than the Actual JS API, you can convert it to a dictionary:
+        print(history[-1].as_dict())
     ```
 
     :param s: Session from the Actual local database.
