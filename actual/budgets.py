@@ -519,17 +519,13 @@ def _get_held_budget_amount(s: Session, month: datetime.date) -> decimal.Decimal
         return decimal.Decimal(0)
 
 
-def _get_first_positive_transaction(s: Session, category: Categories | None = None) -> Transactions | None:
+def _get_first_positive_transaction(s: Session) -> Transactions | None:
     """
-    Returns the first positive transaction in a certain category.
-
-    If the category is missing, the first positive transaction in the entire budget is returned.
+    Returns the first positive transaction in a budget.
 
     This is used to find the month to start the budgeting calculation, since it makes the budget positive.
     """
     query = select(Transactions).where(Transactions.amount > 0).order_by(Transactions.date.asc())
-    if category is not None:
-        query = query.where(Transactions.category_id == category.id)
     return s.exec(query).first()
 
 
@@ -724,6 +720,7 @@ def get_budget_history(s: Session, until: datetime.date = None) -> BudgetList:
     """
     if until is None:
         until = datetime.date.today()
+    until = until.replace(day=1)
     is_tracking_budget = _get_budget_table(s) is ReflectBudgets
     if is_tracking_budget:
         return BudgetList(_get_tracking_budget_info(s, until), is_tracking_budget=True)

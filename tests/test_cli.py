@@ -50,6 +50,9 @@ def base_dataset(
 
     create_budget(actual.session, datetime.date(2024, 12, 1), "Gifts", 120)
 
+    # create negative transaction for today
+    create_transaction(actual.session, datetime.date.today(), bank, "Shopping Center", "Other things", "Gifts", -10)
+
     actual.commit()
     actual.upload_budget()
 
@@ -106,6 +109,7 @@ def test_init_interactive(actual_server, mocker):
     assert invoke(["init"]).exit_code == 0
     # you can show contexts
     assert invoke(["get-contexts"]).exit_code == 0
+    assert invoke(["-o", "json", "get-contexts"]).exit_code == 0
     # you can use context
     assert invoke(["use-context", "myextra"]).exit_code == 0
     assert invoke(["use-context", "test"]).exit_code == 0
@@ -152,11 +156,11 @@ def test_accounts(actual_server):
     lines = result.stdout.split("\n")
     assert "Accounts" in lines[0]
     assert "Account Name" in lines[2] and "Balance" in lines[2]
-    assert "Bank" in lines[4] and "50.00" in lines[4]
+    assert "Bank" in lines[4] and "40.00" in lines[4]
 
     # make sure json is valid
     result = invoke(["-o", "json", "accounts"])
-    assert json.loads(result.stdout) == [{"name": "Bank", "balance": 50.00}]
+    assert json.loads(result.stdout) == [{"name": "Bank", "balance": 40.00}]
 
 
 def test_transactions(actual_server):
@@ -169,9 +173,9 @@ def test_transactions(actual_server):
     for f in ["Date", "Payee", "Notes", "Category", "Amount"]:
         assert f in lines[2]
     for f in ["2024-12-24", "Shopping Center", "Christmas Gifts", "Gifts", "-100.00"]:
-        assert f in lines[4]
-    for f in ["2024-09-05", "Starting Balance", "Starting", "150.00"]:
         assert f in lines[5]
+    for f in ["2024-09-05", "Starting Balance", "Starting", "150.00"]:
+        assert f in lines[6]
 
     # make sure json is valid
     result = invoke(["-o", "json", "transactions"])
@@ -194,11 +198,11 @@ def test_payees(actual_server):
     assert "Name" in lines[2] and "Balance" in lines[2]
     assert "0.00" in lines[4]
     assert "Starting Balance" in lines[5] and "150.00" in lines[5]
-    assert "Shopping Center" in lines[6] and "-100.00" in lines[6]
+    assert "Shopping Center" in lines[6] and "-110.00" in lines[6]
 
     # make sure json is valid
     result = invoke(["-o", "json", "payees"])
-    assert {"name": "Shopping Center", "balance": -100.00} in json.loads(result.stdout)
+    assert {"name": "Shopping Center", "balance": -110.00} in json.loads(result.stdout)
 
 
 def test_envelope_budget(actual_server):
@@ -229,6 +233,10 @@ def test_envelope_budget(actual_server):
     assert gifts[0]["spent"] == -100.0
     assert gifts[0]["balance"] == 20.0
 
+    # make sure calling it without arguments also works
+    result = invoke(["budget"])
+    assert result.exit_code == 0
+
 
 def test_tracking_budget(module_mocker, tmp_path_factory):
     path = pathlib.Path(tmp_path_factory.mktemp("config"))
@@ -258,6 +266,10 @@ def test_tracking_budget(module_mocker, tmp_path_factory):
         assert len(gifts) == 1
         assert gifts[0]["budgeted"] == 120.0
         assert gifts[0]["spent"] == -100.0
+
+        # make sure calling it without arguments also works
+        result = invoke(["budget"])
+        assert result.exit_code == 0
 
 
 def test_export(actual_server, mocker):

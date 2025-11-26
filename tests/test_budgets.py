@@ -28,12 +28,25 @@ def test_empty_budgets(session, budget_name):
     assert len(get_budgets(session)) == 0
     assert len(get_budgets(session, date(2025, 10, 1))) == 0
     # history should have one entry
-    history = get_budget_history(session, date(2025, 10, 1))
+    history = get_budget_history(session, date(2025, 10, 10))
     assert len(history) == 1
+    assert history[0].month == date(2025, 10, 1)
     if budget_name:
         assert history[-1].category_groups[0].categories[0].name == budget_name
-        category = get_or_create_category(session, budget_name)
-        assert history[0].from_category(category).accumulated_balance == decimal.Decimal(0)
+        assert history[-1].category_groups[0].categories[0].balance == decimal.Decimal(0)
+        assert history[0].from_category(
+            get_or_create_category(session, budget_name)
+        ).accumulated_balance == decimal.Decimal(0)
+        assert history.total_budgeted == decimal.Decimal(0)
+    # when calling the budget without a parameter, should default to the current month
+    current_month = date.today().replace(day=1)
+    to_current = get_budget_history(session)
+    assert len(to_current) == 1
+    assert to_current[-1].month == current_month
+    # try to get a non-existing month
+    assert history.from_month(date(2025, 11, 1)) is None
+    # and a new category
+    assert history[-1].from_category(get_or_create_category(session, "foobar")) is None
 
 
 @pytest.mark.parametrize(

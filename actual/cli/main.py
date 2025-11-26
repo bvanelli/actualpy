@@ -251,9 +251,7 @@ def budget(month: datetime.datetime | None = typer.Argument(default=None, help="
     """
     Shows the budget for a certain month.
     """
-    if month is None:
-        month = datetime.date.today()
-    else:
+    if month is not None:
         month = month.date()
     with config.actual() as actual:
         budget_history = get_budget_history(actual.session, month)
