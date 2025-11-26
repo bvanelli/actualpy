@@ -386,6 +386,7 @@ class CategoryGroups(BaseModel, table=True):
         back_populates="group",
         sa_relationship_kwargs={
             "primaryjoin": "and_(CategoryGroups.id == Categories.cat_group, Categories.tombstone == 0)",
+            "order_by": "Categories.sort_order",
         },
     )
 
@@ -761,11 +762,38 @@ class Transactions(BaseModel, table=True):
         return cents_to_decimal(self.amount)
 
 
-class ZeroBudgetMonths(SQLModel, table=True):
+class ZeroBudgetMonths(BaseModel, table=True):
+    """
+    Holds the amount of budget held for the next month for a specific budget id.
+
+    Only applies to envelope budgets and is attached to a [ZeroBudgets][actual.database.ZeroBudgets] object.
+
+    The month data is stored on the `id` field instead of the default uuid as id. Here, Actual actually ignores the
+    previous models for the int dates and instead uses a string with "-" as separator (i.e., `'2025-09'`). The
+    `buffered` represents the amount held for the next month in cents as usual.
+    """
+
     __tablename__ = "zero_budget_months"
 
     id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
     buffered: int | None = Field(default=None, sa_column=Column("buffered", Integer, server_default=text("0")))
+
+    def get_month(self) -> datetime.date:
+        """Returns the month as a datetime.date object, instead of as a string."""
+        return int_to_date(self.id.replace("-", ""), month_only=True)
+
+    def set_month(self, month: datetime.date):
+        """Sets the month as a datetime.date object, instead of as a string."""
+        self.id = datetime.date.strftime(month, "%Y-%m")
+
+    def set_amount(self, amount: decimal.Decimal | int | float):
+        """Sets the amount as a decimal.Decimal object, instead of as an integer representing the number of cents."""
+        self.buffered = decimal_to_cents(amount)
+
+    def get_amount(self) -> decimal.Decimal:
+        """
+        Returns the amount being held for next month for a budget as a `decimal.Decimal`."""
+        return cents_to_decimal(self.buffered)
 
 
 class BaseBudgets(BaseModel):
@@ -781,6 +809,7 @@ class BaseBudgets(BaseModel):
     month: int | None = Field(default=None, sa_column=Column("month", Integer))
     category_id: str | None = Field(default=None, sa_column=Column("category", Text))
     amount: int | None = Field(default=None, sa_column=Column("amount", Integer, server_default=text("0")))
+    carryover: int | None = Field(default=None, sa_column=Column("carryover", Integer, server_default=text("0")))
 
     def get_date(self) -> datetime.date:
         """Returns the transaction date as a datetime.date object, instead of as a string."""
