@@ -2,7 +2,6 @@ import datetime
 import json
 import os
 import pathlib
-from typing import Literal
 
 import pytest
 from click.testing import Result
@@ -26,12 +25,7 @@ runner = CliRunner()
 server_version = ACTUAL_SERVER_INTEGRATION_VERSIONS[-1]  # use latest version
 
 
-def base_dataset(
-    actual: Actual,
-    budget_name: str = "Test",
-    encryption_password: str | None = None,
-    budget_type: Literal["envelope", "tracking"] = "envelope",
-):
+def base_dataset(actual: Actual, budget_name: str = "Test", encryption_password: str | None = None):
     actual.create_budget(budget_name)
     bank = create_account(actual.session, "Bank")
     income_group = get_or_create_category_group(actual.session, "Income")
@@ -44,11 +38,13 @@ def base_dataset(
     create_transaction(
         actual.session, datetime.date(2024, 12, 24), bank, "Shopping Center", "Christmas Gifts", "Gifts", -100
     )
-    if budget_type == "tracking":
-        get_or_create_preference(actual.session, "budgetType", budget_type)
-        create_budget(actual.session, datetime.date(2024, 12, 1), "Starting", 150)
-
     create_budget(actual.session, datetime.date(2024, 12, 1), "Gifts", 120)
+
+    # add the same entry to the tracking budget, as well as one income budget
+    get_or_create_preference(actual.session, "budgetType", "tracking")
+    create_budget(actual.session, datetime.date(2024, 12, 1), "Gifts", 120)
+    create_budget(actual.session, datetime.date(2024, 12, 1), "Starting", 150)
+    get_or_create_preference(actual.session, "budgetType", "envelope")
 
     # create negative transaction for today
     create_transaction(actual.session, datetime.date.today(), bank, "Shopping Center", "Other things", "Gifts", -10)
@@ -60,14 +56,16 @@ def base_dataset(
         actual.encrypt(encryption_password)
 
 
-def init_actual_server(module_mocker, path, budget_type: Literal["envelope", "tracking"] = "envelope"):
+@pytest.fixture()  # todo: revert to scope="module", for some reason not working with test_tracking_budget
+def actual_server(module_mocker, tmp_path_factory):
+    path = pathlib.Path(tmp_path_factory.mktemp("config"))
     module_mocker.patch("actual.cli.config.default_config_path", return_value=path / "config.yaml")
     with DockerContainer(f"actualbudget/actual-server:{server_version}").with_exposed_ports(5006) as container:
         wait_for_logs(container, "Listening on :::5006...")
         # create a new budget
         port = container.get_exposed_port(5006)
         with Actual(f"http://localhost:{port}", password="mypass", bootstrap=True) as actual:
-            base_dataset(actual, budget_type=budget_type)
+            base_dataset(actual)
         # init configuration
         result = invoke(
             [
@@ -83,13 +81,9 @@ def init_actual_server(module_mocker, path, budget_type: Literal["envelope", "tr
             ]
         )
         assert result.exit_code == 0
-        yield container
-
-
-@pytest.fixture()
-def actual_server(request, module_mocker, tmp_path_factory):
-    path = pathlib.Path(tmp_path_factory.mktemp("config"))
-    yield from init_actual_server(module_mocker, path)
+        # return one entity that can do changes via API
+        with Actual(f"http://localhost:{port}", file="Test", password="mypass", bootstrap=True) as actual:
+            yield actual
 
 
 def invoke(command: list[str]) -> Result:
@@ -100,12 +94,10 @@ def invoke(command: list[str]) -> Result:
 
 def test_init_interactive(actual_server, mocker):
     # create a new encrypted file
-    port = actual_server.get_exposed_port(5006)
-    with Actual(f"http://localhost:{port}", password="mypass") as actual:
-        base_dataset(actual, "Extra", "mypass")
+    base_dataset(actual_server, "Extra", "mypass")
     # test full prompt
     mock_prompt = mocker.patch("typer.prompt")
-    mock_prompt.side_effect = [f"http://localhost:{port}", "mypass", 2, "mypass", "myextra"]
+    mock_prompt.side_effect = [actual_server.api_url, "mypass", 2, "mypass", "myextra"]
     assert invoke(["init"]).exit_code == 0
     # you can show contexts
     assert invoke(["get-contexts"]).exit_code == 0
@@ -238,38 +230,42 @@ def test_envelope_budget(actual_server):
     assert result.exit_code == 0
 
 
-def test_tracking_budget(module_mocker, tmp_path_factory):
-    path = pathlib.Path(tmp_path_factory.mktemp("config"))
-    # we do a little trick here to initialize a tracking budget
-    for _server in init_actual_server(module_mocker, path, budget_type="tracking"):
-        result = invoke(["budget", "2024-12-01"])
-        assert result.exit_code == 0
+def test_tracking_budget(actual_server):
+    get_or_create_preference(actual_server.session, "budgetType", "tracking")
+    actual_server.commit()
 
-        lines = result.stdout.split("\n")
-        assert "Income" in lines[2] and "0.00 of 150.00" in lines[3]
-        assert "Expenses" in lines[5] and "-100.00 of 120.00" in lines[6]
-        assert "Saved" in lines[8] and "-100.00" in lines[9]
-        assert "Gifts" in lines[17] and "120.00" in lines[17] and "-100.00" in lines[17]
+    result = invoke(["budget", "2024-12-01"])
+    assert result.exit_code == 0
 
-        # make sure json is valid
-        result = invoke(["-o", "json", "budget", "2024-12-01"])
-        response = json.loads(result.stdout)
-        assert "totalIncome" in response and response["totalIncome"] == 0.0
-        assert "totalSpent" in response and response["totalSpent"] == -100
-        assert "totalBalance" in response and response["totalBalance"] == 20
-        assert "budgeted" in response and response["budgeted"] == 120.0
-        assert "budgetedIncome" in response and response["budgetedIncome"] == 150.0
-        assert "overspent" in response and response["overspent"] == -100.0
-        assert "categoryGroups" in response
-        # find the gift group
-        gifts = [c for cg in response["categoryGroups"] for c in cg["categories"] if c["name"] == "Gifts"]
-        assert len(gifts) == 1
-        assert gifts[0]["budgeted"] == 120.0
-        assert gifts[0]["spent"] == -100.0
+    lines = result.stdout.split("\n")
+    assert "Income" in lines[2] and "0.00 of 150.00" in lines[3]
+    assert "Expenses" in lines[5] and "-100.00 of 120.00" in lines[6]
+    assert "Saved" in lines[8] and "-100.00" in lines[9]
+    assert "Gifts" in lines[17] and "120.00" in lines[17] and "-100.00" in lines[17]
 
-        # make sure calling it without arguments also works
-        result = invoke(["budget"])
-        assert result.exit_code == 0
+    # make sure json is valid
+    result = invoke(["-o", "json", "budget", "2024-12-01"])
+    response = json.loads(result.stdout)
+    assert "totalIncome" in response and response["totalIncome"] == 0.0
+    assert "totalSpent" in response and response["totalSpent"] == -100
+    assert "totalBalance" in response and response["totalBalance"] == 20
+    assert "budgeted" in response and response["budgeted"] == 120.0
+    assert "budgetedIncome" in response and response["budgetedIncome"] == 150.0
+    assert "overspent" in response and response["overspent"] == -100.0
+    assert "categoryGroups" in response
+    # find the gift group
+    gifts = [c for cg in response["categoryGroups"] for c in cg["categories"] if c["name"] == "Gifts"]
+    assert len(gifts) == 1
+    assert gifts[0]["budgeted"] == 120.0
+    assert gifts[0]["spent"] == -100.0
+
+    # make sure calling it without arguments also works
+    result = invoke(["budget"])
+    assert result.exit_code == 0
+
+    # revert the budget type to tracking
+    # get_or_create_preference(actual_server.session, "budgetType", "envelope")
+    # actual_server.commit()
 
 
 def test_export(actual_server, mocker):
