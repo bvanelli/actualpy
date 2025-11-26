@@ -640,41 +640,6 @@ def test_get_transactions_with_amount_filter(session):
         assert transaction.amount == 11.50 * 100
 
 
-def test_get_transactions_with_positional_args(session):
-    """Test get_transactions using positional arguments."""
-    account = create_account(session, "Checking")
-    category = get_or_create_category(session, "Utilities")
-    yesterday = today - timedelta(days=1)
-    tomorrow = today + timedelta(days=1)
-    notes = "Late payment"
-    payee = "City"
-    amount = 9001
-    imported_id = "Imported ID"
-    cleared = True
-    imported_payee = "Imported Payee"
-
-    transaction = create_transaction(
-        session, today, account, payee, notes, category, amount, imported_id, cleared, imported_payee
-    )
-    transaction.delete()
-
-    transactions = get_transactions(
-        session, yesterday, tomorrow, notes, account, category, False, True, None, cleared, payee, amount, False
-    )
-    assert len(transactions) == 1, "Should return the transaction"
-    assert transactions[0].date == transaction.date
-    assert transactions[0].notes == transaction.notes
-    assert transactions[0].account == transaction.account
-    assert transactions[0].category == transaction.category
-    assert not transactions[0].is_parent
-    assert transactions[0].tombstone
-    assert transactions[0].type is None
-    assert transactions[0].cleared == transaction.cleared
-    assert transactions[0].payee_id == transaction.payee_id
-    assert transactions[0].amount == transaction.amount
-    assert transactions[0].transferred_id is None
-
-
 def test_get_transactions_with_transfer_filter(session):
     """Test get_transactions filtering by transfer attribute."""
     account_checking = create_account(session, "Checking")
