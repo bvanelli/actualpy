@@ -23,6 +23,7 @@ from actual.queries import (
     get_or_create_clock,
     get_or_create_payee,
     get_or_create_preference,
+    get_payee,
     get_preferences,
     get_ruleset,
     get_schedules,
@@ -573,3 +574,91 @@ def test_held_budget(session):
     assert retrieved_held.get_month() == date(2025, 1, 1)
     non_existent_held = get_held_budget(session, date(2025, 12, 1))
     assert non_existent_held is None
+
+
+def test_get_transactions_with_payee_filter(session):
+    """Test get_transactions filtering by payee attribute."""
+    account = create_account(session, "Checking")
+    payee_name = "Walmart"
+    create_transaction(session, date=today, account=account, payee=payee_name, amount=10)
+    create_transaction(session, date=today, account=account, payee=payee_name, amount=11.5)
+    create_transaction(session, date=today, account=account, payee="Target", amount=11.50)
+
+    # Test getting all transactions
+    all_transactions = get_transactions(session, account=account)
+    assert len(all_transactions) == 3, "Default should return all transactions"
+
+    # Test getting only transactions matching payee name
+    transactions = get_transactions(session, account=account, payee=payee_name)
+    assert len(transactions) == 2, f"Should only return transactions with {payee_name} payee"
+    for transaction in transactions:
+        assert transaction.payee.name == payee_name
+
+    # Test getting only transactions matching payee
+    payee = get_payee(session, payee_name)
+    transactions = get_transactions(session, account=account, payee=payee)
+    assert len(transactions) == 2, f"Should only return transactions with {payee} as payee"
+    for transaction in transactions:
+        assert transaction.payee == payee
+
+    # Test getting transactions when payee name matches nothing
+    transactions = get_transactions(session, account=account, payee="Amazon")
+    assert len(transactions) == 0, "Should not return any transactions"
+
+    # Test getting transactions when payee matches nothing
+    payee = get_or_create_payee(session, "Amazon")
+    transactions = get_transactions(session, account=account, payee=payee)
+    assert len(transactions) == 0, "Should not return any transactions"
+
+
+def test_get_transactions_with_amount_filter(session):
+    """Test get_transactions filtering by amount attribute."""
+    account = create_account(session, "Checking")
+    create_transaction(session, date=today, account=account, amount=10)
+    create_transaction(session, date=today, account=account, amount=11.5)
+    create_transaction(session, date=today, account=account, amount=11.50)
+
+    # Test getting all transactions
+    all_transactions = get_transactions(session, account=account)
+    assert len(all_transactions) == 3, "Default should return all transactions"
+
+    # Testing getting only transactions matching 10 (passed as int)
+    transactions = get_transactions(session, account=account, amount=10)
+    assert len(transactions) == 1, "Should only return transaction of value 10"
+    assert transactions[0].amount == 10 * 100
+
+    # Testing getting only transactions matching 11.50 (passed as float)
+    transactions = get_transactions(session, account=account, amount=11.50)
+    assert len(transactions) == 2, "Should only return transactions of value 11.50"
+    for transaction in transactions:
+        assert transaction.amount == 11.50 * 100
+
+    # Testing getting only transactions matching 11.50 (passed as Decimal)
+    transactions = get_transactions(session, account=account, amount=decimal.Decimal(11.50))
+    assert len(transactions) == 2, "Should only return transactions of value 11.50"
+    for transaction in transactions:
+        assert transaction.amount == 11.50 * 100
+
+
+def test_get_transactions_with_transfer_filter(session):
+    """Test get_transactions filtering by transfer attribute."""
+    account_checking = create_account(session, "Checking")
+    account_savings = create_account(session, "Savings")
+    create_transfer(session, date=today, source_account=account_savings.id, dest_account=account_checking.id, amount=10)
+    create_transaction(session, date=today, account=account_checking, amount=11.5)
+    create_transaction(session, date=today, account=account_checking, amount=11.50)
+
+    # Test getting all transactions
+    all_transactions = get_transactions(session, account=account_checking)
+    assert len(all_transactions) == 3, "Default should return all transactions"
+
+    # Testing getting only the transfer transactions
+    transactions = get_transactions(session, account=account_checking, amount=10, transfer=True)
+    assert len(transactions) == 1, "Should only return the transfer transaction"
+    assert transactions[0].amount == 10 * 100
+
+    # Testing getting only the non-transfer transactions
+    transactions = get_transactions(session, account=account_checking, amount=11.50, transfer=False)
+    assert len(transactions) == 2, "Should only return non-transfer transactions"
+    for transaction in transactions:
+        assert transaction.amount == 11.50 * 100
