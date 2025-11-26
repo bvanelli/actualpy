@@ -7,10 +7,9 @@ from datetime import date, timedelta
 import pytest
 
 from actual import Actual, ActualError, reflect_model
-from actual.database import Notes, ReflectBudgets, Transactions, ZeroBudgets
+from actual.database import Notes, Transactions, ZeroBudgetMonths
 from actual.queries import (
     create_account,
-    create_budget,
     create_rule,
     create_schedule,
     create_schedule_config,
@@ -19,8 +18,7 @@ from actual.queries import (
     create_transaction,
     create_transfer,
     get_accounts,
-    get_accumulated_budgeted_balance,
-    get_budgets,
+    get_held_budget,
     get_or_create_category,
     get_or_create_clock,
     get_or_create_payee,
@@ -267,88 +265,6 @@ def test_rule_insertion_method(session):
     rs = get_ruleset(session)
     assert len(rs.rules) == 1
     assert str(rs) == "If all of these conditions match 'date' isapprox '2024-01-02' then set 'cleared' to 'True'"
-
-
-@pytest.mark.parametrize(
-    "budget_type,budget_table",
-    [("rollover", ZeroBudgets), ("report", ReflectBudgets), ("envelope", ZeroBudgets), ("tracking", ReflectBudgets)],
-)
-def test_budgets(session, budget_type, budget_table):
-    # set the config
-    get_or_create_preference(session, "budgetType", budget_type)
-    # insert a budget
-    category = get_or_create_category(session, "Expenses")
-    unrelated_category = get_or_create_category(session, "Unrelated")
-    session.commit()
-    create_budget(session, date(2024, 10, 7), category, 10.0)
-    assert len(get_budgets(session)) == 1
-    assert len(get_budgets(session, date(2024, 10, 1))) == 1
-    assert len(get_budgets(session, date(2024, 10, 1), category)) == 1
-    assert len(get_budgets(session, date(2024, 9, 1))) == 0
-    budget = get_budgets(session)[0]
-    assert isinstance(budget, budget_table)
-    assert budget.get_amount() == 10.0
-    assert budget.get_date() == date(2024, 10, 1)
-    # get a budget that already exists, but re-set it
-    create_budget(session, date(2024, 10, 7), category, 20.0)
-    assert budget.get_amount() == 20.0
-    assert budget.range == (date(2024, 10, 1), date(2024, 11, 1))
-    # insert a transaction in the range and see if they are counted on the balance
-    bank = create_account(session, "Bank")
-    t1 = create_transaction(session, date(2024, 10, 1), bank, category=category, amount=-10.0)
-    t2 = create_transaction(session, date(2024, 10, 15), bank, category=category, amount=-10.0)
-    t3 = create_transaction(session, date(2024, 10, 31), bank, category=category, amount=-15.0)
-    # should not be counted
-    create_transaction(session, date(2024, 10, 1), bank, category=category, amount=-15.0).delete()
-    create_transaction(session, date(2024, 11, 1), bank, category=category, amount=-20.0)
-    create_transaction(session, date(2024, 10, 15), bank, category=unrelated_category, amount=-20.0)
-    assert budget.balance == -35.0
-    budget_transactions = get_transactions(session, budget=budget)
-    assert len(budget_transactions) == 3
-    assert all(t in budget_transactions for t in (t1, t2, t3))
-    # test if it fails if category does not exist
-    with pytest.raises(ActualError, match="Category is provided but does not exist"):
-        get_budgets(session, category="foo")
-    # filtering by budget will raise a warning if get_transactions with budget also provides a start-end outside range
-    with pytest.warns(match="Provided date filters"):
-        get_transactions(session, date(2024, 9, 1), date(2024, 9, 15), budget=budget)
-
-
-@pytest.mark.parametrize(
-    "budget_type,with_reset,with_previous_value,expected_value_previous_month,expected_value_current_month",
-    [
-        ("envelope", False, False, decimal.Decimal(5), decimal.Decimal(25)),
-        ("envelope", False, True, decimal.Decimal(15), decimal.Decimal(35)),
-        ("envelope", True, True, decimal.Decimal(-5), decimal.Decimal(20)),
-        ("envelope", True, False, decimal.Decimal(-15), decimal.Decimal(20)),
-        ("tracking", False, True, decimal.Decimal(-5), decimal.Decimal(20)),
-    ],
-)
-def test_accumulated_budget_amount(
-    session, budget_type, with_reset, with_previous_value, expected_value_current_month, expected_value_previous_month
-):
-    get_or_create_preference(session, "budgetType", budget_type)
-
-    category = get_or_create_category(session, "Expenses")
-    bank = create_account(session, "Bank")
-
-    # create three months of budgets
-    create_budget(session, date(2025, 1, 1), category, 20.0)
-    create_budget(session, date(2025, 2, 1), category, 20.0)
-    create_budget(session, date(2025, 3, 1), category, 20.0)
-    # should be considered since is an income before the beginning of the budget period
-    if with_previous_value:
-        create_transaction(session, date(2024, 10, 1), bank, category=category, amount=10.0)
-    # other transactions
-    create_transaction(session, date(2025, 1, 1), bank, category=category, amount=-10.0)
-    create_transaction(session, date(2025, 2, 1), bank, category=category, amount=-10.0)
-    create_transaction(session, date(2025, 2, 3), bank, category=category, amount=-15.0)
-    # should reset rollover budget
-    if with_reset:
-        create_transaction(session, date(2025, 2, 4), bank, category=category, amount=-20.0)
-
-    assert get_accumulated_budgeted_balance(session, date(2025, 2, 1), category) == expected_value_previous_month
-    assert get_accumulated_budgeted_balance(session, date(2025, 3, 1), category) == expected_value_current_month
 
 
 def test_normalize_payee():
@@ -641,6 +557,23 @@ def test_get_accounts_with_off_budget_filter(session):
     assert len(off_budget_only) == 1, "Should only return off-budget account"
     assert off_budget_only[0].name == off_budget_account.name
     assert off_budget_only[0].offbudget == off_budget_account.offbudget
+
+
+def test_held_budget(session):
+    # Test getting a held budget for a month that doesn't have one
+    held_budget = ZeroBudgetMonths()
+    held_budget.set_month(date(2025, 1, 1))
+    held_budget.set_amount(decimal.Decimal(20.0))
+    session.add(held_budget)
+    session.commit()
+
+    # Verify we can retrieve the held budget
+    retrieved_held = get_held_budget(session, date(2025, 1, 1))
+    assert retrieved_held is not None
+    assert retrieved_held.get_amount() == decimal.Decimal("20.0")
+    assert retrieved_held.get_month() == date(2025, 1, 1)
+    non_existent_held = get_held_budget(session, date(2025, 12, 1))
+    assert non_existent_held is None
 
 
 def test_get_transactions_with_payee_filter(session):

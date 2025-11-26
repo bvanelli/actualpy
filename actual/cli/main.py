@@ -5,10 +5,14 @@ import warnings
 import typer
 from rich.console import Console
 from rich.json import JSON
+from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
 
 from actual import Actual, get_accounts, get_transactions
+from actual.budgets import get_budget_history
 from actual.cli.config import BudgetConfig, Config, OutputType, State
+from actual.cli.formatters import colored_number_format, decimal_format
 from actual.queries import get_payees
 from actual.version import __version__
 
@@ -91,6 +95,32 @@ def use_context(context: str = typer.Argument(..., help="Context for this budget
         raise ValueError(f"Context '{context}' is not registered. Choose one from {list(config.budgets.keys())}")
     config.default_context = context
     config.save()
+
+
+@app.command()
+def get_contexts():
+    """Shows all configured contexts."""
+    if state.output == OutputType.table:
+        table = Table(title="Contexts")
+        table.add_column("Name", justify="left", style="cyan", no_wrap=True)
+        table.add_column("URL", justify="left", style="cyan", no_wrap=True)
+        table.add_column("Password", justify="left", style="cyan")
+        table.add_column("File ID", justify="left", style="cyan")
+        table.add_column("Encryption Password", justify="left", style="cyan")
+
+        for context, context_config in config.budgets.items():
+            is_default = context == config.default_context
+            table.add_row(
+                f"* {context}" if is_default else context,
+                context_config.url,
+                context_config.password,
+                context_config.file_id,
+                context_config.encryption_password,
+            )
+
+        console.print(table)
+    else:
+        console.print(JSON.from_data(config.model_dump()))
 
 
 @app.command()
@@ -217,6 +247,95 @@ def payees():
 
 
 @app.command()
+def budget(month: datetime.datetime | None = typer.Argument(default=None, help="Month for which to show the budget")):
+    """
+    Shows the budget for a certain month.
+    """
+    if month is not None:
+        month = month.date()
+    with config.actual() as actual:
+        budget_history = get_budget_history(actual.session, month)
+        if not budget_history:
+            raise ValueError("No budget history found for the given month.")
+        detail_budget = budget_history[-1]
+        budget_data = detail_budget
+
+    if state.output == OutputType.table:
+        width = 100
+        summary = Text(justify="center")
+        summary.append("\n")
+        if budget_history.is_tracking_budget:
+            summary.append("Income\n", style="dim")
+            summary.append(f"{decimal_format(budget_data.received)}", style="bold green")
+            summary.append(f" of {decimal_format(budget_data.budgeted_income)}\n", style="dim")
+            summary.append("\nExpenses\n", style="dim")
+            summary.append(f"{budget_data.spent:.2f}", style="bold red")
+            summary.append(f" of {decimal_format(budget_data.budgeted)}\n", style="dim")
+            summary.append("\nSaved:\n", style="dim")
+            summary.append(f"{decimal_format(budget_data.overspent)}", style="bold purple")
+        else:
+            summary.append(f"{decimal_format(budget_data.available_funds)}", style="bold green")
+            summary.append(" Available funds\n", style="dim")
+            summary.append(f"{decimal_format(budget_data.last_month_overspent)}", style="bold red")
+            summary.append(" Overspent in previous month\n", style="dim")
+            summary.append(f"{decimal_format(budget_data.budgeted)}", style="bold blue")
+            summary.append(" Budgeted\n", style="dim")
+            summary.append(f"{decimal_format(budget_data.for_next_month)}", style="bold blue")
+            summary.append(" For next month\n\n", style="dim")
+            summary.append("To Budget:\n")
+            summary.append(decimal_format(budget_data.to_budget), style="bold purple")
+        summary.append("\n")
+        panel = Panel(summary, title=budget_data.month.strftime("%B (%m/%Y)"), title_align="center", width=width)
+        console.print(panel, width=width)
+        table = Table(show_header=True, header_style="bold", width=width)
+        table.add_column("Category\n", justify="left", width=46)
+        table.add_column(f"Budgeted\n{decimal_format(budget_data.budgeted)}", justify="right", width=18)
+        table.add_column(f"Spent\n{decimal_format(budget_data.spent)}", justify="right", width=18)
+        table.add_column(f"Balance\n{decimal_format(budget_data.accumulated_balance)}", justify="right", width=18)
+        # add a row with totals for expenses
+        for category_group in budget_data.category_groups:
+            table.add_row(
+                f"▼ {category_group.name}",
+                colored_number_format(category_group.budgeted),
+                colored_number_format(category_group.spent, is_negative_red=False),
+                colored_number_format(category_group.accumulated_balance),
+                style="bold",
+            )
+            for category in category_group.categories:
+                table.add_row(
+                    f"    {category.name}",
+                    colored_number_format(category.budgeted),
+                    colored_number_format(category.spent, is_negative_red=False),
+                    colored_number_format(category.accumulated_balance),
+                )
+        console.print(table)
+        income_table = Table(show_header=True, header_style="bold", width=width)
+        income_table.add_column("", justify="left", width=46)
+        income_table.add_column(
+            f"Budgeted\n{budget_data.budgeted_income:.2f}" if budget_history.is_tracking_budget else "",
+            justify="right",
+            width=27,
+        )
+        income_table.add_column("Received", justify="right", width=27)
+        for income_category_group in budget_data.income_category_groups:
+            income_table.add_row(
+                f"▼ {income_category_group.name}",
+                colored_number_format(income_category_group.budgeted) if budget_history.is_tracking_budget else "",
+                colored_number_format(income_category_group.received),
+                style="bold",
+            )
+            for category in income_category_group.categories:
+                income_table.add_row(
+                    f"    {category.name}",
+                    colored_number_format(category.budgeted) if budget_history.is_tracking_budget else "",
+                    colored_number_format(category.received),
+                )
+        console.print(income_table)
+    else:
+        console.print(JSON.from_data(budget_data.as_dict(), default=float))
+
+
+@app.command()
 def export(
     filename: pathlib.Path | None = typer.Argument(
         default=None,
@@ -226,6 +345,9 @@ def export(
 ):
     """
     Generates an export from the budget (for CLI backups).
+
+    The export will clean up the budget (i.e., remove up all changeset objects and entries marked for deletion),
+    then writing a zip file to disk.
     """
     with config.actual() as actual:
         if filename is None:
