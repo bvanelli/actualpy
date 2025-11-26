@@ -299,6 +299,9 @@ class Actual(ActualServer):
         It can be imported into another Actual instance by closing an open file (if any), then clicking the
         _“Import file”_ button, then choosing _“Actual”_. Even when encryption is enabled, the exported zip file
         **will not have any encryption**.
+
+        The export will clean up the budget (i.e., remove up all changeset objects and entries marked for deletion),
+        then writing a zip file to disk. See [Actual.cleanup][actual.Actual.cleanup] method for more information.
         """
         if cleanup:
             self.cleanup()

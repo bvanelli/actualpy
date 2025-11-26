@@ -345,6 +345,9 @@ def export(
 ):
     """
     Generates an export from the budget (for CLI backups).
+
+    The export will clean up the budget (i.e., remove up all changeset objects and entries marked for deletion),
+    then writing a zip file to disk.
     """
     with config.actual() as actual:
         if filename is None:
