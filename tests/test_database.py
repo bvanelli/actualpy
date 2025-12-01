@@ -601,11 +601,11 @@ def test_get_transactions_with_payee_filter(session):
     for transaction in transactions:
         assert transaction.payee == payee
 
-    # Test getting transactions when payee name matches nothing
+    # Test getting transactions when payee does not exist
     transactions = get_transactions(session, account=account, payee="Amazon")
     assert len(transactions) == 0, "Should not return any transactions"
 
-    # Test getting transactions when payee matches nothing
+    # Test getting transactions when payee exists but has no transactions
     payee = get_or_create_payee(session, "Amazon")
     transactions = get_transactions(session, account=account, payee=payee)
     assert len(transactions) == 0, "Should not return any transactions"
@@ -614,30 +614,40 @@ def test_get_transactions_with_payee_filter(session):
 def test_get_transactions_with_amount_filter(session):
     """Test get_transactions filtering by amount attribute."""
     account = create_account(session, "Checking")
-    create_transaction(session, date=today, account=account, amount=10)
+    create_transaction(session, date=today, account=account, amount=0)
     create_transaction(session, date=today, account=account, amount=11.5)
     create_transaction(session, date=today, account=account, amount=11.50)
+    create_transaction(session, date=today, account=account, amount=-10)
 
     # Test getting all transactions
     all_transactions = get_transactions(session, account=account)
-    assert len(all_transactions) == 3, "Default should return all transactions"
+    assert len(all_transactions) == 4, "Default should return all transactions"
 
-    # Testing getting only transactions matching 10 (passed as int)
-    transactions = get_transactions(session, account=account, amount=10)
-    assert len(transactions) == 1, "Should only return transaction of value 10"
-    assert transactions[0].amount == 10 * 100
+    # Testing getting only transactions matching 0 (passed as int)
+    transactions = get_transactions(session, account=account, amount=0)
+    assert len(transactions) == 1, "Should only return transaction of value 0"
+    assert transactions[0].get_amount() == decimal.Decimal(0)
 
     # Testing getting only transactions matching 11.50 (passed as float)
     transactions = get_transactions(session, account=account, amount=11.50)
     assert len(transactions) == 2, "Should only return transactions of value 11.50"
     for transaction in transactions:
-        assert transaction.amount == 11.50 * 100
+        assert transaction.get_amount() == decimal.Decimal(11.50)
 
     # Testing getting only transactions matching 11.50 (passed as Decimal)
     transactions = get_transactions(session, account=account, amount=decimal.Decimal(11.50))
     assert len(transactions) == 2, "Should only return transactions of value 11.50"
     for transaction in transactions:
-        assert transaction.amount == 11.50 * 100
+        assert transaction.get_amount() == decimal.Decimal(11.50)
+
+    # Testing getting only transactions matching -10
+    transactions = get_transactions(session, account=account, amount=-10)
+    assert len(transactions) == 1, "Should only return transactions of value -10"
+    assert transactions[0].get_amount() == decimal.Decimal(-10)
+
+    # Testing getting transactions when no amount matches
+    transactions = get_transactions(session, account=account, amount=777)
+    assert len(transactions) == 0, "Should not return any transactions"
 
 
 def test_get_transactions_with_transfer_filter(session):
@@ -655,10 +665,10 @@ def test_get_transactions_with_transfer_filter(session):
     # Testing getting only the transfer transactions
     transactions = get_transactions(session, account=account_checking, amount=10, transfer=True)
     assert len(transactions) == 1, "Should only return the transfer transaction"
-    assert transactions[0].amount == 10 * 100
+    assert transactions[0].get_amount() == decimal.Decimal(10)
 
     # Testing getting only the non-transfer transactions
     transactions = get_transactions(session, account=account_checking, amount=11.50, transfer=False)
     assert len(transactions) == 2, "Should only return non-transfer transactions"
     for transaction in transactions:
-        assert transaction.amount == 11.50 * 100
+        assert transaction.get_amount() == decimal.Decimal(11.50)
