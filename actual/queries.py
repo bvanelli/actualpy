@@ -153,14 +153,12 @@ def get_transactions(
     :param cleared: Optional cleared filter for the transactions. Defaults to None, meaning both cleared
                     and non-cleared transactions are included.
     :param payee: Optional payee filter for the transactions. If provided, only transactions with a matching payee are
-                  returned. If the payee does not match any transactions or the payee does not exist, the function
-                  returns an empy list. By default, it returns all transactions.
+                  returned. Returns an empty list if no matches are found. By default, it returns all transactions.
     :param amount: Optional amount filter for the transactions. If provided, only transactions with a matching amount
-                   are returned. If the amount does not match any transactions, the function returns an empy list. By
-                   default, it returns all transactions.
-    :param transfer: Optional transfer filter for the transactions. If set to True, only transactions which are
-                     transfers between two accounts are returned. When set to False, no transfers are returned. By
-                     default, it returns all transactions.
+                   are returned. Returns an empty list if no matches are found. By default, it returns all transactions.
+    :param transfer: Optional transfer filter for the transactions. If True, only transactions which are transfers
+                     between two accounts are returned. When False, no transfers are returned. By default, it returns
+                     all transactions.
     :return: List of transactions with `account`, `category` and `payee` preloaded.
     """
     query = _transactions_base_query(s, start_date, end_date, account, category, include_deleted)
