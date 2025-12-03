@@ -55,6 +55,7 @@ def _transactions_base_query(
     account: Accounts | str | None | None = None,
     category: Categories | str | None = None,
     include_deleted: bool = False,
+    off_budget: bool | None = None,
 ) -> Select:
     query = (
         select(Transactions)
@@ -88,6 +89,8 @@ def _transactions_base_query(
         category = get_category(s, category)
         if category:
             query = query.filter(Transactions.category_id == category.id)
+    if off_budget is not None:
+        query = query.join(Accounts, Transactions.acct == Accounts.id).filter(Accounts.offbudget == int(off_budget))
     return query
 
 
@@ -97,6 +100,7 @@ def _balance_base_query(
     end_date: datetime.date | None,
     account: Accounts | str | None = None,
     category: Categories | str | None = None,
+    off_budget: bool | None = None,
 ) -> Select:
     query = select(func.coalesce(func.sum(Transactions.amount), 0)).where(
         Transactions.is_parent == 0,
@@ -114,6 +118,8 @@ def _balance_base_query(
         category = get_category(s, category)
         if category:
             query = query.filter(Transactions.category_id == category.id)
+    if off_budget is not None:
+        query = query.join(Accounts, Transactions.acct == Accounts.id).filter(Accounts.offbudget == int(off_budget))
     return query
 
 
@@ -131,6 +137,7 @@ def get_transactions(
     payee: Payees | str | None = None,
     amount: decimal.Decimal | float | int | None = None,
     transfer: bool = None,
+    off_budget: bool | None = None,
 ) -> typing.Sequence[Transactions]:
     """
     Returns a list of all available transactions, sorted by date in descending order.
@@ -159,9 +166,12 @@ def get_transactions(
     :param transfer: Optional transfer filter for the transactions. If True, only transactions which are transfers
                      between two accounts are returned. When False, no transfers are returned. By default, it returns
                      all transactions.
+    :param off_budget: Optional off-budget filter for the transactions. If True, only transactions from off-budget
+                       accounts are returned. If False, only transactions from on-budget accounts are returned.
+                       By default (None), returns all transactions regardless of budget status.
     :return: List of transactions with `account`, `category` and `payee` preloaded.
     """
-    query = _transactions_base_query(s, start_date, end_date, account, category, include_deleted)
+    query = _transactions_base_query(s, start_date, end_date, account, category, include_deleted, off_budget)
     query = query.filter(Transactions.is_parent == int(is_parent))
     if notes:
         query = query.filter(Transactions.notes.ilike(f"%{sqlalchemy.text(notes).compile()}%"))
