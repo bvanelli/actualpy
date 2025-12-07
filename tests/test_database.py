@@ -573,3 +573,15 @@ def test_held_budget(session):
     assert retrieved_held.get_month() == date(2025, 1, 1)
     non_existent_held = get_held_budget(session, date(2025, 12, 1))
     assert non_existent_held is None
+
+
+def test_set_account_notes(session):
+    """Test setting and updating an account's notes."""
+    account = create_account(session, "Checking")
+    assert account.notes is None
+    account.notes = "New note"
+    assert account.notes == "New note"
+    account.notes = "Updated note"
+    assert account.notes == "Updated note"
+    account.notes = None
+    assert account.notes is None
