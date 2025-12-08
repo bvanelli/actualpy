@@ -300,6 +300,11 @@ class Accounts(BaseModel, table=True):
         """Returns notes for the account. If none are present, returns `None`."""
         return object_session(self).scalar(select(Notes.note).where(Notes.id == f"account-{self.id}"))
 
+    @notes.setter
+    def notes(self, note: str | None) -> None:
+        """Set the note for the account as a string."""
+        object_session(self).merge(Notes(id=f"account-{self.id}", note=note))
+
 
 class Banks(BaseModel, table=True):
     id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))

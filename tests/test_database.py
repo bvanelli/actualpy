@@ -702,3 +702,15 @@ def test_get_transactions_with_transfer_filter(session):
     assert len(transactions) == 2, "Should only return non-transfer transactions"
     for transaction in transactions:
         assert transaction.get_amount() == 11.50
+
+
+def test_set_account_notes(session):
+    """Test setting and updating an account's notes."""
+    account = create_account(session, "Checking")
+    assert account.notes is None
+    account.notes = "New note"
+    assert account.notes == "New note"
+    account.notes = "Updated note"
+    assert account.notes == "Updated note"
+    account.notes = None
+    assert account.notes is None
