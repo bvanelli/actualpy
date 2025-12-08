@@ -131,6 +131,7 @@ def get_transactions(
     payee: Payees | str | None = None,
     amount: decimal.Decimal | float | int | None = None,
     transfer: bool = None,
+    off_budget: bool | None = None,
 ) -> typing.Sequence[Transactions]:
     """
     Returns a list of all available transactions, sorted by date in descending order.
@@ -159,6 +160,9 @@ def get_transactions(
     :param transfer: Optional transfer filter for the transactions. If True, only transactions which are transfers
                      between two accounts are returned. When False, no transfers are returned. By default, it returns
                      all transactions.
+    :param off_budget: Optional off-budget filter for the transactions. If True, only transactions from off-budget
+                       accounts are returned. If False, only transactions from on-budget accounts are returned.
+                       By default (None), returns all transactions regardless of budget status.
     :return: List of transactions with `account`, `category` and `payee` preloaded.
     """
     query = _transactions_base_query(s, start_date, end_date, account, category, include_deleted)
@@ -192,6 +196,8 @@ def get_transactions(
             Transactions.date < budget_end,
             Transactions.category_id == budget.category_id,
         )
+    if off_budget is not None:
+        query = query.join(Accounts).filter(Accounts.offbudget == int(off_budget))
     return s.exec(query).all()
 
 

@@ -511,6 +511,34 @@ def test_get_transactions_with_cleared_filter(session):
         assert t.cleared
 
 
+def test_get_transactions_with_of_budget_filter(session):
+    on_budget_acct = create_account(session, "On Budget Account", off_budget=False)
+    off_budget_acct = create_account(session, "Off Budget Account", off_budget=True)
+
+    # Create transactions in both accounts
+    create_transaction(session, date=today, account=on_budget_acct, amount=10)
+    create_transaction(session, date=today, account=on_budget_acct, amount=20)
+    create_transaction(session, date=today, account=on_budget_acct, amount=30)
+    create_transaction(session, date=today, account=off_budget_acct, amount=100)
+    create_transaction(session, date=today, account=off_budget_acct, amount=200)
+
+    # Request all transactions
+    txs = get_transactions(session)
+    assert len(txs) == 5
+
+    # Request only on-budget transactions
+    txs = get_transactions(session, off_budget=False)
+    assert len(txs) == 3
+    for t in txs:
+        assert t.account.offbudget == 0
+
+    # Request only off-budget transactions
+    txs = get_transactions(session, off_budget=True)
+    assert len(txs) == 2
+    for t in txs:
+        assert t.account.offbudget == 1
+
+
 def test_get_accounts_with_closed_filter(session):
     """Test get_accounts filtering by closed attribute."""
     open_account = create_account(session, "Investment")
