@@ -511,8 +511,7 @@ def test_get_transactions_with_cleared_filter(session):
         assert t.cleared
 
 
-def test_get_transactions_with_offbudget_filter(session):
-    """Test get_transactions filtering by off-budget accounts."""
+def test_get_transactions_with_of_budget_filter(session):
     on_budget_acct = create_account(session, "On Budget Account", off_budget=False)
     off_budget_acct = create_account(session, "Off Budget Account", off_budget=True)
 
