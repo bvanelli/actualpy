@@ -392,3 +392,24 @@ def test_set_transfer_payee_rule(session):
     assert t.get_amount() == -t.transfer.get_amount()
     assert t.id == t.transfer.transferred_id
     assert t.transferred_id == t.transfer.id
+
+
+def test_delete_transaction_action(session):
+    acct = create_account(session, "Bank")
+    cat = create_category(session, "Food", "Expenses")
+    payee = create_payee(session, "My payee")
+
+    t = create_transaction(session, datetime.date(2024, 1, 1), acct, payee, category=cat, amount=10.0)
+    assert t.tombstone == 0
+
+    # create and run the rule that deletes transactions with this category
+    condition = Condition(field="category", op="is", value=cat)
+    action = Action(field="category", op=ActionType.DELETE_TRANSACTIONS, value=None)
+    rule = Rule(conditions=[condition], actions=[action], operation="and")
+    rule.run(t)
+
+    # verify the transaction is marked as deleted
+    assert t.tombstone == 1
+
+    assert str(action) == "delete transaction"
+    assert "delete transaction" in str(rule)
