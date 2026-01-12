@@ -15,8 +15,7 @@ server_version = ACTUAL_SERVER_INTEGRATION_VERSIONS[-1]  # use latest version
 
 @pytest.fixture()
 def actual_server(request):
-    # we test integration with the 5 latest versions of actual server
-    with DockerContainer("actualbudget/actual-server:25.9.0").with_exposed_ports(5006) as container:
+    with DockerContainer(f"actualbudget/actual-server:{server_version}").with_exposed_ports(5006) as container:
         wait_for_logs(container, "Listening on :::5006...")
         yield container
 

@@ -449,6 +449,7 @@ class CustomReports(BaseModel, table=True):
         default=None, sa_column=Column("include_current", Integer, server_default=text("0"))
     )
     sort_by: str | None = Field(default=None, sa_column=Column("sort_by", Text, server_default=text("'desc'")))
+    trim_intervals: int | None = Field(default=None, sa_column=Column("trim_intervals", Integer))
 
 
 class Dashboard(BaseModel, table=True):
