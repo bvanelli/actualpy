@@ -7,7 +7,7 @@ from sqlmodel import Session, create_engine
 
 from actual.database import SQLModel, strong_reference_session
 
-ACTUAL_SERVER_INTEGRATION_VERSIONS = ["25.9.0", "25.10.0"]
+ACTUAL_SERVER_INTEGRATION_VERSIONS = ["26.1.0"]
 
 
 class RequestsMock:
