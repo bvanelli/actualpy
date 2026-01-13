@@ -404,7 +404,7 @@ def test_delete_transaction_action(session):
 
     # create and run the rule that deletes transactions with this category
     condition = Condition(field="category", op="is", value=cat)
-    action = Action(field="category", op=ActionType.DELETE_TRANSACTIONS, value=None)
+    action = Action(op=ActionType.DELETE_TRANSACTIONS, value=None)
     rule = Rule(conditions=[condition], actions=[action], operation="and")
     rule.run(t)
 
