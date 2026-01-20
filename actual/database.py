@@ -171,6 +171,13 @@ def strong_reference_session(session: Session):
         if sess.info.get("messages"):
             del sess.info["messages"]
 
+    @event.listens_for(Transactions.cleared, "set")
+    def keep_cleared_flag_consistent_over_splits(target, value, oldvalue, initiator):
+        """Add an event listener which ensures that clearing parent transactions also affects all splits"""
+        if target.is_parent:
+            for s in target.splits:
+                s.cleared = int(value)
+
     return session
 
 
