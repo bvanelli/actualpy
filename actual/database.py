@@ -22,7 +22,7 @@ from typing import Optional
 
 from sqlalchemy import MetaData, Table, engine, event, inspect
 from sqlalchemy.dialects.sqlite import insert
-from sqlalchemy.orm import class_mapper, object_session
+from sqlalchemy.orm import class_mapper, object_session, validates
 from sqlmodel import (
     JSON,
     Boolean,
@@ -170,13 +170,6 @@ def strong_reference_session(session: Session):
     ):
         if sess.info.get("messages"):
             del sess.info["messages"]
-
-    @event.listens_for(Transactions.cleared, "set")
-    def keep_cleared_flag_consistent_over_splits(target, value, oldvalue, initiator):
-        """Add an event listener which ensures that clearing parent transactions also affects all splits"""
-        if target.is_parent:
-            for s in target.splits:
-                s.cleared = int(value)
 
     return session
 
@@ -773,6 +766,20 @@ class Transactions(BaseModel, table=True):
     def get_amount(self) -> decimal.Decimal:
         """Returns the amount as a decimal.Decimal, instead of as an integer representing the number of cents."""
         return cents_to_decimal(self.amount)
+
+    @validates("cleared")
+    def validate_cleared(self, key, v):
+        """Add an validator which ensures that clearing parent transactions also affects all splits"""
+
+        # Validation only performed on parent transactions where cleared is changed
+        if self.is_parent and self.cleared != v:
+            session = object_session(self)
+            splits = session.scalars(select(Transactions).where(Transactions.parent_id == self.id)).all()
+            for s in splits:
+                s.cleared = v
+
+        # Return the input value unmodified as this is a validator for the parent
+        return v
 
 
 class ZeroBudgetMonths(BaseModel, table=True):
