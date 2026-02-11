@@ -29,7 +29,7 @@ def test_get_attribute_by_table_name():
     assert get_attribute_by_table_name("foo", "bar", reverse=True) is None
 
 
-def test_conversion():
+def test_conversion(session):
     t = Transactions(
         id=str(uuid.uuid4()),
         acct="foo",
@@ -38,6 +38,7 @@ def test_conversion():
         cleared=0,
         sort_order=current_timestamp(),
     )
+    session.add(t)
     t.set_amount(10)
     t.set_date(datetime.date(2024, 3, 17))
     # ensure fields are correctly retrieved
