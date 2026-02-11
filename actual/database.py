@@ -781,6 +781,28 @@ class Transactions(BaseModel, table=True):
         # Return the input value unmodified as this is a validator for the parent
         return v
 
+    def delete(self):
+        """Overload the delete() from the BaseModel so that we can properly delete any children splits
+        as well. Otherwise things will not add up in the Actual GUI when calling delete() on a parent.
+
+        It is technically possible to call delete() a child transaction, that would probably also cause
+        things to go out of sync ,but since that is not possible to do in the UI this case is not handled
+        here and is left as undefined behaviour.
+
+        Neither is it handled if the tombstone flag is set directly on an object without using the delete()
+        metod. If you are into this direct attribute modification you will have to handle the splits yourself.
+        """
+
+        # Check if this is a parent transaction, if so iterate the children and call delete() on them as well
+        if self.is_parent:
+            session = object_session(self)
+            splits = session.scalars(select(Transactions).where(Transactions.parent_id == self.id)).all()
+            for s in splits:
+                s.delete()
+
+        # Utilise the BaseModel delete() for deleting the transaction
+        super().delete()
+
 
 class ZeroBudgetMonths(BaseModel, table=True):
     """
