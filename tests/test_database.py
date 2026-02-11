@@ -246,6 +246,23 @@ def test_create_splits_clearing(session):
     assert all(not tr.cleared for tr in trs)
 
 
+def test_create_splits_delete(session):
+    bank = create_account(session, "Bank")
+    t = create_transaction(session, today, bank, category="Dining", amount=-10.0)
+    t_taxes = create_transaction(session, today, bank, category="Taxes", amount=-2.5)
+    parent_transaction = create_splits(session, [t, t_taxes], notes="Dining")
+
+    # Verify that all is properly setup
+    trs = get_transactions(session)
+    assert len(trs) == 2
+    assert (t.parent == parent_transaction.id for t in trs)
+
+    # Delete parent, this should result in the children getting deleted as well
+    parent_transaction.delete()
+    trs = get_transactions(session)
+    assert len(trs) == 0
+
+
 def test_create_transaction_without_account_error(session):
     with pytest.raises(ActualError):
         create_transaction(session, today, "foo", "")
