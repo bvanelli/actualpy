@@ -8,6 +8,7 @@ import pytest
 
 from actual import Actual, ActualError, reflect_model
 from actual.database import Notes, Transactions, ZeroBudgetMonths
+from actual.exceptions import ActualInvalidOperationError
 from actual.queries import (
     create_account,
     create_rule,
@@ -733,3 +734,17 @@ def test_set_account_notes(session):
     assert account.notes == "Updated note"
     account.notes = None
     assert account.notes is None
+
+
+def test_database_delete_cause_exception(session):
+    """Create a transaction and attempt deleting it directly via the session,
+    ensure that an Exception is thrown."""
+    account = create_account(session, "Checking")
+    tx = create_transaction(session, date=today, account=account, amount=10.0)
+    session.commit()
+
+    with pytest.raises(ActualInvalidOperationError) as exc_info:
+        session.delete(tx)
+        session.commit()
+
+    assert str(exc_info.value).startswith("Actual does not allow deleting entries")
