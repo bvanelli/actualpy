@@ -463,6 +463,12 @@ class CustomReports(BaseModel, table=True):
 
 
 class Dashboard(BaseModel, table=True):
+    """
+    A dashboard holds the JSON information in the `meta` column.
+
+    These dashboards are grouped together in a [DashboardPages][actual.database.DashboardPages] object.
+    """
+
     id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
     type: str | None = Field(default=None, sa_column=Column("type", Text))
     width: int | None = Field(default=None, sa_column=Column("width", Integer))
@@ -471,6 +477,23 @@ class Dashboard(BaseModel, table=True):
     y: int | None = Field(default=None, sa_column=Column("y", Integer))
     meta: str | None = Field(default=None, sa_column=Column("meta", Text))
     tombstone: int | None = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
+    dashboard_page_id: str | None = Field(
+        default=None, sa_column=Column("dashboard_page_id", Text, ForeignKey("dashboard_pages.id"))
+    )
+
+    dashboard_pages: list["DashboardPages"] = Relationship(back_populates="dashboard")
+
+
+class DashboardPages(SQLModel, table=True):
+    """Named collection of multiple [Dashboard][actual.database.Dashboard] objects in one dashboard page."""
+
+    __tablename__ = "dashboard_pages"
+
+    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    name: str | None = Field(default=None, sa_column=Column("name", Text))
+    tombstone: int | None = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
+
+    dashboard: list["Dashboard"] = Relationship(back_populates="dashboard_pages")
 
 
 class Kvcache(SQLModel, table=True):
