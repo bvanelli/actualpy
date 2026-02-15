@@ -8,6 +8,7 @@ import pytest
 
 from actual import Actual, ActualError, reflect_model
 from actual.database import Notes, Transactions, ZeroBudgetMonths
+from actual.exceptions import ActualInvalidOperationError
 from actual.queries import (
     create_account,
     create_rule,
@@ -18,6 +19,7 @@ from actual.queries import (
     create_transaction,
     create_transfer,
     get_accounts,
+    get_categories,
     get_held_budget,
     get_or_create_category,
     get_or_create_clock,
@@ -288,6 +290,7 @@ def test_rule_insertion_method(session):
 
 
 def test_normalize_payee():
+    assert normalize_payee(None) == ""
     assert normalize_payee("   mY paYeE ") == "My Payee"
     assert normalize_payee("  ", raw_payee_name=True) == ""
     assert normalize_payee(" My PayeE ", raw_payee_name=True) == "My PayeE"
@@ -733,3 +736,57 @@ def test_set_account_notes(session):
     assert account.notes == "Updated note"
     account.notes = None
     assert account.notes is None
+
+
+def test_negative_transfer(session):
+    """Try to create a transfer with negative amount, ensure that an Exception is raised."""
+    create_account(session, "Bank")
+    create_account(session, "Savings")
+
+    with pytest.raises(ActualError) as exc_info:
+        create_transfer(session, today, "Bank", "Savings", -200, "Saving money")
+
+    assert str(exc_info.value).startswith("Amount must be a positive value")
+
+
+def test_database_delete_cause_exception(session):
+    """Create a transaction and attempt deleting it directly via the session,
+    ensure that an Exception is thrown."""
+    account = create_account(session, "Checking")
+    tx = create_transaction(session, date=today, account=account, amount=10.0)
+    session.commit()
+
+    with pytest.raises(ActualInvalidOperationError) as exc_info:
+        session.delete(tx)
+        session.commit()
+
+    assert str(exc_info.value).startswith("Actual does not allow deleting entries")
+
+
+def test_get_categories(session):
+    """Create some categories and verify that filtering of the getter functions as expected"""
+    get_or_create_category(session, "Rent")
+    food = get_or_create_category(session, "Food")
+    food.delete()
+
+    i1 = get_or_create_category(session, "Income 1")
+    i2 = get_or_create_category(session, "Income 2")
+    i3 = get_or_create_category(session, "Income 3")
+    i4 = get_or_create_category(session, "Income 4")
+    i1.is_income = True
+    i2.is_income = True
+    i3.is_income = True
+    i4.is_income = True
+    i2.delete()
+    i3.delete()
+
+    session.commit()
+
+    assert len(get_categories(session)) == 3
+    assert len(get_categories(session, include_deleted=True)) == 6
+
+    assert len(get_categories(session, is_income=False)) == 1
+    assert len(get_categories(session, is_income=False, include_deleted=True)) == 2
+
+    assert len(get_categories(session, is_income=True)) == 2
+    assert len(get_categories(session, is_income=True, include_deleted=True)) == 4
