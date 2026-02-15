@@ -738,6 +738,17 @@ def test_set_account_notes(session):
     assert account.notes is None
 
 
+def test_negative_transfer(session):
+    """Try to create a transfer with negative amount, ensure that an Exception is raised."""
+    create_account(session, "Bank")
+    create_account(session, "Savings")
+
+    with pytest.raises(ActualError) as exc_info:
+        create_transfer(session, today, "Bank", "Savings", -200, "Saving money")
+
+    assert str(exc_info.value).startswith("Amount must be a positive value")
+
+
 def test_database_delete_cause_exception(session):
     """Create a transaction and attempt deleting it directly via the session,
     ensure that an Exception is thrown."""
