@@ -289,6 +289,7 @@ def test_rule_insertion_method(session):
 
 
 def test_normalize_payee():
+    assert normalize_payee(None) == ""
     assert normalize_payee("   mY paYeE ") == "My Payee"
     assert normalize_payee("  ", raw_payee_name=True) == ""
     assert normalize_payee(" My PayeE ", raw_payee_name=True) == "My PayeE"
