@@ -7,10 +7,11 @@ from datetime import date, timedelta
 import pytest
 
 from actual import Actual, ActualError, reflect_model
-from actual.database import Notes, Transactions, ZeroBudgetMonths
+from actual.database import Transactions, ZeroBudgetMonths
 from actual.exceptions import ActualInvalidOperationError
 from actual.queries import (
     create_account,
+    create_budget,
     create_rule,
     create_schedule,
     create_schedule_config,
@@ -323,12 +324,31 @@ def test_rollback(session):
 
 
 def test_model_notes(session):
+    # Account notes
     account_with_note = create_account(session, "Bank 1")
     account_without_note = create_account(session, "Bank 2")
-    session.add(Notes(id=f"account-{account_with_note.id}", note="My note"))
+    account_with_note.notes = "My note"
     session.commit()
     assert account_with_note.notes == "My note"
     assert account_without_note.notes is None
+    account_with_note.notes = None
+    assert account_with_note.notes is None
+    # Category notes
+    category_with_note = get_or_create_category(session, "Groceries")
+    category_without_note = get_or_create_category(session, "Transportation")
+    category_with_note.notes = "Spending on groceries."
+    session.commit()
+    assert category_with_note.notes == "Spending on groceries."
+    assert category_without_note.notes is None
+    account_with_note.notes = None
+    assert account_with_note.notes is None
+    # Budget notes
+    budget = create_budget(session, datetime.date.today(), category_with_note)
+    budget.notes = "My budget"
+    session.commit()
+    assert budget.notes == "My budget"
+    budget.notes = None
+    assert budget.notes is None
 
 
 def test_default_imported_payee(session):

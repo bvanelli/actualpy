@@ -297,7 +297,7 @@ class Accounts(BaseModel, table=True):
 
     @property
     def notes(self) -> str | None:
-        """Returns notes for the account. If none are present, returns `None`."""
+        """Returns notes for the account. If none is present, returns `None`."""
         return object_session(self).scalar(select(Notes.note).where(Notes.id == f"account-{self.id}"))
 
     @notes.setter
@@ -371,6 +371,16 @@ class Categories(BaseModel, table=True):
             )
         )
         return cents_to_decimal(value)
+
+    @property
+    def notes(self) -> str | None:
+        """Returns notes for the category. If none is present, returns `None`."""
+        return object_session(self).scalar(select(Notes.note).where(Notes.id == self.id))
+
+    @notes.setter
+    def notes(self, note: str | None) -> None:
+        """Set the note for the category as a string."""
+        object_session(self).merge(Notes(id=self.id, note=note))
 
 
 class CategoryGroups(BaseModel, table=True):
@@ -905,6 +915,18 @@ class BaseBudgets(BaseModel):
             )
         )
         return cents_to_decimal(value)
+
+    @property
+    def notes(self) -> str | None:
+        """Returns notes for the budget. If none is present, returns `None`."""
+        budget_id = f"budget-{self.get_date().strftime('%Y-%m')}"
+        return object_session(self).scalar(select(Notes.note).where(Notes.id == budget_id))
+
+    @notes.setter
+    def notes(self, note: str | None) -> None:
+        """Set the note for the budget as a string."""
+        budget_id = f"budget-{self.get_date().strftime('%Y-%m')}"
+        object_session(self).merge(Notes(id=budget_id, note=note))
 
 
 class ReflectBudgets(BaseBudgets, table=True):
