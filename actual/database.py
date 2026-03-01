@@ -22,7 +22,7 @@ from typing import Optional
 
 from sqlalchemy import MetaData, Table, engine, event, inspect
 from sqlalchemy.dialects.sqlite import insert
-from sqlalchemy.orm import class_mapper, object_session
+from sqlalchemy.orm import class_mapper, object_session, validates
 from sqlmodel import (
     JSON,
     Boolean,
@@ -297,8 +297,13 @@ class Accounts(BaseModel, table=True):
 
     @property
     def notes(self) -> str | None:
-        """Returns notes for the account. If none are present, returns `None`."""
+        """Returns notes for the account. If none is present, returns `None`."""
         return object_session(self).scalar(select(Notes.note).where(Notes.id == f"account-{self.id}"))
+
+    @notes.setter
+    def notes(self, note: str | None) -> None:
+        """Set the note for the account as a string."""
+        object_session(self).merge(Notes(id=f"account-{self.id}", note=note))
 
 
 class Banks(BaseModel, table=True):
@@ -366,6 +371,16 @@ class Categories(BaseModel, table=True):
             )
         )
         return cents_to_decimal(value)
+
+    @property
+    def notes(self) -> str | None:
+        """Returns notes for the category. If none is present, returns `None`."""
+        return object_session(self).scalar(select(Notes.note).where(Notes.id == self.id))
+
+    @notes.setter
+    def notes(self, note: str | None) -> None:
+        """Set the note for the category as a string."""
+        object_session(self).merge(Notes(id=self.id, note=note))
 
 
 class CategoryGroups(BaseModel, table=True):
@@ -444,9 +459,16 @@ class CustomReports(BaseModel, table=True):
         default=None, sa_column=Column("include_current", Integer, server_default=text("0"))
     )
     sort_by: str | None = Field(default=None, sa_column=Column("sort_by", Text, server_default=text("'desc'")))
+    trim_intervals: int | None = Field(default=None, sa_column=Column("trim_intervals", Integer))
 
 
 class Dashboard(BaseModel, table=True):
+    """
+    A dashboard holds the JSON information in the `meta` column.
+
+    These dashboards are grouped together in a [DashboardPages][actual.database.DashboardPages] object.
+    """
+
     id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
     type: str | None = Field(default=None, sa_column=Column("type", Text))
     width: int | None = Field(default=None, sa_column=Column("width", Integer))
@@ -455,6 +477,23 @@ class Dashboard(BaseModel, table=True):
     y: int | None = Field(default=None, sa_column=Column("y", Integer))
     meta: str | None = Field(default=None, sa_column=Column("meta", Text))
     tombstone: int | None = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
+    dashboard_page_id: str | None = Field(
+        default=None, sa_column=Column("dashboard_page_id", Text, ForeignKey("dashboard_pages.id"))
+    )
+
+    dashboard_pages: list["DashboardPages"] = Relationship(back_populates="dashboard")
+
+
+class DashboardPages(SQLModel, table=True):
+    """Named collection of multiple [Dashboard][actual.database.Dashboard] objects in one dashboard page."""
+
+    __tablename__ = "dashboard_pages"
+
+    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    name: str | None = Field(default=None, sa_column=Column("name", Text))
+    tombstone: int | None = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
+
+    dashboard: list["Dashboard"] = Relationship(back_populates="dashboard_pages")
 
 
 class Kvcache(SQLModel, table=True):
@@ -761,6 +800,42 @@ class Transactions(BaseModel, table=True):
         """Returns the amount as a decimal.Decimal, instead of as an integer representing the number of cents."""
         return cents_to_decimal(self.amount)
 
+    @validates("cleared")
+    def validate_cleared(self, key, v):
+        """Add an validator which ensures that clearing parent transactions also affects all splits"""
+
+        # Validation only performed on parent transactions where cleared is changed
+        if self.is_parent and self.cleared != v:
+            session = object_session(self)
+            splits = session.scalars(select(Transactions).where(Transactions.parent_id == self.id)).all()
+            for s in splits:
+                s.cleared = v
+
+        # Return the input value unmodified as this is a validator for the parent
+        return v
+
+    def delete(self):
+        """Overload the delete() from the BaseModel so that we can properly delete any children splits
+        as well. Otherwise things will not add up in the Actual GUI when calling delete() on a parent.
+
+        It is technically possible to call delete() a child transaction, that would probably also cause
+        things to go out of sync ,but since that is not possible to do in the UI this case is not handled
+        here and is left as undefined behaviour.
+
+        Neither is it handled if the tombstone flag is set directly on an object without using the delete()
+        metod. If you are into this direct attribute modification you will have to handle the splits yourself.
+        """
+
+        # Check if this is a parent transaction, if so iterate the children and call delete() on them as well
+        if self.is_parent:
+            session = object_session(self)
+            splits = session.scalars(select(Transactions).where(Transactions.parent_id == self.id)).all()
+            for s in splits:
+                s.delete()
+
+        # Utilise the BaseModel delete() for deleting the transaction
+        super().delete()
+
 
 class ZeroBudgetMonths(BaseModel, table=True):
     """
@@ -863,6 +938,18 @@ class BaseBudgets(BaseModel):
             )
         )
         return cents_to_decimal(value)
+
+    @property
+    def notes(self) -> str | None:
+        """Returns notes for the budget. If none is present, returns `None`."""
+        budget_id = f"budget-{self.get_date().strftime('%Y-%m')}"
+        return object_session(self).scalar(select(Notes.note).where(Notes.id == budget_id))
+
+    @notes.setter
+    def notes(self, note: str | None) -> None:
+        """Set the note for the budget as a string."""
+        budget_id = f"budget-{self.get_date().strftime('%Y-%m')}"
+        object_session(self).merge(Notes(id=budget_id, note=note))
 
 
 class ReflectBudgets(BaseBudgets, table=True):

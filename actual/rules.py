@@ -50,6 +50,7 @@ class ActionType(enum.Enum):
     LINK_SCHEDULE = "link-schedule"
     PREPEND_NOTES = "prepend-notes"
     APPEND_NOTES = "append-notes"
+    DELETE_TRANSACTIONS = "delete-transaction"
 
 
 class BetweenValue(pydantic.BaseModel):
@@ -371,6 +372,8 @@ class Action(pydantic.BaseModel):
                 if self.op == ActionType.APPEND_NOTES
                 else f"prepend to notes '{self.value}'"
             )
+        elif self.op == ActionType.DELETE_TRANSACTIONS:
+            return "delete transaction"
 
     @model_serializer(mode="wrap")
     def serialize_model(self, handler) -> dict:
@@ -398,6 +401,11 @@ class Action(pydantic.BaseModel):
                 self.type = ValueType.ID
             elif self.op == ActionType.SET_SPLIT_AMOUNT:
                 self.type = ValueType.NUMBER
+            elif self.op == ActionType.DELETE_TRANSACTIONS:
+                # actual seems to store both types as equivalents
+                # [{"op":"delete-transaction","value":null,"options":{}}]
+                # [{"op":"delete-transaction","field":"category","value":null,"type":"id","options":{}}]
+                self.type = ValueType.ID
         # questionable choice from the developers to set it to ID, I hope they fix it at some point, but we change it
         if self.op in (ActionType.APPEND_NOTES, ActionType.PREPEND_NOTES):
             self.type = ValueType.STRING
@@ -444,6 +452,8 @@ class Action(pydantic.BaseModel):
             notes = transaction.notes or ""
             if not notes.startswith(self.value):
                 transaction.notes = f"{self.value}{notes}"
+        elif self.op == ActionType.DELETE_TRANSACTIONS:
+            transaction.tombstone = 1
         else:
             raise ActualError(f"Operation {self.op} not supported")
 

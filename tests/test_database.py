@@ -7,9 +7,11 @@ from datetime import date, timedelta
 import pytest
 
 from actual import Actual, ActualError, reflect_model
-from actual.database import Notes, Transactions, ZeroBudgetMonths
+from actual.database import Transactions, ZeroBudgetMonths
+from actual.exceptions import ActualInvalidOperationError
 from actual.queries import (
     create_account,
+    create_budget,
     create_rule,
     create_schedule,
     create_schedule_config,
@@ -18,6 +20,7 @@ from actual.queries import (
     create_transaction,
     create_transfer,
     get_accounts,
+    get_categories,
     get_held_budget,
     get_or_create_category,
     get_or_create_clock,
@@ -226,6 +229,43 @@ def test_create_splits_error(session):
         create_splits(session, [t1, t3])
 
 
+def test_create_splits_clearing(session):
+    bank = create_account(session, "Bank")
+    t = create_transaction(session, today, bank, category="Dining", amount=-10.0)
+    t_taxes = create_transaction(session, today, bank, category="Taxes", amount=-2.5)
+    parent_transaction = create_splits(session, [t, t_taxes], notes="Dining")
+
+    # find all children and verify they are not cleared
+    trs = get_transactions(session)
+    assert len(trs) == 2
+    assert all(not tr.cleared for tr in trs)
+
+    # clear parent and verify that it cascades to the splits
+    parent_transaction.cleared = True
+    assert all(tr.cleared for tr in trs)
+
+    # unclear parent and verify that it cascades to the splits
+    parent_transaction.cleared = False
+    assert all(not tr.cleared for tr in trs)
+
+
+def test_create_splits_delete(session):
+    bank = create_account(session, "Bank")
+    t = create_transaction(session, today, bank, category="Dining", amount=-10.0)
+    t_taxes = create_transaction(session, today, bank, category="Taxes", amount=-2.5)
+    parent_transaction = create_splits(session, [t, t_taxes], notes="Dining")
+
+    # Verify that all is properly setup
+    trs = get_transactions(session)
+    assert len(trs) == 2
+    assert (t.parent == parent_transaction.id for t in trs)
+
+    # Delete parent, this should result in the children getting deleted as well
+    parent_transaction.delete()
+    trs = get_transactions(session)
+    assert len(trs) == 0
+
+
 def test_create_transaction_without_account_error(session):
     with pytest.raises(ActualError):
         create_transaction(session, today, "foo", "")
@@ -268,6 +308,7 @@ def test_rule_insertion_method(session):
 
 
 def test_normalize_payee():
+    assert normalize_payee(None) == ""
     assert normalize_payee("   mY paYeE ") == "My Payee"
     assert normalize_payee("  ", raw_payee_name=True) == ""
     assert normalize_payee(" My PayeE ", raw_payee_name=True) == "My PayeE"
@@ -283,12 +324,31 @@ def test_rollback(session):
 
 
 def test_model_notes(session):
+    # Account notes
     account_with_note = create_account(session, "Bank 1")
     account_without_note = create_account(session, "Bank 2")
-    session.add(Notes(id=f"account-{account_with_note.id}", note="My note"))
+    account_with_note.notes = "My note"
     session.commit()
     assert account_with_note.notes == "My note"
     assert account_without_note.notes is None
+    account_with_note.notes = None
+    assert account_with_note.notes is None
+    # Category notes
+    category_with_note = get_or_create_category(session, "Groceries")
+    category_without_note = get_or_create_category(session, "Transportation")
+    category_with_note.notes = "Spending on groceries."
+    session.commit()
+    assert category_with_note.notes == "Spending on groceries."
+    assert category_without_note.notes is None
+    account_with_note.notes = None
+    assert account_with_note.notes is None
+    # Budget notes
+    budget = create_budget(session, datetime.date.today(), category_with_note)
+    budget.notes = "My budget"
+    session.commit()
+    assert budget.notes == "My budget"
+    budget.notes = None
+    assert budget.notes is None
 
 
 def test_default_imported_payee(session):
@@ -511,6 +571,34 @@ def test_get_transactions_with_cleared_filter(session):
         assert t.cleared
 
 
+def test_get_transactions_with_of_budget_filter(session):
+    on_budget_acct = create_account(session, "On Budget Account", off_budget=False)
+    off_budget_acct = create_account(session, "Off Budget Account", off_budget=True)
+
+    # Create transactions in both accounts
+    create_transaction(session, date=today, account=on_budget_acct, amount=10)
+    create_transaction(session, date=today, account=on_budget_acct, amount=20)
+    create_transaction(session, date=today, account=on_budget_acct, amount=30)
+    create_transaction(session, date=today, account=off_budget_acct, amount=100)
+    create_transaction(session, date=today, account=off_budget_acct, amount=200)
+
+    # Request all transactions
+    txs = get_transactions(session)
+    assert len(txs) == 5
+
+    # Request only on-budget transactions
+    txs = get_transactions(session, off_budget=False)
+    assert len(txs) == 3
+    for t in txs:
+        assert t.account.offbudget == 0
+
+    # Request only off-budget transactions
+    txs = get_transactions(session, off_budget=True)
+    assert len(txs) == 2
+    for t in txs:
+        assert t.account.offbudget == 1
+
+
 def test_get_accounts_with_closed_filter(session):
     """Test get_accounts filtering by closed attribute."""
     open_account = create_account(session, "Investment")
@@ -673,3 +761,69 @@ def test_get_transactions_with_transfer_filter(session):
     assert len(transactions) == 2, "Should only return non-transfer transactions"
     for transaction in transactions:
         assert transaction.get_amount() == 11.50
+
+
+def test_set_account_notes(session):
+    """Test setting and updating an account's notes."""
+    account = create_account(session, "Checking")
+    assert account.notes is None
+    account.notes = "New note"
+    assert account.notes == "New note"
+    account.notes = "Updated note"
+    assert account.notes == "Updated note"
+    account.notes = None
+    assert account.notes is None
+
+
+def test_negative_transfer(session):
+    """Try to create a transfer with negative amount, ensure that an Exception is raised."""
+    create_account(session, "Bank")
+    create_account(session, "Savings")
+
+    with pytest.raises(ActualError) as exc_info:
+        create_transfer(session, today, "Bank", "Savings", -200, "Saving money")
+
+    assert str(exc_info.value).startswith("Amount must be a positive value")
+
+
+def test_database_delete_cause_exception(session):
+    """Create a transaction and attempt deleting it directly via the session,
+    ensure that an Exception is thrown."""
+    account = create_account(session, "Checking")
+    tx = create_transaction(session, date=today, account=account, amount=10.0)
+    session.commit()
+
+    with pytest.raises(ActualInvalidOperationError) as exc_info:
+        session.delete(tx)
+        session.commit()
+
+    assert str(exc_info.value).startswith("Actual does not allow deleting entries")
+
+
+def test_get_categories(session):
+    """Create some categories and verify that filtering of the getter functions as expected"""
+    get_or_create_category(session, "Rent")
+    food = get_or_create_category(session, "Food")
+    food.delete()
+
+    i1 = get_or_create_category(session, "Income 1")
+    i2 = get_or_create_category(session, "Income 2")
+    i3 = get_or_create_category(session, "Income 3")
+    i4 = get_or_create_category(session, "Income 4")
+    i1.is_income = True
+    i2.is_income = True
+    i3.is_income = True
+    i4.is_income = True
+    i2.delete()
+    i3.delete()
+
+    session.commit()
+
+    assert len(get_categories(session)) == 3
+    assert len(get_categories(session, include_deleted=True)) == 6
+
+    assert len(get_categories(session, is_income=False)) == 1
+    assert len(get_categories(session, is_income=False, include_deleted=True)) == 2
+
+    assert len(get_categories(session, is_income=True)) == 2
+    assert len(get_categories(session, is_income=True, include_deleted=True)) == 4

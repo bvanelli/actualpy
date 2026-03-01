@@ -56,7 +56,7 @@ def base_dataset(actual: Actual, budget_name: str = "Test", encryption_password:
         actual.encrypt(encryption_password)
 
 
-@pytest.fixture()  # todo: revert to scope="module", for some reason not working with test_tracking_budget
+@pytest.fixture(scope="module")
 def actual_server(module_mocker, tmp_path_factory):
     path = pathlib.Path(tmp_path_factory.mktemp("config"))
     module_mocker.patch("actual.cli.config.default_config_path", return_value=path / "config.yaml")
@@ -93,8 +93,10 @@ def invoke(command: list[str]) -> Result:
 
 
 def test_init_interactive(actual_server, mocker):
-    # create a new encrypted file
-    base_dataset(actual_server, "Extra", "mypass")
+    # create a new encrypted file using a separate Actual instance
+    # to avoid modifying the shared actual_server fixture
+    with Actual(actual_server.api_url, password="mypass", bootstrap=True) as actual:
+        base_dataset(actual, "Extra", "mypass")
     # test full prompt
     mock_prompt = mocker.patch("typer.prompt")
     mock_prompt.side_effect = [actual_server.api_url, "mypass", 2, "mypass", "myextra"]
@@ -263,9 +265,9 @@ def test_tracking_budget(actual_server):
     result = invoke(["budget"])
     assert result.exit_code == 0
 
-    # revert the budget type to tracking
-    # get_or_create_preference(actual_server.session, "budgetType", "envelope")
-    # actual_server.commit()
+    # revert the budget type to envelope
+    get_or_create_preference(actual_server.session, "budgetType", "envelope")
+    actual_server.commit()
 
 
 def test_export(actual_server, mocker):
