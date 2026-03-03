@@ -203,6 +203,7 @@ def test_value_type_condition_validation():
     assert ValueType.BOOLEAN.is_valid(ConditionType.IS) is True
     assert ValueType.ID.is_valid(ConditionType.NOT_ONE_OF) is True
     assert ValueType.ID.is_valid(ConditionType.CONTAINS) is False
+    assert ValueType.ID.is_valid(ConditionType.OFF_BUDGET) is True
     assert ValueType.STRING.is_valid(ConditionType.CONTAINS) is True
     assert ValueType.STRING.is_valid(ConditionType.GT) is False
     assert ValueType.IMPORTED_PAYEE.is_valid(ConditionType.CONTAINS) is True
@@ -413,3 +414,14 @@ def test_delete_transaction_action(session):
 
     assert str(action) == "delete transaction"
     assert "delete transaction" in str(rule)
+
+
+def test_off_budget_condition(session):
+    # create basic items
+    acct = create_account(session, "Bank", off_budget=True)
+    t = create_transaction(session, datetime.date(2024, 1, 1), acct, imported_payee="")
+    condition = {"type": "id", "field": "acct", "op": "offBudget", "value": None}
+    cond = Condition.model_validate(condition)
+    assert cond.run(t)
+    acct.offbudget = 0
+    assert not cond.run(t)
