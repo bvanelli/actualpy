@@ -43,6 +43,7 @@ class ConditionType(enum.Enum):
     IS_BETWEEN = "isbetween"
     MATCHES = "matches"
     HAS_TAGS = "hasTags"
+    ON_BUDGET = "onBudget"
     OFF_BUDGET = "offBudget"
 
 
@@ -101,7 +102,7 @@ class ValueType(enum.Enum):
                 "hasTags",
             )
         elif self == ValueType.ID:
-            return operation.value in ("is", "isNot", "oneOf", "notOneOf", "offBudget")
+            return operation.value in ("is", "isNot", "oneOf", "notOneOf", "onBudget", "offBudget")
         elif self == ValueType.NUMBER:
             return operation.value in ("is", "isapprox", "isbetween", "gt", "gte", "lt", "lte")
         else:
@@ -233,6 +234,11 @@ def condition_evaluation(
         # taken from https://stackoverflow.com/a/26740753/12681470
         tags = re.findall(r"\#[\U00002600-\U000027BF\U0001f300-\U0001f64F\U0001f680-\U0001f6FF\w-]+", self_value)
         return any(tag in true_value for tag in tags)
+    elif op == ConditionType.ON_BUDGET:
+        from actual.queries import get_account  # lazy import to prevent circular issues
+
+        account = get_account(session, true_value)
+        return account is not None and account.offbudget == 0
     elif op == ConditionType.OFF_BUDGET:
         from actual.queries import get_account  # lazy import to prevent circular issues
 

@@ -416,6 +416,17 @@ def test_delete_transaction_action(session):
     assert "delete transaction" in str(rule)
 
 
+def test_on_budget_condition(session):
+    # create basic items
+    acct = create_account(session, "Bank", off_budget=False)
+    t = create_transaction(session, datetime.date(2024, 1, 1), acct, imported_payee="")
+    condition = {"type": "id", "field": "acct", "op": "onBudget", "value": None}
+    cond = Condition.model_validate(condition)
+    assert cond.run(t)
+    acct.offbudget = 1
+    assert not cond.run(t)
+
+
 def test_off_budget_condition(session):
     # create basic items
     acct = create_account(session, "Bank", off_budget=True)
