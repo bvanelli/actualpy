@@ -203,6 +203,7 @@ def test_value_type_condition_validation():
     assert ValueType.BOOLEAN.is_valid(ConditionType.IS) is True
     assert ValueType.ID.is_valid(ConditionType.NOT_ONE_OF) is True
     assert ValueType.ID.is_valid(ConditionType.CONTAINS) is False
+    assert ValueType.ID.is_valid(ConditionType.ON_BUDGET) is True
     assert ValueType.ID.is_valid(ConditionType.OFF_BUDGET) is True
     assert ValueType.STRING.is_valid(ConditionType.CONTAINS) is True
     assert ValueType.STRING.is_valid(ConditionType.GT) is False
