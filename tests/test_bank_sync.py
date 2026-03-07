@@ -3,7 +3,7 @@ import datetime
 import decimal
 
 import pytest
-from requests import Session
+from httpx import Client
 
 from actual import Actual, ActualBankSyncError
 from actual.api.bank_sync import TransactionItem
@@ -91,8 +91,8 @@ def generate_bank_sync_data(mocker, starting_balance: int | None = None):
         response_full["startingBalance"] = starting_balance
     response_empty = copy.deepcopy(response)
     response_empty["transactions"]["all"] = []
-    mocker.patch.object(Session, "get").return_value = RequestsMock({"status": "ok", "data": {"validated": True}})
-    main_mock = mocker.patch.object(Session, "post")
+    mocker.patch.object(Client, "get").return_value = RequestsMock({"status": "ok", "data": {"validated": True}})
+    main_mock = mocker.patch.object(Client, "post")
     main_mock.side_effect = [
         RequestsMock({"status": "ok", "data": {"configured": True}}),
         RequestsMock({"status": "ok", "data": response_full}),
@@ -187,8 +187,8 @@ def test_bank_sync_with_starting_balance(session, bank_sync_data_no_match):
 
 
 def test_bank_sync_unconfigured(mocker, session):
-    mocker.patch.object(Session, "get").return_value = RequestsMock({"status": "ok", "data": {"validated": True}})
-    main_mock = mocker.patch.object(Session, "post")
+    mocker.patch.object(Client, "get").return_value = RequestsMock({"status": "ok", "data": {"validated": True}})
+    main_mock = mocker.patch.object(Client, "post")
     main_mock.return_value = RequestsMock({"status": "ok", "data": {"configured": False}})
 
     with Actual(token="foo") as actual:
@@ -198,8 +198,8 @@ def test_bank_sync_unconfigured(mocker, session):
 
 
 def test_bank_sync_exception(session, mocker):
-    mocker.patch.object(Session, "get").return_value = RequestsMock({"status": "ok", "data": {"validated": True}})
-    main_mock = mocker.patch.object(Session, "post")
+    mocker.patch.object(Client, "get").return_value = RequestsMock({"status": "ok", "data": {"validated": True}})
+    main_mock = mocker.patch.object(Client, "post")
     main_mock.side_effect = [
         RequestsMock({"status": "ok", "data": {"configured": True}}),
         RequestsMock({"status": "ok", "data": fail_response}),

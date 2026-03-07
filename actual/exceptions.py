@@ -1,7 +1,7 @@
-import requests
+import httpx
 
 
-def get_exception_from_response(response: requests.Response) -> Exception:
+def get_exception_from_response(response: httpx.Response) -> Exception:
     text = response.content.decode()
     if text == "internal-error" or response.status_code == 500:
         return ActualError(text)

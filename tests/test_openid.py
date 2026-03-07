@@ -1,8 +1,9 @@
 import threading
 import time
 
+import httpx
 import pytest
-from requests import Session, get
+from httpx import Client
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.waiting_utils import wait_for_logs
 
@@ -44,7 +45,7 @@ def test_openid_endpoints(actual_server, mocker):
         assert len(permissions) == 1
         assert all(user.owner is False for user in permissions)
         # Delete user does not work due to some internal exception (when not set), so we mock the response for now
-        mocker.patch.object(Session, "delete").return_value = RequestsMock(
+        mocker.patch.object(Client, "delete").return_value = RequestsMock(
             {"status": "ok", "data": {"someDeletionsFailed": False}}
         )
         actual.delete_open_id_user(user.id)
@@ -55,7 +56,7 @@ def test_login_handshake(mocker):
         # This thread will do the interaction of the user logging in via browser
         # We just wait a second then call the endpoint passing the token from the open id callback to the API
         time.sleep(1)
-        get(url, params={"token": "mytoken"})
+        httpx.get(url, params={"token": "mytoken"})
 
     def _login_fn(_url: str, json: dict):
         assert "returnUrl" in json
@@ -66,7 +67,7 @@ def test_login_handshake(mocker):
     mocker.patch.object(Actual, "validate")
     mocker.patch.object(Actual, "is_open_id_owner_created", return_value=True)
     mocker.patch.object(Actual, "needs_bootstrap", return_value=True)
-    mocker.patch.object(Session, "post").side_effect = _login_fn
+    mocker.patch.object(Client, "post").side_effect = _login_fn
 
     # If the handshake is successful, the token would be set
     with Actual("http://localhost:123") as actual:

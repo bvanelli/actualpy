@@ -2,7 +2,7 @@ import zipfile
 from unittest.mock import patch
 
 import pytest
-from requests import Session
+from httpx import Client
 
 from actual import Actual, reflect_model
 from actual.api import ListUserFilesDTO
@@ -41,7 +41,7 @@ def test_rename_delete_budget_without_file(login_mocks):
         actual.rename_budget("foo")
 
 
-@patch.object(Session, "post", return_value=RequestsMock({"status": "error", "reason": "proxy-not-trusted"}))
+@patch.object(Client, "post", return_value=RequestsMock({"status": "error", "reason": "proxy-not-trusted"}))
 def test_api_login_unknown_error(_post, login_mocks):
     actual = Actual(token="foo")
     actual.api_url = "localhost"
@@ -50,7 +50,7 @@ def test_api_login_unknown_error(_post, login_mocks):
         actual.login("foo")
 
 
-@patch.object(Session, "post", return_value=RequestsMock({}, status_code=403))
+@patch.object(Client, "post", return_value=RequestsMock({}, status_code=403))
 def test_api_login_http_error(_post, login_mocks):
     actual = Actual(token="foo")
     actual.api_url = "localhost"

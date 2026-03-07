@@ -4,7 +4,7 @@ import datetime
 import json
 from typing import Literal
 
-import requests
+import httpx
 
 from actual.api.models import (
     BankSyncAccountResponseDTO,
@@ -65,11 +65,12 @@ class ActualServer:
         """
         self.api_url: str = base_url
         self._token: str | None = token
-        self._requests_session: requests.Session = requests.Session()
-        if extra_headers:
-            self._requests_session.headers = extra_headers
-        if cert is not None:
-            self._requests_session.verify = cert
+        _verify = cert if cert is not None else True
+        self._requests_session: httpx.Client = httpx.Client(
+            headers=extra_headers,
+            verify=_verify,
+        )
+        self._requests_session.verify = _verify
         if token is None and password is None and not self.is_open_id_owner_created():
             raise ValueError("Either provide a valid token or a password.")
         # already try to log-in if password was provided
@@ -231,7 +232,7 @@ class ActualServer:
             base_headers["X-ACTUAL-ENCRYPT-META"] = json.dumps(encryption_meta)
         request = self._requests_session.post(
             f"{self.api_url}/{Endpoints.UPLOAD_USER_FILE}",
-            data=binary_data,
+            content=binary_data,
             headers=self.headers(extra_headers=base_headers),
         )
         request.raise_for_status()
@@ -315,7 +316,7 @@ class ActualServer:
         response = self._requests_session.post(
             f"{self.api_url}/{Endpoints.SYNC}",
             headers=self.headers(request.fileId, extra_headers={"Content-Type": "application/actual-sync"}),
-            data=SyncRequest.serialize(request),
+            content=SyncRequest.serialize(request),
         )
         response.raise_for_status()
         parsed_response = SyncResponse.deserialize(response.content)
@@ -339,7 +340,9 @@ class ActualServer:
     def open_id_config(self, password: str) -> OpenIDConfigResponseDTO:
         """Gets the OpenID configuration for the server. You will need to provide the main password to access this
         config."""
-        response = self._requests_session.post(f"{self.api_url}/{Endpoints.OPEN_ID_CONFIG}", {"password": password})
+        response = self._requests_session.post(
+            f"{self.api_url}/{Endpoints.OPEN_ID_CONFIG}", json={"password": password}
+        )
         response.raise_for_status()
         return OpenIDConfigResponseDTO.model_validate(response.json())
 
@@ -366,7 +369,7 @@ class ActualServer:
             "owner": owner,
             "role": role,
         }
-        response = self._requests_session.post(f"{self.api_url}/{Endpoints.OPEN_ID_USERS}", payload)
+        response = self._requests_session.post(f"{self.api_url}/{Endpoints.OPEN_ID_USERS}", json=payload)
         response.raise_for_status()
         model_response = OpenIDUserDTO.model_validate(payload)
         # fill entity since the endpoint does not return a DTO
@@ -401,7 +404,7 @@ class ActualServer:
         elif user.role is None:
             user.role = "BASIC"  # seems like a bug from actual
         response = self._requests_session.patch(
-            f"{self.api_url}/{Endpoints.OPEN_ID_USERS}", user.model_dump(by_alias=True)
+            f"{self.api_url}/{Endpoints.OPEN_ID_USERS}", json=user.model_dump(by_alias=True)
         )
         response.raise_for_status()
         return user

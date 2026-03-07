@@ -147,6 +147,7 @@ class Actual(ActualServer):
             self._session.close()
         if self.engine:
             self.engine.dispose()
+        self._requests_session.close()
         self._in_context = False
 
     @property
