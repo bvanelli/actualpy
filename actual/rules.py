@@ -180,6 +180,8 @@ def condition_evaluation(
 ) -> bool:
     """Helper function to evaluate the condition based on the true_value, value found on the transaction, and the
     self_value, value defined on rule condition."""
+    from actual.queries import get_account  # lazy import to prevent circular issues
+
     if true_value is None:
         # short circuit as comparisons with NoneType are useless
         return False
@@ -235,13 +237,9 @@ def condition_evaluation(
         tags = re.findall(r"\#[\U00002600-\U000027BF\U0001f300-\U0001f64F\U0001f680-\U0001f6FF\w-]+", self_value)
         return any(tag in true_value for tag in tags)
     elif op == ConditionType.ON_BUDGET:
-        from actual.queries import get_account  # lazy import to prevent circular issues
-
         account = get_account(session, true_value)
         return account is not None and account.offbudget == 0
     elif op == ConditionType.OFF_BUDGET:
-        from actual.queries import get_account  # lazy import to prevent circular issues
-
         account = get_account(session, true_value)
         return account is not None and account.offbudget == 1
     else:
@@ -337,7 +335,7 @@ class Condition(pydantic.BaseModel):
         true_value = get_value(getattr(transaction, attr), self.type)
         self_value = self.get_value()
         # get inner session from object
-        session = transaction._sa_instance_state.session
+        session = transaction._sa_instance_state.session  # noqa
         return condition_evaluation(self.op, true_value, self_value, self.options, session=session)
 
 

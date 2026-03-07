@@ -423,9 +423,9 @@ def test_on_budget_condition(session):
     t = create_transaction(session, datetime.date(2024, 1, 1), acct, imported_payee="")
     condition = {"type": "id", "field": "acct", "op": "onBudget", "value": None}
     cond = Condition.model_validate(condition)
-    assert cond.run(t)
+    assert cond.run(t) is True
     acct.offbudget = 1
-    assert not cond.run(t)
+    assert cond.run(t) is False
 
 
 def test_off_budget_condition(session):
@@ -434,6 +434,6 @@ def test_off_budget_condition(session):
     t = create_transaction(session, datetime.date(2024, 1, 1), acct, imported_payee="")
     condition = {"type": "id", "field": "acct", "op": "offBudget", "value": None}
     cond = Condition.model_validate(condition)
-    assert cond.run(t)
+    assert cond.run(t) is True
     acct.offbudget = 0
-    assert not cond.run(t)
+    assert cond.run(t) is False
