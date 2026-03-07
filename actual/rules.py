@@ -8,6 +8,7 @@ import typing
 import unicodedata
 
 import pydantic
+import sqlalchemy.orm.session
 from pydantic import model_serializer
 
 from actual import ActualError
@@ -42,6 +43,8 @@ class ConditionType(enum.Enum):
     IS_BETWEEN = "isbetween"
     MATCHES = "matches"
     HAS_TAGS = "hasTags"
+    ON_BUDGET = "onBudget"
+    OFF_BUDGET = "offBudget"
 
 
 class ActionType(enum.Enum):
@@ -99,7 +102,7 @@ class ValueType(enum.Enum):
                 "hasTags",
             )
         elif self == ValueType.ID:
-            return operation.value in ("is", "isNot", "oneOf", "notOneOf")
+            return operation.value in ("is", "isNot", "oneOf", "notOneOf", "onBudget", "offBudget")
         elif self == ValueType.NUMBER:
             return operation.value in ("is", "isapprox", "isbetween", "gt", "gte", "lt", "lte")
         else:
@@ -173,9 +176,12 @@ def condition_evaluation(
     true_value: int | list[str] | str | datetime.date | None,
     self_value: int | list[str] | str | datetime.date | BetweenValue | None,
     options: dict | None = None,
+    session: sqlalchemy.orm.session.Session | None = None,
 ) -> bool:
     """Helper function to evaluate the condition based on the true_value, value found on the transaction, and the
     self_value, value defined on rule condition."""
+    from actual.queries import get_account  # lazy import to prevent circular issues
+
     if true_value is None:
         # short circuit as comparisons with NoneType are useless
         return False
@@ -230,6 +236,12 @@ def condition_evaluation(
         # taken from https://stackoverflow.com/a/26740753/12681470
         tags = re.findall(r"\#[\U00002600-\U000027BF\U0001f300-\U0001f64F\U0001f680-\U0001f6FF\w-]+", self_value)
         return any(tag in true_value for tag in tags)
+    elif op == ConditionType.ON_BUDGET:
+        account = get_account(session, true_value)
+        return account is not None and account.offbudget == 0
+    elif op == ConditionType.OFF_BUDGET:
+        account = get_account(session, true_value)
+        return account is not None and account.offbudget == 1
     else:
         raise ActualError(f"Operation {op} not supported")
 
@@ -322,7 +334,9 @@ class Condition(pydantic.BaseModel):
         attr = get_attribute_by_table_name(Transactions.__tablename__, self.field)
         true_value = get_value(getattr(transaction, attr), self.type)
         self_value = self.get_value()
-        return condition_evaluation(self.op, true_value, self_value, self.options)
+        # get inner session from object
+        session = transaction._sa_instance_state.session  # noqa
+        return condition_evaluation(self.op, true_value, self_value, self.options, session=session)
 
 
 class Action(pydantic.BaseModel):
