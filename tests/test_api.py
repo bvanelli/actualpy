@@ -97,3 +97,37 @@ def test_api_extra_headers(login_mocks):
     actual = Actual(token="foo", extra_headers={"foo": "bar"})
     assert actual._requests_session.headers["foo"] == "bar"
     assert actual._requests_session.headers["X-ACTUAL-TOKEN"] == "foo"
+
+
+@patch.object(
+    Client,
+    "post",
+    return_value=RequestsMock(
+        {
+            "status": "ok",
+            "data": {
+                "openId": {
+                    "doc": "OpenID authentication settings.",
+                    "discoveryURL": "",
+                    "issuer": {
+                        "doc": "OpenID issuer",
+                        "name": "Friendly name for the issuer",
+                        "authorization_endpoint": "https://example.com/login/oauth/authorize",
+                        "token_endpoint": "https://example.com/login/oauth/access_token",
+                        "userinfo_endpoint": "https://api.example.com/user",
+                    },
+                    "client_id": "my-client-id",
+                    "client_secret": "my-client-secret",
+                    "server_hostname": "http://localhost:5006",
+                    "authMethod": "oauth2",
+                }
+            },
+        }
+    ),
+)
+def test_open_id_config(_post, login_mocks):
+    actual = Actual(token="foo")
+    config = actual.open_id_config("mypass")
+    assert config.status == StatusCode.OK
+    assert config.data["openId"].client_id == "my-client-id"
+    assert config.data["openId"].auth_method == "oauth2"
