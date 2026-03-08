@@ -6,6 +6,7 @@ import io
 import json
 import pathlib
 import sqlite3
+import ssl
 import uuid
 import warnings
 import zipfile
@@ -64,7 +65,7 @@ class Actual(ActualServer):
         file: str | None = None,
         encryption_password: str | None = None,
         data_dir: str | pathlib.Path | None = None,
-        cert: str | bool | None = None,
+        cert: bool | ssl.SSLContext | str = True,
         bootstrap: bool = False,
         sa_kwargs: dict | None = None,
         extra_headers: dict[str, str] | None = None,
@@ -85,7 +86,7 @@ class Actual(ActualServer):
                 # Password for authentication
                 password="<your_password>",
                 # Set the file to work with.
-                # Can be either the file id or file name, if the name is unique
+                # Can be either the file id or filename (if the name is unique)
                 file="<file_id_or_name>",
                 # Optional: Password for the file encryption.
                 # Will not use it if set to None.
@@ -94,7 +95,7 @@ class Actual(ActualServer):
                 # Will use a temporary if not provided
                 data_dir="<path_to_data_directory>",
                 # Optional: Path to the certificate file to use for the connection.
-                # Can be set to False to disable SSL verification
+                # Can be set to `False` to disable SSL verification
                 cert="<path_to_cert_file>"
         ) as actual:
             transactions = get_transactions(actual.session)
@@ -110,8 +111,8 @@ class Actual(ActualServer):
                          will be created instead. If database files are already present on the path, the library will
                          try to reuse them by re-computing the sync request. **Providing a path should speed up
                          the download process considerably on the next call**.
-        :param cert: If a custom certificate should be used (i.e., self-signed certificate), its path can be provided
-                     as a string. Set to `False` for no certificate check.
+        :param cert: If a custom certificate should be used (e.g., self-signed certificate), its path can be provided
+                     as a string or as custom [ssl.SSLContext][ssl.SSLContext]. Set to `False` for no certificate check.
         :param bootstrap: If the server is not bootstrapped, bootstrap it with the password.
         :param sa_kwargs: Additional `kwargs` passed to the SQLAlchemy session maker. Examples are `autoflush` (enabled
                           by default), `autocommit` (disabled by default). For a list of all parameters, check the

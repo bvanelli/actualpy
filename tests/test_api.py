@@ -1,3 +1,4 @@
+import ssl
 import zipfile
 from unittest.mock import patch
 
@@ -59,9 +60,19 @@ def test_api_login_http_error(_post, login_mocks):
         actual.login("foo")
 
 
-def test_no_certificate(login_mocks):
-    actual = Actual(token="foo", cert=False)
-    assert actual._requests_session.verify is False
+def test_no_certificate(login_mocks, mocker):
+    mock_client = mocker.patch("actual.api.httpx.Client")
+    Actual(token="foo", cert=False)
+    mock_client.assert_called_once()
+    assert mock_client.call_args.kwargs["verify"] is False
+
+
+def test_certificate_string(login_mocks, mocker):
+    mock_client = mocker.patch("actual.api.httpx.Client")
+    mocker.patch("actual.api.ssl.SSLContext.load_verify_locations")
+    Actual(token="foo", cert="my-cert-string")
+    mock_client.assert_called_once()
+    assert isinstance(mock_client.call_args.kwargs["verify"], ssl.SSLContext)
 
 
 def test_set_file_exceptions(login_mocks, mocker):

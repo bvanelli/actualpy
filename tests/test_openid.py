@@ -45,7 +45,7 @@ def test_openid_endpoints(actual_server, mocker):
         assert len(permissions) == 1
         assert all(user.owner is False for user in permissions)
         # Delete user does not work due to some internal exception (when not set), so we mock the response for now
-        mocker.patch.object(Client, "delete").return_value = RequestsMock(
+        mocker.patch.object(Client, "request").return_value = RequestsMock(
             {"status": "ok", "data": {"someDeletionsFailed": False}}
         )
         actual.delete_open_id_user(user.id)
