@@ -45,8 +45,6 @@ def test_rename_delete_budget_without_file(login_mocks):
 @patch.object(Client, "post", return_value=RequestsMock({"status": "error", "reason": "proxy-not-trusted"}))
 def test_api_login_unknown_error(_post, login_mocks):
     actual = Actual(token="foo")
-    actual.api_url = "localhost"
-    actual.cert = False
     with pytest.raises(AuthorizationError, match="Something went wrong on login"):
         actual.login("foo")
 
@@ -54,8 +52,6 @@ def test_api_login_unknown_error(_post, login_mocks):
 @patch.object(Client, "post", return_value=RequestsMock({}, status_code=403))
 def test_api_login_http_error(_post, login_mocks):
     actual = Actual(token="foo")
-    actual.api_url = "localhost"
-    actual.cert = False
     with pytest.raises(AuthorizationError, match="HTTP error '403'"):
         actual.login("foo")
 

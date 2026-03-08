@@ -51,7 +51,7 @@ class ActualServer:
         token: str | None = None,
         password: str | None = None,
         bootstrap: bool = False,
-        cert: str | ssl.SSLContext | bool | None = True,
+        cert: str | ssl.SSLContext | bool = True,
         extra_headers: dict[str, str] | None = None,
     ):
         """
@@ -68,7 +68,7 @@ class ActualServer:
         if isinstance(cert, bool) or isinstance(cert, ssl.SSLContext):
             verify = cert
         else:
-            verify = ssl.SSLContext()
+            verify = ssl.create_default_context()
             verify.load_verify_locations(cadata=cert)
         # todo: Rename this on the next breaking change
         self._requests_session: httpx.Client = httpx.Client(base_url=self.api_url, headers=extra_headers, verify=verify)
