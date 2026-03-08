@@ -1,8 +1,9 @@
+import ssl
 import zipfile
 from unittest.mock import patch
 
 import pytest
-from requests import Session
+from httpx import Client
 
 from actual import Actual, reflect_model
 from actual.api import ListUserFilesDTO
@@ -41,27 +42,33 @@ def test_rename_delete_budget_without_file(login_mocks):
         actual.rename_budget("foo")
 
 
-@patch.object(Session, "post", return_value=RequestsMock({"status": "error", "reason": "proxy-not-trusted"}))
+@patch.object(Client, "post", return_value=RequestsMock({"status": "error", "reason": "proxy-not-trusted"}))
 def test_api_login_unknown_error(_post, login_mocks):
     actual = Actual(token="foo")
-    actual.api_url = "localhost"
-    actual.cert = False
     with pytest.raises(AuthorizationError, match="Something went wrong on login"):
         actual.login("foo")
 
 
-@patch.object(Session, "post", return_value=RequestsMock({}, status_code=403))
+@patch.object(Client, "post", return_value=RequestsMock({}, status_code=403))
 def test_api_login_http_error(_post, login_mocks):
     actual = Actual(token="foo")
-    actual.api_url = "localhost"
-    actual.cert = False
     with pytest.raises(AuthorizationError, match="HTTP error '403'"):
         actual.login("foo")
 
 
-def test_no_certificate(login_mocks):
-    actual = Actual(token="foo", cert=False)
-    assert actual._requests_session.verify is False
+def test_no_certificate(login_mocks, mocker):
+    mock_client = mocker.patch("actual.api.httpx.Client")
+    Actual(token="foo", cert=False)
+    mock_client.assert_called_once()
+    assert mock_client.call_args.kwargs["verify"] is False
+
+
+def test_certificate_string(login_mocks, mocker):
+    mock_client = mocker.patch("actual.api.httpx.Client")
+    mocker.patch("actual.api.ssl.SSLContext.load_verify_locations")
+    Actual(token="foo", cert="my-cert-string")
+    mock_client.assert_called_once()
+    assert isinstance(mock_client.call_args.kwargs["verify"], ssl.SSLContext)
 
 
 def test_set_file_exceptions(login_mocks, mocker):
@@ -97,3 +104,37 @@ def test_api_extra_headers(login_mocks):
     actual = Actual(token="foo", extra_headers={"foo": "bar"})
     assert actual._requests_session.headers["foo"] == "bar"
     assert actual._requests_session.headers["X-ACTUAL-TOKEN"] == "foo"
+
+
+@patch.object(
+    Client,
+    "post",
+    return_value=RequestsMock(
+        {
+            "status": "ok",
+            "data": {
+                "openId": {
+                    "doc": "OpenID authentication settings.",
+                    "discoveryURL": "",
+                    "issuer": {
+                        "doc": "OpenID issuer",
+                        "name": "Friendly name for the issuer",
+                        "authorization_endpoint": "https://example.com/login/oauth/authorize",
+                        "token_endpoint": "https://example.com/login/oauth/access_token",
+                        "userinfo_endpoint": "https://api.example.com/user",
+                    },
+                    "client_id": "my-client-id",
+                    "client_secret": "my-client-secret",
+                    "server_hostname": "http://localhost:5006",
+                    "authMethod": "oauth2",
+                }
+            },
+        }
+    ),
+)
+def test_open_id_config(_post, login_mocks):
+    actual = Actual(token="foo")
+    config = actual.open_id_config("mypass")
+    assert config.status == StatusCode.OK
+    assert config.data["openId"].client_id == "my-client-id"
+    assert config.data["openId"].auth_method == "oauth2"
