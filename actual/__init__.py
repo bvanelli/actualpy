@@ -601,7 +601,7 @@ class Actual(ActualServer):
     def run_rules(self, transactions: list[Transactions] | None = None):
         """Runs all the stored rules on the database on all transactions, without any filters."""
         if transactions is None:
-            transactions = get_transactions(self.session, is_parent=True)
+            transactions = get_transactions(self.session)
         ruleset = get_ruleset(self.session)
         ruleset.run(transactions)
 
