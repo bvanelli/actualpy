@@ -163,11 +163,11 @@ def test_reset_password(actual_server):
         actual.reset_password("mynewpass")
         response = actual.list_user_files()
         assert len(response.data) == 1
-    with Actual(f"http://localhost:{port}", password="mynewpass"):
-        assert len(actual.list_user_files().data) == 1
+    with Actual(f"http://localhost:{port}", password="mynewpass") as actual2:
+        assert len(actual2.list_user_files().data) == 1
         with pytest.raises(AuthorizationError):
             # login with old password should fail
-            actual.login("mypass")
+            actual2.login("mypass")
 
 
 def test_models(actual_server):
