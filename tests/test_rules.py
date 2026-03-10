@@ -3,12 +3,14 @@ import uuid
 
 import pytest
 
-from actual import ActualError
+from actual import Actual, ActualError
 from actual.exceptions import ActualSplitTransactionError
 from actual.queries import (
     create_account,
     create_category,
     create_payee,
+    create_rule,
+    create_splits,
     create_transaction,
 )
 from actual.rules import (
@@ -437,3 +439,34 @@ def test_off_budget_condition(session):
     assert cond.run(t) is True
     acct.offbudget = 0
     assert cond.run(t) is False
+
+
+def test_run_rules(session, mocker):
+    # create basic items
+    acct = create_account(session, "Bank")
+    cat = create_category(session, "Food", "Expenses")
+    source_payee = create_payee(session, "Source payee")
+    target_payee = create_payee(session, "Target payee")
+    today = datetime.date.today()
+    t1 = create_transaction(session, today, acct, source_payee, notes="foo", category=cat)
+    splits = [
+        create_transaction(session, today, acct, source_payee, notes="foobar", category=cat),
+        create_transaction(session, today, acct, source_payee, notes="bar", category=cat),
+    ]
+    t_splits = create_splits(session, splits)
+    # create rule
+    condition = Condition(field="notes", op="contains", value="foo")
+    action = Action(field="description", value=target_payee)
+    rule = Rule(conditions=[condition], actions=[action], operation="all")
+    create_rule(session, rule)
+    # run rules via the API
+    mocker.patch("actual.Actual.validate")
+    actual = Actual(token="foobar")
+    actual._session = session
+    actual.run_rules()
+    session.commit()
+    # assert results are correct
+    assert t1.payee == target_payee
+    assert splits[0].payee == target_payee
+    assert splits[1].payee == source_payee
+    assert t_splits.payee is None
