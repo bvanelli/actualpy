@@ -881,10 +881,10 @@ def get_budgets(
         month_filter = date_to_int(month, month_only=True)
         query = query.where(table.month == month_filter)
     if category:
-        category = get_category(s, category)
-        if not category:
+        resolved_category = get_category(s, category)
+        if not resolved_category:
             raise ActualError(f"Category '{category}' not found.")
-        query = query.where(table.category_id == category.id)
+        query = query.where(table.category_id == resolved_category.id)
     return s.exec(query).unique().all()
 
 

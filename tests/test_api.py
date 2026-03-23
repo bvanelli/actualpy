@@ -36,9 +36,9 @@ def test_api_apply(login_mocks, session):
 def test_rename_delete_budget_without_file(login_mocks):
     actual = Actual(token="foo")
     actual._file = None
-    with pytest.raises(UnknownFileId, match="No current file loaded"):
+    with pytest.raises(UnknownFileId, match="No file set"):
         actual.delete_budget()
-    with pytest.raises(UnknownFileId, match="No current file loaded"):
+    with pytest.raises(UnknownFileId, match="No file set"):
         actual.rename_budget("foo")
 
 
