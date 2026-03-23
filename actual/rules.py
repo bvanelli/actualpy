@@ -28,7 +28,7 @@ def get_normalized_string(value: str) -> str | None:
     return unicodedata.normalize("NFD", value.lower())
 
 
-class ConditionType(enum.Enum):
+class ConditionType(str, enum.Enum):
     IS = "is"
     IS_APPROX = "isapprox"
     GT = "gt"
@@ -47,7 +47,7 @@ class ConditionType(enum.Enum):
     OFF_BUDGET = "offBudget"
 
 
-class ActionType(enum.Enum):
+class ActionType(str, enum.Enum):
     SET = "set"
     SET_SPLIT_AMOUNT = "set-split-amount"
     LINK_SCHEDULE = "link-schedule"
@@ -372,13 +372,14 @@ class Action(pydantic.BaseModel):
     def __str__(self) -> str:
         if self.op in (ActionType.SET, ActionType.LINK_SCHEDULE):
             split_info = ""
-            if self.options and self.options.get("splitIndex") > 0:
-                split_info = f" at Split {self.options.get('splitIndex')}"
+            split_index = int(self.options.get("splitIndex", 0)) if self.options else 0
+            if split_index > 0:
+                split_info = f" at Split {split_index}"
             field_str = f" '{self.field}'" if self.field else ""
             return f"{self.op.value}{field_str}{split_info} to '{self.value}'"
         elif self.op == ActionType.SET_SPLIT_AMOUNT:
-            method = self.options.get("method") or ""
-            split_index = self.options.get("splitIndex") or ""
+            method = self.options.get("method", "") if self.options else ""
+            split_index = self.options.get("splitIndex", "") if self.options else ""
             return f"allocate a {method} at Split {split_index}: {self.value}"
         elif self.op in (ActionType.APPEND_NOTES, ActionType.PREPEND_NOTES):
             return (
@@ -388,6 +389,8 @@ class Action(pydantic.BaseModel):
             )
         elif self.op == ActionType.DELETE_TRANSACTIONS:
             return "delete transaction"
+        # We don't want to fail __str__ whenever a new action has been included, so we use a sensible default.
+        return f"{self.op.value} '{self.value}'"
 
     @model_serializer(mode="wrap")
     def serialize_model(self, handler) -> dict:
@@ -485,7 +488,7 @@ class Rule(pydantic.BaseModel):
     conditions: list[Condition] = pydantic.Field(
         ..., description="List of conditions that need to be met (one or all) in order for the actions to be applied."
     )
-    operation: typing.Literal["and", "or"] = pydantic.Field(
+    operation: typing.Literal["and", "or", "any", "all"] = pydantic.Field(
         "and", description="Operation to apply for the rule evaluation. If 'all' or 'any' need to be evaluated."
     )
     actions: list[Action] = pydantic.Field(..., description="List of actions to apply to the transaction.")

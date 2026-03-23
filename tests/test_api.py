@@ -22,7 +22,7 @@ def login_mocks(mocker):
 def test_api_apply(login_mocks, session):
     actual = Actual(token="foo")
     actual.engine = session.bind
-    actual._meta = reflect_model(session.bind)
+    actual._database_metadata = reflect_model(session.bind)
     # not found table
     m = Message(dict(dataset="foo", row="foobar", column="bar"))
     m.set_value("foobar")

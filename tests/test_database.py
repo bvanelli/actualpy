@@ -368,7 +368,7 @@ def test_session_error(mocker):
 def test_apply_changes(session, mocker):
     mocker.patch("actual.Actual.validate")
     actual = Actual(token="foo")
-    actual._session, actual.engine, actual._meta = session, session.bind, reflect_model(session.bind)
+    actual._session, actual.engine, actual._database_metadata = session, session.bind, reflect_model(session.bind)
     # create elements but do not commit them
     account = create_account(session, "Bank")
     transaction = create_transaction(session, date(2024, 1, 4), account, amount=35.7)

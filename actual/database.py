@@ -18,11 +18,11 @@ import datetime
 import decimal
 import json
 from collections.abc import Sequence
-from typing import Optional
+from typing import Optional, TypedDict
 
 from sqlalchemy import MetaData, Table, engine, event, inspect
 from sqlalchemy.dialects.sqlite import insert
-from sqlalchemy.orm import class_mapper, object_session, validates
+from sqlalchemy.orm import Mapped, class_mapper, object_session, validates
 from sqlmodel import (
     JSON,
     Boolean,
@@ -37,6 +37,7 @@ from sqlmodel import (
     Session,
     SQLModel,
     Text,
+    col,
     func,
     or_,
     select,
@@ -64,7 +65,15 @@ __TABLE_COLUMNS_MAP__ = {
 }
 ```
 """
-__TABLE_COLUMNS_MAP__ = dict()
+
+
+class TableColumnsEntry(TypedDict):
+    entity: type["BaseModel"]
+    columns: dict[str, str]
+    rev_columns: dict[str, str]
+
+
+__TABLE_COLUMNS_MAP__: dict[str, TableColumnsEntry] = {}
 
 
 def reflect_model(eng: engine.Engine) -> MetaData:
@@ -74,7 +83,7 @@ def reflect_model(eng: engine.Engine) -> MetaData:
     return local_meta
 
 
-def get_class_from_reflected_table_name(metadata: MetaData, table_name: str) -> type[Table] | None:
+def get_class_from_reflected_table_name(metadata: MetaData, table_name: str) -> Table | None:
     """
     Returns, based on the defined tables on the reflected model the corresponding SQLAlchemy table.
 
@@ -90,16 +99,21 @@ def get_attribute_from_reflected_table_name(metadata: MetaData, table_name: str,
     If not found, returns `None`.
     """
     table = get_class_from_reflected_table_name(metadata, table_name)
+    if table is None:
+        return None
     return table.columns.get(column_name, None)
 
 
-def get_class_by_table_name(table_name: str) -> type[SQLModel] | None:
+def get_class_by_table_name(table_name: str) -> type["BaseModel"] | None:
     """
     Returns, based on the defined tables `__tablename__` the corresponding SQLModel object.
 
     If not found, returns `None`.
     """
-    return __TABLE_COLUMNS_MAP__.get(table_name, {}).get("entity", None)
+    entry = __TABLE_COLUMNS_MAP__.get(table_name)
+    if entry is None:
+        return None
+    return entry["entity"]
 
 
 def get_attribute_by_table_name(table_name: str, column_name: str, reverse: bool = False) -> str | None:
@@ -113,16 +127,14 @@ def get_attribute_by_table_name(table_name: str, column_name: str, reverse: bool
     :param reverse: If true, reverses the search and returns the SAColumn from the Pydantic attribute.
     :return: Pydantic attribute name or SAColumn name.
     """
-    return (
-        __TABLE_COLUMNS_MAP__.get(table_name, {})
-        .get("columns" if not reverse else "rev_columns", {})
-        .get(column_name, None)
-    )
+    entry = __TABLE_COLUMNS_MAP__.get(table_name)
+    if entry is None:
+        return None
+    mapping = entry["columns"] if not reverse else entry["rev_columns"]
+    return mapping.get(column_name)
 
 
-def apply_change(
-    session: Session, table: type[Table], table_id: str, values: dict[Column, str | int | float | None]
-) -> None:
+def apply_change(session: Session, table: Table, table_id: str, values: dict[Column, str | int | float | None]) -> None:
     """
     This function upserts multiple changes into a table based on the `table_id` as the primary key.
 
@@ -133,7 +145,7 @@ def apply_change(
     insert_stmt = (
         insert(table).values({"id": table_id, **values}).on_conflict_do_update(index_elements=["id"], set_=values)
     )
-    session.exec(insert_stmt)  # type: ignore - the insert type here is correct
+    session.exec(insert_stmt)  # type: ignore[arg-type]
 
 
 def strong_reference_session(session: Session):
@@ -175,7 +187,13 @@ def strong_reference_session(session: Session):
 
 
 class BaseModel(SQLModel):
-    id: str = Field(sa_column=Column("id", Text, primary_key=True))
+    id: str = Field(..., sa_column=Column("id", Text, primary_key=True))
+
+    def _object_session(self) -> Session:
+        session = object_session(self)
+        if session is None:
+            raise ValueError(f"{self.__class__.__name__} is not attached to a session")
+        return session  # type: ignore[return-value]
 
     def convert(self, is_new: bool = True) -> list[Message]:
         """Convert the object into distinct entries for sync method. Based on the [original implementation](
@@ -189,9 +207,10 @@ class BaseModel(SQLModel):
             )
         # compute changes from a sqlalchemy instance, see https://stackoverflow.com/a/28353846/12681470
         changes = []
+        table_name = str(self.__tablename__)
         for column in self.changed():
-            converted_attr_name = get_attribute_by_table_name(self.__tablename__, column, reverse=True)
-            m = Message(dict(dataset=self.__tablename__, row=row, column=converted_attr_name))
+            converted_attr_name = get_attribute_by_table_name(table_name, column, reverse=True)
+            m = Message(dict(dataset=table_name, row=row, column=converted_attr_name))
             value = self.__getattribute__(column)
             # we cannot store boolean values, so we always convert it to integer
             if isinstance(value, bool):
@@ -211,7 +230,7 @@ class BaseModel(SQLModel):
             column = attr.key
             if column == "id":
                 continue
-            hist = getattr(inspr.attrs, column).history
+            hist = getattr(inspr.attrs, column).history  # type: ignore[union-attr]
             if hist.has_changes():
                 changed_attributes.append(column)
         return changed_attributes
@@ -246,7 +265,7 @@ class Accounts(BaseModel, table=True):
     for managing and interacting with account-related data.
     """
 
-    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    id: str = Field(..., sa_column=Column("id", Text, primary_key=True))
     account_id: str | None = Field(default=None, sa_column=Column("account_id", Text))
     name: str | None = Field(default=None, sa_column=Column("name", Text))
     # Careful when using those balance fields, are they might be empty. Use account.balance property instead
@@ -267,7 +286,7 @@ class Accounts(BaseModel, table=True):
     last_reconciled: str | None = Field(default=None, sa_column=Column("last_reconciled", Text))
 
     payee: "Payees" = Relationship(back_populates="account", sa_relationship_kwargs={"uselist": False})
-    transactions: list["Transactions"] = Relationship(
+    transactions: Mapped[list["Transactions"]] = Relationship(
         back_populates="account",
         sa_relationship_kwargs={
             "primaryjoin": (
@@ -286,7 +305,7 @@ class Accounts(BaseModel, table=True):
     @property
     def balance(self) -> decimal.Decimal:
         """Returns the current balance of the account. Deleted transactions are ignored."""
-        value = object_session(self).scalar(
+        value = self._object_session().scalar(
             select(func.coalesce(func.sum(Transactions.amount), 0)).where(
                 Transactions.acct == self.id,
                 Transactions.is_parent == 0,
@@ -298,16 +317,16 @@ class Accounts(BaseModel, table=True):
     @property
     def notes(self) -> str | None:
         """Returns notes for the account. If none is present, returns `None`."""
-        return object_session(self).scalar(select(Notes.note).where(Notes.id == f"account-{self.id}"))
+        return self._object_session().scalar(select(Notes.note).where(Notes.id == f"account-{self.id}"))
 
     @notes.setter
     def notes(self, note: str | None) -> None:
         """Set the note for the account as a string."""
-        object_session(self).merge(Notes(id=f"account-{self.id}", note=note))
+        self._object_session().merge(Notes(id=f"account-{self.id}", note=note))
 
 
 class Banks(BaseModel, table=True):
-    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    id: str = Field(..., sa_column=Column("id", Text, primary_key=True))
     bank_id: str | None = Field(default=None, sa_column=Column("bank_id", Text))
     name: str | None = Field(default=None, sa_column=Column("name", Text))
     tombstone: int | None = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
@@ -323,7 +342,7 @@ class Categories(BaseModel, table=True):
     """
 
     hidden: bool = Field(sa_column=Column("hidden", Boolean, nullable=False, server_default=text("0")))
-    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    id: str = Field(..., sa_column=Column("id", Text, primary_key=True))
     name: str | None = Field(default=None, sa_column=Column("name", Text))
     is_income: int | None = Field(default=None, sa_column=Column("is_income", Integer, server_default=text("0")))
     cat_group: str | None = Field(default=None, sa_column=Column("cat_group", Text, ForeignKey("category_groups.id")))
@@ -344,7 +363,9 @@ class Categories(BaseModel, table=True):
             "primaryjoin": "and_(ReflectBudgets.category_id == Categories.id)",
         },
     )
-    transactions: list["Transactions"] = Relationship(
+    # All relationships used with joinedload() need to be "Mapped". See
+    # https://github.com/fastapi/sqlmodel/discussions/871#discussioncomment-9285644
+    transactions: Mapped[list["Transactions"]] = Relationship(
         back_populates="category",
         sa_relationship_kwargs={
             "primaryjoin": (
@@ -363,7 +384,7 @@ class Categories(BaseModel, table=True):
     @property
     def balance(self) -> decimal.Decimal:
         """Returns the current balance of the category. Deleted transactions are ignored."""
-        value = object_session(self).scalar(
+        value = self._object_session().scalar(
             select(func.coalesce(func.sum(Transactions.amount), 0)).where(
                 Transactions.category_id == self.id,
                 Transactions.is_parent == 0,
@@ -375,12 +396,12 @@ class Categories(BaseModel, table=True):
     @property
     def notes(self) -> str | None:
         """Returns notes for the category. If none is present, returns `None`."""
-        return object_session(self).scalar(select(Notes.note).where(Notes.id == self.id))
+        return self._object_session().scalar(select(Notes.note).where(Notes.id == self.id))
 
     @notes.setter
     def notes(self, note: str | None) -> None:
         """Set the note for the category as a string."""
-        object_session(self).merge(Notes(id=self.id, note=note))
+        self._object_session().merge(Notes(id=self.id, note=note))
 
 
 class CategoryGroups(BaseModel, table=True):
@@ -391,13 +412,13 @@ class CategoryGroups(BaseModel, table=True):
     __tablename__ = "category_groups"
 
     hidden: bool = Field(sa_column=Column("hidden", Boolean, nullable=False, server_default=text("0")))
-    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    id: str = Field(..., sa_column=Column("id", Text, primary_key=True))
     name: str | None = Field(default=None, sa_column=Column("name", Text))
     is_income: int | None = Field(default=None, sa_column=Column("is_income", Integer, server_default=text("0")))
     sort_order: float | None = Field(default=None, sa_column=Column("sort_order", Float))
     tombstone: int | None = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
 
-    categories: list["Categories"] = Relationship(
+    categories: Mapped[list["Categories"]] = Relationship(
         back_populates="group",
         sa_relationship_kwargs={
             "primaryjoin": "and_(CategoryGroups.id == Categories.cat_group, Categories.tombstone == 0)",
@@ -409,7 +430,7 @@ class CategoryGroups(BaseModel, table=True):
 class CategoryMapping(BaseModel, table=True):
     __tablename__ = "category_mapping"
 
-    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    id: str = Field(..., sa_column=Column("id", Text, primary_key=True))
     transfer_id: str | None = Field(default=None, sa_column=Column("transferId", Text))
 
 
@@ -424,7 +445,7 @@ class CustomReports(BaseModel, table=True):
 
     __tablename__ = "custom_reports"
 
-    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    id: str = Field(..., sa_column=Column("id", Text, primary_key=True))
     name: str | None = Field(default=None, sa_column=Column("name", Text))
     start_date: str | None = Field(default=None, sa_column=Column("start_date", Text))
     end_date: str | None = Field(default=None, sa_column=Column("end_date", Text))
@@ -469,7 +490,7 @@ class Dashboard(BaseModel, table=True):
     These dashboards are grouped together in a [DashboardPages][actual.database.DashboardPages] object.
     """
 
-    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    id: str = Field(..., sa_column=Column("id", Text, primary_key=True))
     type: str | None = Field(default=None, sa_column=Column("type", Text))
     width: int | None = Field(default=None, sa_column=Column("width", Integer))
     height: int | None = Field(default=None, sa_column=Column("height", Integer))
@@ -489,7 +510,7 @@ class DashboardPages(SQLModel, table=True):
 
     __tablename__ = "dashboard_pages"
 
-    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    id: str = Field(..., sa_column=Column("id", Text, primary_key=True))
     name: str | None = Field(default=None, sa_column=Column("name", Text))
     tombstone: int | None = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
 
@@ -516,6 +537,8 @@ class MessagesClock(SQLModel, table=True):
 
     def get_clock(self) -> dict:
         """Gets the clock from JSON text to a dictionary with fields `timestamp` and `merkle`."""
+        if self.clock is None:
+            raise ValueError("Clock is not set")
         return json.loads(self.clock)
 
     def set_clock(self, value: dict):
@@ -550,14 +573,14 @@ class MessagesCrdt(SQLModel, table=True):
 class Notes(BaseModel, table=True):
     """Stores the description of each account."""
 
-    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    id: str = Field(..., sa_column=Column("id", Text, primary_key=True))
     note: str | None = Field(default=None, sa_column=Column("note", Text))
 
 
 class PayeeMapping(BaseModel, table=True):
     __tablename__ = "payee_mapping"
 
-    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    id: str = Field(..., sa_column=Column("id", Text, primary_key=True))
     target_id: str | None = Field(default=None, sa_column=Column("targetId", Text))
 
 
@@ -570,7 +593,7 @@ class Payees(BaseModel, table=True):
     have the field `account` not set to `None`.
     """
 
-    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    id: str = Field(..., sa_column=Column("id", Text, primary_key=True))
     name: str | None = Field(default=None, sa_column=Column("name", Text))
     category: str | None = Field(default=None, sa_column=Column("category", Text))
     tombstone: int | None = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
@@ -579,7 +602,7 @@ class Payees(BaseModel, table=True):
     learn_categories: bool | None = Field(sa_column=Column("learn_categories", Boolean, server_default=text("1")))
 
     account: Optional["Accounts"] = Relationship(back_populates="payee", sa_relationship_kwargs={"uselist": False})
-    transactions: list["Transactions"] = Relationship(
+    transactions: Mapped[list["Transactions"]] = Relationship(
         back_populates="payee",
         sa_relationship_kwargs={"primaryjoin": "and_(Transactions.payee_id == Payees.id, Transactions.tombstone==0)"},
     )
@@ -587,7 +610,7 @@ class Payees(BaseModel, table=True):
     @property
     def balance(self) -> decimal.Decimal:
         """Returns the current balance of the payee. Deleted transactions are ignored."""
-        value = object_session(self).scalar(
+        value = self._object_session().scalar(
             select(func.coalesce(func.sum(Transactions.amount), 0)).where(
                 Transactions.payee_id == self.id,
                 Transactions.is_parent == 0,
@@ -600,7 +623,7 @@ class Payees(BaseModel, table=True):
 class Preferences(BaseModel, table=True):
     """Stores the preferences for the user, using key/value pairs."""
 
-    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    id: str = Field(..., sa_column=Column("id", Text, primary_key=True))
     value: str | None = Field(default=None, sa_column=Column("value", Text))
 
 
@@ -612,7 +635,7 @@ class Rules(BaseModel, table=True):
     [get_ruleset][actual.queries.get_ruleset].
     """
 
-    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    id: str = Field(..., sa_column=Column("id", Text, primary_key=True))
     stage: str | None = Field(default=None, sa_column=Column("stage", Text))
     conditions: str | None = Field(default=None, sa_column=Column("conditions", Text))
     actions: str | None = Field(default=None, sa_column=Column("actions", Text))
@@ -626,7 +649,7 @@ class Rules(BaseModel, table=True):
 class Schedules(BaseModel, table=True):
     """Stores the schedules defined by the user. Is also linked to a rule that executes it."""
 
-    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    id: str = Field(..., sa_column=Column("id", Text, primary_key=True))
     rule_id: str | None = Field(default=None, sa_column=Column("rule", Text, ForeignKey("rules.id")))
     active: int | None = Field(default=None, sa_column=Column("active", Integer, server_default=text("0")))
     completed: int | None = Field(default=None, sa_column=Column("completed", Integer, server_default=text("0")))
@@ -654,7 +677,7 @@ class SchedulesJsonPaths(SQLModel, table=True):
 class SchedulesNextDate(SQLModel, table=True):
     __tablename__ = "schedules_next_date"
 
-    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    id: str = Field(..., sa_column=Column("id", Text, primary_key=True))
     schedule_id: str | None = Field(default=None, sa_column=Column("schedule_id", Text))
     local_next_date: int | None = Field(default=None, sa_column=Column("local_next_date", Integer))
     local_next_date_ts: int | None = Field(default=None, sa_column=Column("local_next_date_ts", Integer))
@@ -675,19 +698,18 @@ class Tags(BaseModel, table=True):
     def transactions(self) -> Sequence["Transactions"]:
         """Returns all transactions with this tag associated to them."""
         return (
-            object_session(self)
-            .execute(
+            self._object_session()
+            .exec(
                 select(Transactions).where(
                     Transactions.is_parent == 0,
                     Transactions.tombstone == 0,
                     or_(
                         # Either it has a space or is finishing the sentence
-                        Transactions.notes.like(f"%#{self.tag} %"),
-                        Transactions.notes.like(f"%#{self.tag}"),
+                        col(Transactions.notes).like(f"%#{self.tag} %"),
+                        col(Transactions.notes).like(f"%#{self.tag}"),
                     ),
                 )
             )
-            .scalars()
             .all()
         )
 
@@ -695,7 +717,7 @@ class Tags(BaseModel, table=True):
 class TransactionFilters(BaseModel, table=True):
     __tablename__ = "transaction_filters"
 
-    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    id: str = Field(..., sa_column=Column("id", Text, primary_key=True))
     name: str | None = Field(default=None, sa_column=Column("name", Text))
     conditions: str | None = Field(default=None, sa_column=Column("conditions", Text))
     conditions_op: str | None = Field(
@@ -718,10 +740,10 @@ class Transactions(BaseModel, table=True):
         Index("trans_sorted", "date", "starting_balance_flag", "sort_order", "id"),
     )
 
-    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    id: str = Field(..., sa_column=Column("id", Text, primary_key=True))
     is_parent: int | None = Field(default=None, sa_column=Column("isParent", Integer, server_default=text("0")))
     is_child: int | None = Field(default=None, sa_column=Column("isChild", Integer, server_default=text("0")))
-    acct: str | None = Field(default=None, sa_column=Column("acct", Text, ForeignKey("accounts.id")))
+    acct: str = Field(..., sa_column=Column("acct", Text, ForeignKey("accounts.id")))
     category_id: str | None = Field(default=None, sa_column=Column("category", Text, ForeignKey("categories.id")))
     amount: int | None = Field(default=None, sa_column=Column("amount", Integer))
     payee_id: str | None = Field(default=None, sa_column=Column("description", Text, ForeignKey("payees.id")))
@@ -748,14 +770,14 @@ class Transactions(BaseModel, table=True):
     reconciled: int | None = Field(default=None, sa_column=Column("reconciled", Integer, server_default=text("0")))
     raw_synced_data: str | None = Field(default=None, sa_column=Column("raw_synced_data", Text))
 
-    account: "Accounts" = Relationship(back_populates="transactions")
-    category: Optional["Categories"] = Relationship(
+    account: Mapped["Accounts"] = Relationship(back_populates="transactions")
+    category: Mapped[Optional["Categories"]] = Relationship(
         back_populates="transactions",
         sa_relationship_kwargs={
             "primaryjoin": "and_(Transactions.category_id == Categories.id, Categories.tombstone==0)"
         },
     )
-    payee: Optional["Payees"] = Relationship(
+    payee: Mapped[Optional["Payees"]] = Relationship(
         back_populates="transactions",
         sa_relationship_kwargs={"primaryjoin": "and_(Transactions.payee_id == Payees.id, Payees.tombstone==0)"},
     )
@@ -786,6 +808,8 @@ class Transactions(BaseModel, table=True):
 
     def get_date(self) -> datetime.date:
         """Returns the transaction date as a datetime.date object, instead of as a string."""
+        if self.date is None:
+            raise ValueError("Transaction date is not set")
         return int_to_date(self.date)
 
     def set_date(self, date: datetime.date):
@@ -806,7 +830,7 @@ class Transactions(BaseModel, table=True):
 
         # Validation only performed on parent transactions where cleared is changed
         if self.is_parent and self.cleared != v:
-            session = object_session(self)
+            session = self._object_session()
             splits = session.scalars(select(Transactions).where(Transactions.parent_id == self.id)).all()
             for s in splits:
                 s.cleared = v
@@ -828,7 +852,7 @@ class Transactions(BaseModel, table=True):
 
         # Check if this is a parent transaction, if so iterate the children and call delete() on them as well
         if self.is_parent:
-            session = object_session(self)
+            session = self._object_session()
             splits = session.scalars(select(Transactions).where(Transactions.parent_id == self.id)).all()
             for s in splits:
                 s.delete()
@@ -850,7 +874,7 @@ class ZeroBudgetMonths(BaseModel, table=True):
 
     __tablename__ = "zero_budget_months"
 
-    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    id: str = Field(..., sa_column=Column("id", Text, primary_key=True))
     buffered: int | None = Field(default=None, sa_column=Column("buffered", Integer, server_default=text("0")))
 
     def get_month(self) -> datetime.date:
@@ -880,7 +904,7 @@ class BaseBudgets(BaseModel):
     frontend will assume this value is zero, but the entity will be missing from the database.
     """
 
-    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    id: str = Field(..., sa_column=Column("id", Text, primary_key=True))
     month: int | None = Field(default=None, sa_column=Column("month", Integer))
     category_id: str | None = Field(default=None, sa_column=Column("category", Text))
     amount: int | None = Field(default=None, sa_column=Column("amount", Integer, server_default=text("0")))
@@ -888,6 +912,8 @@ class BaseBudgets(BaseModel):
 
     def get_date(self) -> datetime.date:
         """Returns the transaction date as a datetime.date object, instead of as a string."""
+        if self.month is None:
+            raise ValueError("Budget month is not set")
         return int_to_date(self.month, month_only=True)
 
     def set_date(self, date: datetime.date):
@@ -928,11 +954,11 @@ class BaseBudgets(BaseModel):
         [get_accumulated_budgeted_balance][actual.queries.get_accumulated_budgeted_balance] instead.
         """
         budget_start, budget_end = (date_to_int(d) for d in self.range)
-        value = object_session(self).scalar(
+        value = self._object_session().scalar(
             select(func.coalesce(func.sum(Transactions.amount), 0)).where(
                 Transactions.category_id == self.category_id,
-                Transactions.date >= budget_start,
-                Transactions.date < budget_end,
+                col(Transactions.date) >= budget_start,
+                col(Transactions.date) < budget_end,
                 Transactions.is_parent == 0,
                 Transactions.tombstone == 0,
             )
@@ -943,13 +969,13 @@ class BaseBudgets(BaseModel):
     def notes(self) -> str | None:
         """Returns notes for the budget. If none is present, returns `None`."""
         budget_id = f"budget-{self.get_date().strftime('%Y-%m')}"
-        return object_session(self).scalar(select(Notes.note).where(Notes.id == budget_id))
+        return self._object_session().scalar(select(Notes.note).where(Notes.id == budget_id))
 
     @notes.setter
     def notes(self, note: str | None) -> None:
         """Set the note for the budget as a string."""
         budget_id = f"budget-{self.get_date().strftime('%Y-%m')}"
-        object_session(self).merge(Notes(id=budget_id, note=note))
+        self._object_session().merge(Notes(id=budget_id, note=note))
 
 
 class ReflectBudgets(BaseBudgets, table=True):
@@ -962,7 +988,7 @@ class ReflectBudgets(BaseBudgets, table=True):
 
     __tablename__ = "reflect_budgets"
 
-    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    id: str = Field(..., sa_column=Column("id", Text, primary_key=True))
     month: int | None = Field(default=None, sa_column=Column("month", Integer))
     category_id: str | None = Field(default=None, sa_column=Column("category", ForeignKey("categories.id")))
     amount: int | None = Field(default=None, sa_column=Column("amount", Integer, server_default=text("0")))
@@ -970,7 +996,7 @@ class ReflectBudgets(BaseBudgets, table=True):
     goal: int | None = Field(default=None, sa_column=Column("goal", Integer, server_default=text("null")))
     long_goal: int | None = Field(default=None, sa_column=Column("long_goal", Integer, server_default=text("null")))
 
-    category: "Categories" = Relationship(
+    category: Mapped["Categories"] = Relationship(
         back_populates="reflect_budgets",
         sa_relationship_kwargs={
             "uselist": False,
@@ -989,7 +1015,7 @@ class ZeroBudgets(BaseBudgets, table=True):
 
     __tablename__ = "zero_budgets"
 
-    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    id: str = Field(..., sa_column=Column("id", Text, primary_key=True))
     month: int | None = Field(default=None, sa_column=Column("month", Integer))
     category_id: str | None = Field(default=None, sa_column=Column("category", ForeignKey("categories.id")))
     amount: int | None = Field(default=None, sa_column=Column("amount", Integer, server_default=text("0")))
@@ -997,7 +1023,7 @@ class ZeroBudgets(BaseBudgets, table=True):
     goal: int | None = Field(default=None, sa_column=Column("goal", Integer, server_default=text("null")))
     long_goal: int | None = Field(default=None, sa_column=Column("long_goal", Integer, server_default=text("null")))
 
-    category: "Categories" = Relationship(
+    category: Mapped["Categories"] = Relationship(
         back_populates="zero_budgets",
         sa_relationship_kwargs={
             "uselist": False,
@@ -1009,7 +1035,7 @@ class ZeroBudgets(BaseBudgets, table=True):
 class PendingTransactions(SQLModel, table=True):
     __tablename__ = "pending_transactions"
 
-    id: str | None = Field(default=None, sa_column=Column("id", Text, primary_key=True))
+    id: str = Field(..., sa_column=Column("id", Text, primary_key=True))
     acct: int | None = Field(default=None, sa_column=Column("acct", ForeignKey("accounts.id")))
     amount: int | None = Field(default=None, sa_column=Column("amount", Integer))
     description: str | None = Field(default=None, sa_column=Column("description", Text))

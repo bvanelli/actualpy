@@ -36,8 +36,8 @@ class HULC_Client:
         """Generates a HULC_Client from a timestamp string."""
         ts_string, _, rest = ts.partition("Z")
         segments = rest.split("-")
-        ts = datetime.datetime.fromisoformat(ts_string)
-        return cls(segments[-1], int(segments[-2], 16), ts)
+        parsed_ts = datetime.datetime.fromisoformat(ts_string)
+        return cls(segments[-1], int(segments[-2], 16), parsed_ts)
 
     def __str__(self):
         count = f"{self.initial_count:0>4X}"
@@ -87,7 +87,7 @@ class Message(proto.Message):
     column = proto.Field(proto.STRING, number=3)
     value = proto.Field(proto.STRING, number=4)
 
-    def get_value(self) -> str | int | float | None:
+    def get_value(self) -> str | float | None:
         """Serialization types from Actual.
 
         [Original source code](

@@ -10,7 +10,7 @@ from rich.table import Table
 from rich.text import Text
 
 from actual import Actual, get_accounts, get_transactions
-from actual.budgets import get_budget_history
+from actual.budgets import EnvelopeBudget, TrackingBudget, get_budget_history
 from actual.cli.config import BudgetConfig, Config, OutputType, State
 from actual.cli.formatters import colored_number_format, decimal_format
 from actual.queries import get_payees
@@ -35,10 +35,12 @@ def main(output: OutputType = typer.Option("table", "--output", "-o", help="Outp
 @app.command()
 def init(
     url: str = typer.Option(None, "--url", help="URL of the actual server"),
-    password: str = typer.Option(None, "--password", help="Password for the budget"),
-    encryption_password: str = typer.Option(None, "--encryption-password", help="Encryption password for the budget"),
-    context: str = typer.Option(None, "--context", help="Context for this budget context"),
-    file_id: str = typer.Option(None, "--file", help="File ID or name on the remote server"),
+    password: str | None = typer.Option(None, "--password", help="Password for the budget"),
+    encryption_password: str | None = typer.Option(
+        None, "--encryption-password", help="Encryption password for the budget"
+    ),
+    context: str | None = typer.Option(None, "--context", help="Context for this budget context"),
+    file_id: str | None = typer.Option(None, "--file", help="File ID or name on the remote server"),
 ):
     """
     Initializes an actual budget config interactively if options are not provided.
@@ -62,9 +64,9 @@ def init(
         server.set_file(options[file_id_idx - 1])
     else:
         server.set_file(file_id)
-    file_id = server._file.file_id
+    file_id = server.file.file_id
 
-    if not encryption_password and server._file.encrypt_key_id:
+    if not encryption_password and server.file.encrypt_key_id:
         encryption_password = typer.prompt("Please enter the encryption password for the budget", hide_input=True)
         # test the file
         server.download_budget(encryption_password)
@@ -73,7 +75,7 @@ def init(
 
     if not context:
         # take the default context name as the file name in lowercase
-        default_context = server._file.name.lower().replace(" ", "-")
+        default_context = server.file.name.lower().replace(" ", "-")
         context = typer.prompt("Name of the context for this budget", default=default_context)
 
     config.budgets[context] = BudgetConfig(
@@ -251,10 +253,8 @@ def budget(month: datetime.datetime | None = typer.Argument(default=None, help="
     """
     Shows the budget for a certain month.
     """
-    if month is not None:
-        month = month.date()
     with config.actual() as actual:
-        budget_history = get_budget_history(actual.session, month)
+        budget_history = get_budget_history(actual.session, month.date() if month is not None else None)
         if not budget_history:
             raise ValueError("No budget history found for the given month.")
         detail_budget = budget_history[-1]
@@ -264,7 +264,7 @@ def budget(month: datetime.datetime | None = typer.Argument(default=None, help="
         width = 100
         summary = Text(justify="center")
         summary.append("\n")
-        if budget_history.is_tracking_budget:
+        if isinstance(budget_data, TrackingBudget):
             summary.append("Income\n", style="dim")
             summary.append(f"{decimal_format(budget_data.received)}", style="bold green")
             summary.append(f" of {decimal_format(budget_data.budgeted_income)}\n", style="dim")
@@ -273,7 +273,7 @@ def budget(month: datetime.datetime | None = typer.Argument(default=None, help="
             summary.append(f" of {decimal_format(budget_data.budgeted)}\n", style="dim")
             summary.append("\nSaved:\n", style="dim")
             summary.append(f"{decimal_format(budget_data.overspent)}", style="bold purple")
-        else:
+        elif isinstance(budget_data, EnvelopeBudget):
             summary.append(f"{decimal_format(budget_data.available_funds)}", style="bold green")
             summary.append(" Available funds\n", style="dim")
             summary.append(f"{decimal_format(budget_data.last_month_overspent)}", style="bold red")
@@ -312,7 +312,7 @@ def budget(month: datetime.datetime | None = typer.Argument(default=None, help="
         income_table = Table(show_header=True, header_style="bold", width=width)
         income_table.add_column("", justify="left", width=46)
         income_table.add_column(
-            f"Budgeted\n{budget_data.budgeted_income:.2f}" if budget_history.is_tracking_budget else "",
+            f"Budgeted\n{budget_data.budgeted_income:.2f}" if isinstance(budget_data, TrackingBudget) else "",
             justify="right",
             width=27,
         )
@@ -324,11 +324,11 @@ def budget(month: datetime.datetime | None = typer.Argument(default=None, help="
                 colored_number_format(income_category_group.received),
                 style="bold",
             )
-            for category in income_category_group.categories:
+            for income_category in income_category_group.categories:
                 income_table.add_row(
-                    f"    {category.name}",
-                    colored_number_format(category.budgeted) if budget_history.is_tracking_budget else "",
-                    colored_number_format(category.received),
+                    f"    {income_category.name}",
+                    colored_number_format(income_category.budgeted) if budget_history.is_tracking_budget else "",
+                    colored_number_format(income_category.received),
                 )
         console.print(income_table)
     else:

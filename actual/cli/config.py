@@ -21,7 +21,7 @@ class OutputType(Enum):
 
 
 class State(pydantic.BaseModel):
-    output: OutputType = pydantic.Field("table", alias="defaultOutput", description="Default output for CLI.")
+    output: OutputType = pydantic.Field(OutputType.table, alias="defaultOutput", description="Default output for CLI.")
 
 
 class BudgetConfig(pydantic.BaseModel):

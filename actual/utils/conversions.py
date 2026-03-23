@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import decimal
+from typing import overload
 
 
 def date_to_int(date: datetime.date, month_only: bool = False) -> int:
@@ -26,6 +27,14 @@ def int_to_date(date: int | str, month_only: bool = False) -> datetime.date:
     """
     date_format = "%Y%m" if month_only else "%Y%m%d"
     return datetime.datetime.strptime(str(date), date_format).date()
+
+
+@overload
+def date_to_datetime(date: datetime.date) -> datetime.datetime: ...
+
+
+@overload
+def date_to_datetime(date: None) -> None: ...
 
 
 def date_to_datetime(date: datetime.date | None) -> datetime.datetime | None:
@@ -71,12 +80,14 @@ def current_timestamp() -> int:
     return int(datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).timestamp() * 1000)
 
 
-def cents_to_decimal(amount: int) -> decimal.Decimal:
+def cents_to_decimal(amount: int | None) -> decimal.Decimal:
     """
     Converts the number of cents to a `decimal.Decimal` object.
 
     When providing `500`, the result will be `decimal.Decimal(5.0)`.
     """
+    if amount is None:
+        return decimal.Decimal(0)
     return decimal.Decimal(amount) / decimal.Decimal(100)
 
 

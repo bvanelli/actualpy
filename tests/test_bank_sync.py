@@ -89,7 +89,7 @@ def generate_bank_sync_data(mocker, starting_balance: int | None = None):
     response_full = copy.deepcopy(response)
     if starting_balance:
         response_full["startingBalance"] = starting_balance
-    response_empty = copy.deepcopy(response)
+    response_empty: dict = copy.deepcopy(response)
     response_empty["transactions"]["all"] = []
     mocker.patch.object(Client, "get").return_value = RequestsMock({"status": "ok", "data": {"validated": True}})
     main_mock = mocker.patch.object(Client, "post")

@@ -18,6 +18,8 @@ def get_exception_from_response(response: httpx.Response) -> Exception:
         raise UnknownFileId(text)
     elif text == "file-old-version":
         raise InvalidFile(f"{text}: SYNC_FORMAT_VERSION was generated with an old format")
+    # use a fallback using the error text for mypy
+    return ActualError(text)
 
 
 class ActualError(Exception):

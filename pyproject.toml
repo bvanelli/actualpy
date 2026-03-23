@@ -47,6 +47,9 @@ dev = [
     "pytest-cov",
     "testcontainers",
     "pre-commit",
+    "mypy",
+    "types-python-dateutil",
+    "types-PyYAML",
     "docker>=7.1.0",
 ]
 docs = [
@@ -93,3 +96,11 @@ select = [
 
 [tool.ruff.lint.mccabe]
 max-complexity = 18
+
+[tool.mypy]
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["proto", "proto.*", "testcontainers", "testcontainers.*"]
+ignore_missing_imports = true
+follow_untyped_imports = false
