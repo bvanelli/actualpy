@@ -112,6 +112,12 @@ def test_property_exceptions(login_mocks):
         getattr(actual, "_sync_client")
 
 
+def test_login_exceptions(login_mocks):
+    actual = Actual(token="foo")
+    with pytest.raises(AuthorizationError, match="no password was provided"):
+        actual.login(None, "header")
+
+
 def test_api_extra_headers(login_mocks):
     actual = Actual(token="foo", extra_headers={"foo": "bar"})
     assert actual._requests_session.headers["foo"] == "bar"

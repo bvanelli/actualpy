@@ -2,7 +2,7 @@ import base64
 
 import pytest
 
-from actual.api.models import EncryptMetaDTO
+from actual.api.models import EncryptionDTO, EncryptMetaDTO
 from actual.crypto import (
     create_key_buffer,
     decrypt,
@@ -58,3 +58,16 @@ def test_create_test_message():
     )
     m = Message.deserialize(dfm)
     assert isinstance(m, Message)
+
+
+def test_encryption_dto_meta():
+    # test is None, meta() should return None
+    dto = EncryptionDTO(id="key-id", salt="salt", test=None)
+    assert dto.meta() is None
+    # test is set, meta() should parse and return EncryptionTestDTO
+    test_json = '{"value": "encrypted", "meta": {"keyId": "k", "algorithm": "a", "iv": "i", "authTag": "t"}}'
+    dto = EncryptionDTO(id="key-id", salt="salt", test=test_json)
+    result = dto.meta()
+    assert result is not None
+    assert result.value == "encrypted"
+    assert result.meta.key_id == "k"

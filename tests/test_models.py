@@ -1,4 +1,5 @@
 import datetime
+import decimal
 import uuid
 
 import pytest
@@ -10,7 +11,7 @@ from actual.database import (
     get_attribute_by_table_name,
     get_class_by_table_name,
 )
-from actual.utils.conversions import current_timestamp
+from actual.utils.conversions import cents_to_decimal, current_timestamp
 
 
 def test_get_class_by_table_name():
@@ -59,6 +60,11 @@ def test_conversion(session):
     assert t.tombstone is None  # server default is 0, but local copy is None
     t.delete()
     assert t.tombstone == 1
+
+
+def test_cents_to_decimal():
+    assert cents_to_decimal(100) == decimal.Decimal(1)
+    assert cents_to_decimal(None) == decimal.Decimal(0)
 
 
 @pytest.mark.parametrize("hidden,expected", [(True, 1), (False, 0)])
