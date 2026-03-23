@@ -3,6 +3,9 @@ coverage:
     project:
       default:
         threshold: 5%
+    patch:
+      default:
+        target: 90%
 ignore:
   # Ignored because it was copied from an MS library, so assumed to be tested
   - "actual/utils/openid.py"
