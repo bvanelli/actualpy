@@ -5,7 +5,7 @@ import decimal
 import pytest
 from httpx import Client
 
-from actual import Actual, ActualBankSyncError
+from actual import Actual, ActualBankSyncError, ActualError
 from actual.api.bank_sync import TransactionItem
 from actual.database import Banks
 from actual.queries import create_account
@@ -197,7 +197,7 @@ def test_bank_sync_unconfigured(mocker, session):
         assert actual.run_bank_sync() == []
 
 
-def test_bank_sync_exception(session, mocker):
+def test_bank_sync_failed_response_exception(session, mocker):
     mocker.patch.object(Client, "get").return_value = RequestsMock({"status": "ok", "data": {"validated": True}})
     main_mock = mocker.patch.object(Client, "post")
     main_mock.side_effect = [
@@ -211,3 +211,15 @@ def test_bank_sync_exception(session, mocker):
         # now try to run the bank sync
         with pytest.raises(ActualBankSyncError):
             actual.run_bank_sync()
+
+
+def test_bank_sync_invalid_input(session, mocker):
+    mocker.patch.object(Client, "get").return_value = RequestsMock({"status": "ok", "data": {"validated": True}})
+
+    account = create_account(session, "notSync")
+    with Actual(token="foo") as actual:
+        actual._session = session
+        with pytest.raises(ActualError, match="Account 'notExistingAccount' not found"):
+            actual.run_bank_sync("notExistingAccount")
+        with pytest.raises(ActualError, match="Account is missing sync source"):
+            actual._run_bank_sync_account(account, datetime.date.today(), False)

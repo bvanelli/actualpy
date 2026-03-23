@@ -100,6 +100,18 @@ def test_zip_exceptions(login_mocks, mocker, tmp_path):
     assert actual._data_dir.name.startswith("tmp")
 
 
+def test_property_exceptions(login_mocks):
+    actual = Actual(token="foo")
+    with pytest.raises(ActualError, match="No file set"):
+        getattr(actual, "file")
+    with pytest.raises(ActualError, match="No data directory set"):
+        getattr(actual, "data_dir")
+    with pytest.raises(ActualError, match="Metadata not loaded"):
+        getattr(actual, "_reflected_metadata")
+    with pytest.raises(ActualError, match="Client not initialized"):
+        getattr(actual, "_sync_client")
+
+
 def test_api_extra_headers(login_mocks):
     actual = Actual(token="foo", extra_headers={"foo": "bar"})
     assert actual._requests_session.headers["foo"] == "bar"

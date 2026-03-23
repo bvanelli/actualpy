@@ -22,6 +22,7 @@ from actual.queries import (
     get_accounts,
     get_categories,
     get_held_budget,
+    get_or_create_account,
     get_or_create_category,
     get_or_create_clock,
     get_or_create_payee,
@@ -827,3 +828,18 @@ def test_get_categories(session):
 
     assert len(get_categories(session, is_income=True)) == 2
     assert len(get_categories(session, is_income=True, include_deleted=True)) == 4
+
+
+def test_query_guard_clauses(session):
+    bank = create_account(session, "Bank")
+    # get_or_create_account: passthrough when given Accounts instance
+    assert get_or_create_account(session, bank) is bank
+    # create_transfer: nonexistent source account
+    with pytest.raises(ActualError, match="Source account"):
+        create_transfer(session, today, "Nonexistent", "Bank", 100)
+    # create_transfer: nonexistent dest account
+    with pytest.raises(ActualError, match="Destination account"):
+        create_transfer(session, today, "Bank", "Nonexistent", 100)
+    # create_budget: nonexistent category
+    with pytest.raises(ActualError, match="Category"):
+        create_budget(session, today, "Nonexistent")

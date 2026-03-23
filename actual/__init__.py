@@ -625,20 +625,19 @@ class Actual(ActualServer):
         It's important to note that this process is not atomic, so if the process is interrupted
         before it completes successfully, the files would end up in a unknown state, leading you to have to redo
         the budget download."""
-        if not self._session:
-            raise ActualError("No session has been created for the file.")
+        session = self.session
         # create sync request based on the session reference that is tracked
         req = SyncRequest({"fileId": self.file.file_id, "groupId": self.file.group_id})
         if self.file.encrypt_key_id:
             req.keyId = self.file.encrypt_key_id
         req.set_null_timestamp(client_id=self._sync_client.client_id)
         # flush to database, so that all data is evaluated on the database for consistency
-        self._session.flush()
+        session.flush()
         # first we add all new entries and modify is required
-        if "messages" in self._session.info:
-            req.set_messages(self._session.info["messages"], self._sync_client, master_key=self._master_key)
+        if "messages" in session.info:
+            req.set_messages(session.info["messages"], self._sync_client, master_key=self._master_key)
         # commit to local database to clear the current flush cache
-        self._session.commit()
+        session.commit()
         # sync all changes to the server
         if self.file.group_id:  # only files with a group id can be synced
             self.sync_sync(req)
