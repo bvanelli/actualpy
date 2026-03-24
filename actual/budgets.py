@@ -3,7 +3,7 @@ import datetime
 import decimal
 from collections.abc import Iterator
 
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from actual.database import Categories, CategoryGroups, ReflectBudgets, Transactions, ZeroBudgets
 from actual.queries import (
@@ -24,11 +24,11 @@ class _HasDatabaseObject:
     """The database object this budget information applies to."""
 
     @property
-    def id(self) -> str:
+    def id(self) -> str | None:
         return self.database_object.id
 
     @property
-    def name(self) -> str:
+    def name(self) -> str | None:
         return self.database_object.name
 
     @property
@@ -525,7 +525,7 @@ def _get_first_positive_transaction(s: Session) -> Transactions | None:
 
     This is used to find the month to start the budgeting calculation, since it makes the budget positive.
     """
-    query = select(Transactions).where(Transactions.amount > 0).order_by(Transactions.date.asc())
+    query = select(Transactions).where(col(Transactions.amount) > 0).order_by(col(Transactions.date).asc())
     return s.exec(query).first()
 
 
@@ -605,8 +605,10 @@ def _process_income_categories(
             # todo: adapt this method to function correctly without accumulated value calculation
             budget = _get_category_detailed_budget(s, month, category, None, True)
             if is_tracking:
+                # This line is for mypy to ensure the budget type is always right
+                reflect_budget = budget.budget if isinstance(budget.budget, ReflectBudgets) else None
                 # Tracking budget: include budgeted income
-                income_cat_list.append(IncomeCategory(category, budget.spent, budget.budgeted, budget.budget))
+                income_cat_list.append(IncomeCategory(category, budget.spent, budget.budgeted, reflect_budget))
             else:
                 # Envelope budget: only track received income
                 income_cat_list.append(IncomeCategory(category, budget.spent))
@@ -692,7 +694,7 @@ def _get_tracking_budget_info(s: Session, until: datetime.date) -> list[Tracking
     return budget_list
 
 
-def get_budget_history(s: Session, until: datetime.date = None) -> BudgetList:
+def get_budget_history(s: Session, until: datetime.date | None = None) -> BudgetList:
     """
     Returns the budget history from the first available month to the given month, as iterable.
 

@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 
-from sqlmodel import Column, Session, SQLModel, select
+from sqlmodel import Column, Session, select
+
+from actual.database import BaseModel
 
 
 @dataclass
@@ -19,15 +21,15 @@ class Changeset:
     The changeset is also only available **from the moment the budget was initialized**.
     """
 
-    table: type[SQLModel] = field(metadata={"description": "The SQLModel reference to the table hosting the data."})
+    table: type[BaseModel] = field(metadata={"description": "The SQLModel reference to the table hosting the data."})
     id: str = field(metadata={"description": "The unique id of the row that was inserted or updated."})
-    values: dict[Column, str | int | bool | None] = field(
+    values: dict[Column, str | int | float | bool | None] = field(
         metadata={
             "description": "The list of values that were updated on the remote server, using column names as keys."
         }
     )
 
-    def from_orm(self, s: Session) -> SQLModel:
+    def from_orm(self, s: Session) -> BaseModel | None:
         """Returns the modifiable object from the database related to this change."""
         query = select(self.table).where(self.table.id == self.id)
         return s.exec(query).one_or_none()

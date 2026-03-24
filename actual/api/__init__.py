@@ -3,11 +3,12 @@ from __future__ import annotations
 import datetime
 import json
 import ssl
-from typing import Literal
+from typing import Literal, overload
 
 import httpx
 
 from actual.api.models import (
+    BankSyncAccountDTO,
     BankSyncAccountResponseDTO,
     BankSyncErrorDTO,
     BankSyncResponseDTO,
@@ -86,7 +87,15 @@ class ActualServer:
         # finally, call validate
         self.validate()
 
-    def login(self, password: str | None, method: Literal["password", "header", "openid"] = "password") -> LoginDTO:
+    @overload
+    def login(self, password: str, method: Literal["password", "header"] = ...) -> LoginDTO: ...
+
+    @overload
+    def login(self, password: None = ..., *, method: Literal["openid"]) -> LoginDTO: ...
+
+    def login(
+        self, password: str | None = None, method: Literal["password", "header", "openid"] = "password"
+    ) -> LoginDTO:
         """
         Logs in on the Actual server using the password provided. Raises `AuthorizationError` if it fails to
         authenticate the user.
@@ -97,19 +106,20 @@ class ActualServer:
         be chosen even if this option is missing.
         :raises AuthorizationError: if the token is invalid.
         """
-        if not password and method != "openid":
-            raise AuthorizationError("Trying to login but not password was provided.")
-        if method == "password":
-            response = self._requests_session.post(
-                Endpoints.LOGIN.value,
-                json={"loginMethod": method, "password": password},
-            )
-        elif method == "header":
-            response = self._requests_session.post(
-                Endpoints.LOGIN.value,
-                json={"loginMethod": method},
-                headers={"X-ACTUAL-PASSWORD": password},
-            )
+        if method in ("password", "header"):
+            if password is None:
+                raise AuthorizationError("Trying to login but no password was provided.")
+            if method == "password":
+                response = self._requests_session.post(
+                    Endpoints.LOGIN.value,
+                    json={"loginMethod": method, "password": password},
+                )
+            else:
+                response = self._requests_session.post(
+                    Endpoints.LOGIN.value,
+                    json={"loginMethod": method},
+                    headers={"X-ACTUAL-PASSWORD": password},
+                )
         else:  # openid
             # check first if the openid server is created
             if not self.is_open_id_owner_created():
@@ -262,14 +272,14 @@ class ActualServer:
         return StatusDTO.model_validate(response.json())
 
     def delete_user_file(self, file_id: str):
-        """Deletes the user file that is loaded from the remote server."""
+        """Deletes the user file loaded from the remote server."""
         response = self._requests_session.post(
             Endpoints.DELETE_USER_FILE.value, json={"fileId": file_id, "token": self._token}
         )
         return StatusDTO.model_validate(response.json())
 
     def user_get_key(self, file_id: str) -> UserGetKeyDTO:
-        """Gets the key information associated with a user file, including the algorithm, key, salt and iv."""
+        """Gets the key information associated with a user file, including the algorithm, key, salt, and iv."""
         response = self._requests_session.post(
             Endpoints.USER_GET_KEY.value,
             json={
@@ -422,7 +432,9 @@ class ActualServer:
         response = self._requests_session.post(endpoint, json={})
         return BankSyncStatusDTO.model_validate(response.json())
 
-    def bank_sync_accounts(self, bank_sync: Literal["gocardless", "simplefin"]) -> BankSyncAccountResponseDTO:
+    def bank_sync_accounts(
+        self, bank_sync: Literal["gocardless", "simplefin"]
+    ) -> BankSyncErrorDTO | BankSyncAccountDTO:
         endpoint = Endpoints.BANK_SYNC_ACCOUNTS.value.format(bank_sync=bank_sync)
         response = self._requests_session.post(endpoint, json={})
         return BankSyncAccountResponseDTO.validate_python(response.json())

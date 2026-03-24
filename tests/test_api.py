@@ -22,7 +22,7 @@ def login_mocks(mocker):
 def test_api_apply(login_mocks, session):
     actual = Actual(token="foo")
     actual.engine = session.bind
-    actual._meta = reflect_model(session.bind)
+    actual._database_metadata = reflect_model(session.bind)
     # not found table
     m = Message(dict(dataset="foo", row="foobar", column="bar"))
     m.set_value("foobar")
@@ -36,9 +36,9 @@ def test_api_apply(login_mocks, session):
 def test_rename_delete_budget_without_file(login_mocks):
     actual = Actual(token="foo")
     actual._file = None
-    with pytest.raises(UnknownFileId, match="No current file loaded"):
+    with pytest.raises(UnknownFileId, match="No file set"):
         actual.delete_budget()
-    with pytest.raises(UnknownFileId, match="No current file loaded"):
+    with pytest.raises(UnknownFileId, match="No file set"):
         actual.rename_budget("foo")
 
 
@@ -98,6 +98,24 @@ def test_zip_exceptions(login_mocks, mocker, tmp_path):
     actual.import_zip(archive)
     # archive will use a normal temp folder since the cloudFileId is missing from metadata
     assert actual._data_dir.name.startswith("tmp")
+
+
+def test_property_exceptions(login_mocks):
+    actual = Actual(token="foo")
+    with pytest.raises(ActualError, match="No file set"):
+        getattr(actual, "file")
+    with pytest.raises(ActualError, match="No data directory set"):
+        getattr(actual, "data_dir")
+    with pytest.raises(ActualError, match="Metadata not loaded"):
+        getattr(actual, "_reflected_metadata")
+    with pytest.raises(ActualError, match="Client not initialized"):
+        getattr(actual, "_sync_client")
+
+
+def test_login_exceptions(login_mocks):
+    actual = Actual(token="foo")
+    with pytest.raises(AuthorizationError, match="no password was provided"):
+        actual.login(None, "header")
 
 
 def test_api_extra_headers(login_mocks):

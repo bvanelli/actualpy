@@ -154,7 +154,9 @@ class EncryptionDTO(BaseModel):
     salt: str | None
     test: str | None
 
-    def meta(self) -> EncryptionTestDTO:
+    def meta(self) -> EncryptionTestDTO | None:
+        if self.test is None:
+            return None
         return EncryptionTestDTO.model_validate_json(self.test)
 
 
@@ -162,9 +164,9 @@ class FileDTO(BaseModel):
     """Base file model."""
 
     deleted: int | None
-    file_id: str | None = Field(..., alias="fileId")
+    file_id: str = Field(..., alias="fileId")
     group_id: str | None = Field(..., alias="groupId")
-    name: str | None
+    name: str
 
 
 class RemoteFileListDTO(FileDTO):
@@ -354,5 +356,9 @@ class OpenIDUserFileAccessDTO(BaseOpenIDUserFileAccessDTO):
 
 
 """Type adapters for the response models."""
-BankSyncAccountResponseDTO = TypeAdapter(BankSyncErrorDTO | BankSyncAccountDTO)
-BankSyncResponseDTO = TypeAdapter(BankSyncErrorDTO | BankSyncTransactionResponseDTO)
+BankSyncAccountResponseDTO: TypeAdapter[BankSyncErrorDTO | BankSyncAccountDTO] = TypeAdapter(
+    BankSyncErrorDTO | BankSyncAccountDTO
+)
+BankSyncResponseDTO: TypeAdapter[BankSyncErrorDTO | BankSyncTransactionResponseDTO] = TypeAdapter(
+    BankSyncErrorDTO | BankSyncTransactionResponseDTO
+)

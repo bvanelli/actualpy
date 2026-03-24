@@ -87,7 +87,7 @@ def test_budgets(session, budget_type, budget_table):
     assert len(budget_transactions) == 3
     assert all(t in budget_transactions for t in (t1, t2, t3))
     # test if it fails if category does not exist
-    with pytest.raises(ActualError, match="Category is provided but does not exist"):
+    with pytest.raises(ActualError, match="Category 'foo' not found"):
         get_budgets(session, category="foo")
     # filtering by budget will raise a warning if get_transactions with budget also provides a start-end outside range
     with pytest.warns(match="Provided date filters"):

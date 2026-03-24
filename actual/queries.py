@@ -12,7 +12,7 @@ from pydantic import TypeAdapter
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 from sqlalchemy.sql.expression import Select
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from actual.crypto import is_uuid
 from actual.database import (
@@ -63,31 +63,31 @@ def _transactions_base_query(
             joinedload(Transactions.category),
             joinedload(Transactions.payee),
         )
-        .filter(
-            Transactions.date.isnot(None),
-            Transactions.acct.isnot(None),
+        .where(
+            col(Transactions.date).isnot(None),
+            col(Transactions.acct).isnot(None),
         )
         .order_by(
-            Transactions.date.desc(),
-            Transactions.starting_balance_flag,
-            Transactions.sort_order.desc(),
+            col(Transactions.date).desc(),
+            col(Transactions.starting_balance_flag),
+            col(Transactions.sort_order).desc(),
             Transactions.id,
         )
     )
     if start_date:
-        query = query.filter(Transactions.date >= date_to_int(start_date))
+        query = query.where(col(Transactions.date) >= date_to_int(start_date))
     if end_date:
-        query = query.filter(Transactions.date < date_to_int(end_date))
+        query = query.where(col(Transactions.date) < date_to_int(end_date))
     if not include_deleted:
-        query = query.filter(sqlalchemy.func.coalesce(Transactions.tombstone, 0) == 0)
+        query = query.where(sqlalchemy.func.coalesce(Transactions.tombstone, 0) == 0)
     if account:
         account = get_account(s, account)
         if account:
-            query = query.filter(Transactions.acct == account.id)
+            query = query.where(Transactions.acct == account.id)
     if category:
         category = get_category(s, category)
         if category:
-            query = query.filter(Transactions.category_id == category.id)
+            query = query.where(Transactions.category_id == category.id)
     return query
 
 
@@ -103,17 +103,17 @@ def _balance_base_query(
         Transactions.tombstone == 0,
     )
     if start_date is not None:
-        query = query.filter(Transactions.date >= date_to_int(start_date))
+        query = query.where(col(Transactions.date) >= date_to_int(start_date))
     if end_date is not None:
-        query = query.filter(Transactions.date < date_to_int(end_date))
+        query = query.where(col(Transactions.date) < date_to_int(end_date))
     if account:
         account = get_account(s, account)
         if account:
-            query = query.filter(Transactions.acct == account.id)
+            query = query.where(Transactions.acct == account.id)
     if category:
         category = get_category(s, category)
         if category:
-            query = query.filter(Transactions.category_id == category.id)
+            query = query.where(Transactions.category_id == category.id)
     return query
 
 
@@ -127,10 +127,10 @@ def get_transactions(
     is_parent: bool = False,
     include_deleted: bool = False,
     budget: ZeroBudgets | None = None,
-    cleared: bool = None,
+    cleared: bool | None = None,
     payee: Payees | str | None = None,
     amount: decimal.Decimal | float | int | None = None,
-    transfer: bool = None,
+    transfer: bool | None = None,
     off_budget: bool | None = None,
 ) -> typing.Sequence[Transactions]:
     """
@@ -166,22 +166,22 @@ def get_transactions(
     :return: List of transactions with `account`, `category` and `payee` preloaded.
     """
     query = _transactions_base_query(s, start_date, end_date, account, category, include_deleted)
-    query = query.filter(Transactions.is_parent == int(is_parent))
+    query = query.where(col(Transactions.is_parent) == int(is_parent))
     if notes:
-        query = query.filter(Transactions.notes.ilike(f"%{sqlalchemy.text(notes).compile()}%"))
+        query = query.where(col(Transactions.notes).ilike(f"%{sqlalchemy.text(notes).compile()}%"))
     if cleared is not None:
-        query = query.filter(Transactions.cleared == int(cleared))
+        query = query.where(col(Transactions.cleared) == int(cleared))
     if payee:
         if isinstance(payee, str):
             payee = get_payee(s, payee)
         if not payee:
             return []
-        query = query.filter(Transactions.payee_id == payee.id)
+        query = query.where(col(Transactions.payee_id) == payee.id)
     if amount is not None:
-        query = query.filter(Transactions.amount == int(amount * 100))
+        query = query.where(col(Transactions.amount) == int(amount * 100))
     if transfer is not None:
-        query = query.filter(
-            Transactions.transferred_id.is_not(None) if transfer else Transactions.transferred_id.is_(None)
+        query = query.where(
+            col(Transactions.transferred_id).is_not(None) if transfer else col(Transactions.transferred_id).is_(None)
         )
     if budget:
         budget_start, budget_end = budget.range
@@ -190,14 +190,14 @@ def get_transactions(
                 f"Provided date filters [{start_date}, {end_date}) to get_transactions are outside the bounds of the "
                 f"budget range [{budget_start}, {budget_end}). Results might be empty!"
             )
-        budget_start, budget_end = (date_to_int(d) for d in budget.range)
-        query = query.filter(
-            Transactions.date >= budget_start,
-            Transactions.date < budget_end,
-            Transactions.category_id == budget.category_id,
+        budget_start_int, budget_end_int = (date_to_int(d) for d in budget.range)
+        query = query.where(
+            col(Transactions.date) >= budget_start_int,
+            col(Transactions.date) < budget_end_int,
+            col(Transactions.category_id) == budget.category_id,
         )
     if off_budget is not None:
-        query = query.join(Accounts).filter(Accounts.offbudget == int(off_budget))
+        query = query.join(Accounts).where(col(Accounts.offbudget) == int(off_budget))
     return s.exec(query).all()
 
 
@@ -205,7 +205,7 @@ def match_transaction(
     s: Session,
     date: datetime.date,
     account: str | Accounts,
-    payee: str | Payees = "",
+    payee: str | Payees | None = None,
     amount: decimal.Decimal | float | int = 0,
     imported_id: str | None = None,
     already_matched: list[Transactions] | None = None,
@@ -224,13 +224,13 @@ def match_transaction(
     # First, match with an existing transaction's imported_id
     if imported_id:
         query = _transactions_base_query(s, account=account)
-        imported_transaction = s.exec(query.filter(Transactions.financial_id == imported_id)).first()
+        imported_transaction = s.exec(query.where(col(Transactions.financial_id) == imported_id)).first()
         if imported_transaction:
             return imported_transaction  # noqa
     # if not matched, look 7 days ahead and 7 days back when fuzzy matching
     query = _transactions_base_query(
         s, date - datetime.timedelta(days=7), date + datetime.timedelta(days=8), account=account
-    ).filter(Transactions.amount == round(amount * 100))
+    ).where(col(Transactions.amount) == round(amount * 100))
     results: list[Transactions] = s.exec(query).all()  # noqa
     # filter out the ones that were already matched
     if already_matched:
@@ -246,9 +246,9 @@ def match_transaction(
     # matching always happens first, i.e. a transaction should
     # match with low fidelity if a later transaction is going to match
     # the same one with high fidelity.
-    payee = get_payee(s, payee)
-    if payee:
-        matching_payee = [r for r in results if r.payee_id == payee.id]
+    resolved_payee = get_payee(s, payee) if payee else None
+    if resolved_payee:
+        matching_payee = [r for r in results if r.payee_id == resolved_payee.id]
         if matching_payee:
             return matching_payee[0]
     # The final fuzzy matching pass. This is the lowest fidelity
@@ -263,9 +263,9 @@ def create_transaction_from_ids(
     date: datetime.date,
     account_id: str,
     payee_id: str | None,
-    notes: str,
+    notes: str | None,
     category_id: str | None = None,
-    amount: decimal.Decimal = 0,
+    amount: decimal.Decimal | float = 0,
     imported_id: str | None = None,
     cleared: bool = False,
     imported_payee: str | None = None,
@@ -328,7 +328,7 @@ def create_transaction(
     """
     acct = get_account(s, account)
     if acct is None:
-        raise ActualError(f"Account {account} not found")
+        raise ActualError(f"Account '{account}' not found")
     if imported_payee:
         imported_payee = imported_payee.strip()
         if not payee:
@@ -370,7 +370,7 @@ def set_transaction_payee(s: Session, transaction: Transactions, payee: Payees |
             old_tr.delete()
             transaction.transferred_id = None
     # if setting a transfer payee, we create a transfer
-    if payee and payee.transfer_acct:
+    if payee and payee.transfer_acct and payee.account:
         transfer = create_transaction_from_ids(
             s,
             transaction.get_date(),
@@ -453,8 +453,10 @@ def reconcile_transaction(
     this would prevent transactions with the exact same (date, amount) to be assigned as duplicates.
     :return: The generated or matched transaction object.
     """
-    account = get_account(s, account)
-    match = match_transaction(s, date, account, payee, amount, imported_id, already_matched)
+    resolved_account = get_account(s, account)
+    if resolved_account is None:
+        raise ActualError(f"Account '{account}' not found.")
+    match = match_transaction(s, date, resolved_account, payee, amount, imported_id, already_matched)
     if match:
         # try to update fields
         if update_existing:
@@ -478,7 +480,7 @@ def reconcile_transaction(
 
 
 def create_splits(
-    s: Session, transactions: typing.Sequence[Transactions], payee: str | Payees = None, notes: str = ""
+    s: Session, transactions: typing.Sequence[Transactions], payee: str | Payees | None = None, notes: str = ""
 ) -> Transactions:
     """
     Creates a transaction with splits based on the list of transactions.
@@ -536,13 +538,15 @@ def _base_query(instance: type[T], name: str | None = None, include_deleted: boo
     """Internal method to reduce querying complexity on sub-functions."""
     query = select(instance)
     if not include_deleted:
-        query = query.filter(sqlalchemy.func.coalesce(instance.tombstone, 0) == 0)
+        query = query.where(sqlalchemy.func.coalesce(instance.tombstone, 0) == 0)
     if name:
-        query = query.filter(instance.name.ilike(f"%{sqlalchemy.text(name).compile()}%"))
+        query = query.where(instance.name.ilike(f"%{sqlalchemy.text(name).compile()}%"))
     return query
 
 
-def get_category_groups(s: Session, name: str = None, include_deleted: bool = False, is_income: bool = None):
+def get_category_groups(
+    s: Session, name: str | None = None, include_deleted: bool = False, is_income: bool | None = None
+):
     """
     Returns a list of all available category groups.
 
@@ -554,11 +558,11 @@ def get_category_groups(s: Session, name: str = None, include_deleted: bool = Fa
     """
     query = (
         _base_query(CategoryGroups, name, include_deleted)
-        .order_by(CategoryGroups.sort_order)
+        .order_by(col(CategoryGroups.sort_order))
         .options(joinedload(CategoryGroups.categories))
     )
     if is_income is not None:
-        query = query.filter(CategoryGroups.is_income == is_income)
+        query = query.where(col(CategoryGroups.is_income) == is_income)
     return s.exec(query).unique().all()
 
 
@@ -581,7 +585,7 @@ def get_or_create_category_group(s: Session, name: str) -> CategoryGroups:
     Deleted category groups are excluded from the search.
     """
     category_group = s.exec(
-        select(CategoryGroups).filter(CategoryGroups.name == name, CategoryGroups.tombstone == 0)
+        select(CategoryGroups).where(CategoryGroups.name == name, CategoryGroups.tombstone == 0)
     ).one_or_none()
     if not category_group:
         category_group = create_category_group(s, name)
@@ -589,7 +593,7 @@ def get_or_create_category_group(s: Session, name: str) -> CategoryGroups:
 
 
 def get_categories(
-    s: Session, name: str | None = None, include_deleted: bool = False, is_income: bool = None
+    s: Session, name: str | None = None, include_deleted: bool = False, is_income: bool | None = None
 ) -> typing.Sequence[Categories]:
     """
     Returns a list of all available categories.
@@ -602,11 +606,11 @@ def get_categories(
     """
     query = (
         _base_query(Categories, name, include_deleted)
-        .order_by(Categories.sort_order)
+        .order_by(col(Categories.sort_order))
         .options(joinedload(Categories.transactions))
     )
     if is_income is not None:
-        query = query.filter(Categories.is_income == is_income)
+        query = query.where(col(Categories.is_income) == is_income)
     return s.exec(query).unique().all()
 
 
@@ -651,9 +655,9 @@ def get_tags(
     """
     query = _base_query(Tags, None, include_deleted)
     if name:
-        query = query.filter(Tags.tag.ilike(f"%{sqlalchemy.text(name.lstrip('#')).compile()}%"))
+        query = query.where(col(Tags.tag).ilike(f"%{sqlalchemy.text(name.lstrip('#')).compile()}%"))
     if description:
-        query = query.filter(Tags.description.ilike(f"%{sqlalchemy.text(name).compile()}%"))
+        query = query.where(col(Tags.description).ilike(f"%{sqlalchemy.text(description).compile()}%"))
     return s.exec(query).unique().all()
 
 
@@ -680,11 +684,11 @@ def get_category(
     category = s.exec(
         select(Categories)
         .join(CategoryGroups)
-        .filter(Categories.name == name, Categories.tombstone == 0, CategoryGroups.name == group_name)
+        .where(Categories.name == name, Categories.tombstone == 0, CategoryGroups.name == group_name)
     ).one_or_none()
     if not category and not strict_group:
         # try to find it without the group name
-        category = s.exec(select(Categories).filter(Categories.name == name, Categories.tombstone == 0)).one_or_none()
+        category = s.exec(select(Categories).where(Categories.name == name, Categories.tombstone == 0)).one_or_none()
     return category
 
 
@@ -699,6 +703,8 @@ def get_or_create_category(
 
     If a group name is not provided, the default 'Usual Expenses' will be picked.
     """
+    if isinstance(name, Categories):
+        return name
     category = get_category(s, name, group_name, strict_group)
     if not category:
         category = create_category(s, name, group_name or "Usual Expenses")
@@ -724,14 +730,14 @@ def get_accounts(
     """
     query = (
         _base_query(Accounts, name, include_deleted)
-        .order_by(Accounts.sort_order)
+        .order_by(col(Accounts.sort_order))
         .options(joinedload(Accounts.transactions))
     )
 
     if closed is not None:
-        query = query.filter(Accounts.closed == int(closed))
+        query = query.where(col(Accounts.closed) == int(closed))
     if off_budget is not None:
-        query = query.filter(Accounts.offbudget == int(off_budget))
+        query = query.where(col(Accounts.offbudget) == int(off_budget))
 
     return s.exec(query).unique().all()
 
@@ -753,7 +759,7 @@ def get_payee(s: Session, name: str | Payees) -> Payees | None:
     """Gets an existing payee by name, returns `None` if not found. Deleted payees are excluded from the search."""
     if isinstance(name, Payees):
         return name
-    return s.exec(select(Payees).filter(Payees.name == name, Payees.tombstone == 0)).one_or_none()
+    return s.exec(select(Payees).where(Payees.name == name, Payees.tombstone == 0)).one_or_none()
 
 
 def create_payee(s: Session, name: str | None) -> Payees:
@@ -776,6 +782,8 @@ def get_or_create_payee(s: Session, name: str | Payees) -> Payees:
 
     If the payee is created twice, this method will fail with a database error.
     """
+    if isinstance(name, Payees):
+        return name
     payee = get_payee(s, name)
     if not payee:
         payee = create_payee(s, name)
@@ -814,14 +822,16 @@ def get_account(s: Session, name: str | Accounts) -> Accounts | None:
     if isinstance(name, Accounts):
         return name
     if is_uuid(name):
-        query = select(Accounts).filter(Accounts.id == name, Accounts.tombstone == 0)
+        query = select(Accounts).where(Accounts.id == name, Accounts.tombstone == 0)
     else:
-        query = select(Accounts).filter(Accounts.name == name, Accounts.tombstone == 0)
+        query = select(Accounts).where(Accounts.name == name, Accounts.tombstone == 0)
     return s.exec(query).one_or_none()
 
 
 def get_or_create_account(s: Session, name: str | Accounts) -> Accounts:
     """Gets or create the account, if not found with `name`. The initial balance will be set to `0`."""
+    if isinstance(name, Accounts):
+        return name
     account = get_account(s, name)
     if not account:
         account = create_account(s, name)
@@ -866,15 +876,15 @@ def get_budgets(
              When the frontend shows a budget as 0.00, it might not be returned by this method.
     """
     table = _get_budget_table(s)
-    query = select(table).options(joinedload(table.category)).order_by(table.month.asc())
+    query = select(table).options(joinedload(table.category)).order_by(col(table.month).asc())
     if month:
         month_filter = date_to_int(month, month_only=True)
-        query = query.filter(table.month == month_filter)
+        query = query.where(table.month == month_filter)
     if category:
-        category = get_category(s, category)
-        if not category:
-            raise ActualError("Category is provided but does not exist.")
-        query = query.filter(table.category_id == category.id)
+        resolved_category = get_category(s, category)
+        if not resolved_category:
+            raise ActualError(f"Category '{category}' not found.")
+        query = query.where(table.category_id == resolved_category.id)
     return s.exec(query).unique().all()
 
 
@@ -919,8 +929,10 @@ def create_budget(
     if budget:
         budget.set_amount(amount)
         return budget
-    category = get_category(s, category)
-    budget = table(id=str(uuid.uuid4()), category_id=category.id)
+    resolved_category = get_category(s, category)
+    if resolved_category is None:
+        raise ActualError(f"Category '{category}' not found.")
+    budget = table(id=str(uuid.uuid4()), category_id=resolved_category.id)
     budget.set_date(month)
     budget.set_amount(amount)
     if carryover is not None:
@@ -974,13 +986,18 @@ def get_accumulated_budgeted_balance(s: Session, month: datetime.date, category:
     :return: A decimal representing the budget real balance for the category. This is evaluated by adding all
              previous leftover budgets that have a value greater than 0.
     """
-    category = get_category(s, category)
+    resolved_category = get_category(s, category)
+    if resolved_category is None:
+        raise ActualError(f"Category '{category}' not found.")
     from actual.budgets import get_budget_history
 
     history = get_budget_history(s, month)
     if not history:
         return decimal.Decimal(0)
-    return history[-1].from_category(category).accumulated_balance
+    budget_category = history[-1].from_category(resolved_category)
+    if budget_category is None:
+        return decimal.Decimal(0)
+    return budget_category.accumulated_balance
 
 
 def get_held_budget(s: Session, month: datetime.date) -> ZeroBudgetMonths | None:
@@ -1021,8 +1038,12 @@ def create_transfer(
     """
     if amount <= 0:
         raise ActualError("Amount must be a positive value.")
-    source: Accounts = get_account(s, source_account)
-    dest: Accounts = get_account(s, dest_account)
+    source = get_account(s, source_account)
+    if source is None:
+        raise ActualError(f"Source account '{source_account}' not found.")
+    dest = get_account(s, dest_account)
+    if dest is None:
+        raise ActualError(f"Destination account '{dest_account}' not found.")
     source_transaction = create_transaction_from_ids(
         s, date, source.id, dest.payee.id, notes, None, -amount, process_payee=False
     )
@@ -1058,6 +1079,9 @@ def get_ruleset(s: Session) -> RuleSet:
     """
     rule_set = list()
     for rule in get_rules(s):
+        # TODO: check if conditions/actions can actually be None in the Actual source code
+        if not rule.conditions or not rule.actions:
+            continue
         conditions = TypeAdapter(list[Condition]).validate_json(rule.conditions)
         actions = TypeAdapter(list[Action]).validate_json(rule.actions)
         rs = Rule(conditions=conditions, operation=rule.conditions_op, actions=actions, stage=rule.stage)  # noqa
@@ -1111,7 +1135,7 @@ def get_schedules(
     """
     query = _base_query(Schedules, name, include_deleted)
     if not include_completed:
-        query = query.filter(Schedules.completed == 0)
+        query = query.where(col(Schedules.completed) == 0)
     return s.exec(query).all()
 
 
@@ -1152,7 +1176,7 @@ def create_schedule(
     schedule_id = str(uuid.uuid4())
     conditions = []
     # Handle the payee condition
-    if payee := get_payee(s, payee):
+    if payee and (payee := get_payee(s, payee)):
         conditions.append(
             Condition(field="description", op=ConditionType.IS, value=payee.id),
         )
@@ -1162,7 +1186,7 @@ def create_schedule(
             Condition(field="description", op=ConditionType.IS, value=None),
         )
     # Handle the account condition
-    if account := get_account(s, account):
+    if account and (account := get_account(s, account)):
         conditions.append(
             Condition(field="acct", op=ConditionType.IS, value=account.id),
         )
@@ -1322,13 +1346,12 @@ def get_or_create_preference(s: Session, key: str, value: str) -> Preferences:
     return preference
 
 
-def get_preference(s: Session, key: str, default: str | None = None) -> Preferences | None:
+def get_preference(s: Session, key: str) -> Preferences | None:
     """
     Gets an existing preference by key name, returns `None` if not found.
 
     :param s: Session from the Actual local database.
     :param key: Preference name.
-    :param default: Default value to be returned if the key is not found.
     :return: Preference matching the key provided. If not found, returns `None`.
     """
-    return s.exec(select(Preferences).where(Preferences.id == key)).one_or_none() or default
+    return s.exec(select(Preferences).where(Preferences.id == key)).one_or_none()

@@ -87,7 +87,7 @@ class TransactionItem(BaseModel):
     payee_account: DebtorAccount | None = Field(None, validation_alias=AliasChoices("debtorAccount", "creditorAccount"))
     booking_date: datetime.date | None = Field(None, alias="bookingDate")
     value_date: datetime.date | None = Field(None, alias="valueDate")
-    remittance_information_unstructured: str = Field(None, alias="remittanceInformationUnstructured")
+    remittance_information_unstructured: str | None = Field(None, alias="remittanceInformationUnstructured")
     remittance_information_unstructured_array: list[str] = Field(
         default_factory=list, alias="remittanceInformationUnstructuredArray"
     )

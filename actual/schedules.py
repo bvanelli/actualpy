@@ -25,29 +25,29 @@ from pydantic import model_serializer
 from actual.utils.conversions import date_to_datetime, day_to_ordinal
 
 
-class EndMode(enum.Enum):
+class EndMode(str, enum.Enum):
     AFTER_N_OCCURRENCES = "after_n_occurrences"
     ON_DATE = "on_date"
     NEVER = "never"
 
 
-class Frequency(enum.Enum):
+class Frequency(str, enum.Enum):
     DAILY = "daily"
     WEEKLY = "weekly"
     MONTHLY = "monthly"
     YEARLY = "yearly"
 
-    def as_dateutil(self) -> int:
+    def as_dateutil(self) -> typing.Literal[0, 1, 2, 3]:
         frequency_map = {"YEARLY": YEARLY, "MONTHLY": MONTHLY, "WEEKLY": WEEKLY, "DAILY": DAILY}
-        return frequency_map[self.name]
+        return frequency_map[self.name]  # type: ignore[return-value]
 
 
-class WeekendSolveMode(enum.Enum):
+class WeekendSolveMode(str, enum.Enum):
     BEFORE = "before"
     AFTER = "after"
 
 
-class PatternType(enum.Enum):
+class PatternType(str, enum.Enum):
     SUNDAY = "SU"
     MONDAY = "MO"
     TUESDAY = "TU"
@@ -232,7 +232,9 @@ class Schedule(pydantic.BaseModel):
         It will use the interval as the maximum threshold before and after the specified date to look for.
         This defaults on Actual to +-2 days.
         """
-        if date < self.start or (self.end_mode == EndMode.ON_DATE and self.end_date < date):
+        if date < self.start or (
+            self.end_mode == EndMode.ON_DATE and self.end_date is not None and self.end_date < date
+        ):
             return False
         before = self.before(date)
         after = self.xafter(date, 1)
@@ -248,13 +250,12 @@ class Schedule(pydantic.BaseModel):
 
         For information on how to use this object, check the [official documentation](https://dateutil.readthedocs.io).
         """
-        rule_sets_configs = []
-        config = dict(freq=self.frequency.as_dateutil(), dtstart=self.start, interval=self.interval)
-        # add termination options
-        if self.end_mode == EndMode.ON_DATE:
-            config["until"] = self.end_date
-        elif self.end_mode == EndMode.AFTER_N_OCCURRENCES:
-            config["count"] = self.end_occurrences
+        freq = self.frequency.as_dateutil()
+        dtstart = self.start
+        interval = self.interval
+        until = self.end_date if self.end_mode == EndMode.ON_DATE else None
+        count = self.end_occurrences if self.end_mode == EndMode.AFTER_N_OCCURRENCES else None
+        rules: list[rrule] = []
         if self.frequency == Frequency.MONTHLY and self.patterns:
             by_month_day, by_weekday = [], []
             for p in self.patterns:
@@ -265,27 +266,29 @@ class Schedule(pydantic.BaseModel):
             # for the month or weekday rules, add a different rrule to the ruleset. This is because otherwise the rule
             # would only look for, for example, days that are 15 that are also Fridays, and that is not desired
             if by_month_day:
-                monthly_config = config.copy()
-                monthly_config.update({"bymonthday": by_month_day})
-                rule_sets_configs.append(monthly_config)
+                rules.append(
+                    rrule(freq, dtstart=dtstart, interval=interval, until=until, count=count, bymonthday=by_month_day)
+                )
             if by_weekday:
-                weekly_config = config.copy()
-                weekly_config.update({"byweekday": by_weekday})
-                rule_sets_configs.append(weekly_config)
-        # if ruleset does not contain multiple rules, add the current rule as default
-        if not rule_sets_configs:
-            rule_sets_configs.append(config)
-        # create rule set
+                rules.append(
+                    rrule(freq, dtstart=dtstart, interval=interval, until=until, count=count, byweekday=by_weekday)
+                )
+        if not rules:
+            rules.append(rrule(freq, dtstart=dtstart, interval=interval, until=until, count=count))
         rs = rruleset(cache=True)
-        for cfg in rule_sets_configs:
-            rs.rrule(rrule(**cfg))
+        for r in rules:
+            rs.rrule(r)
         return rs
 
     def do_skip_weekend(self, dt_start: datetime.datetime, value: datetime.datetime) -> datetime.datetime | None:
         if value.weekday() in (5, 6) and self.skip_weekend:
             if self.weekend_solve_mode == WeekendSolveMode.AFTER:
                 value = value + datetime.timedelta(days=7 - value.weekday())
-                if self.end_mode == EndMode.ON_DATE and value > date_to_datetime(self.end_date):
+                if (
+                    self.end_mode == EndMode.ON_DATE
+                    and self.end_date is not None
+                    and value > date_to_datetime(self.end_date)
+                ):
                     return None
             else:  # BEFORE
                 value_before = value - datetime.timedelta(days=value.weekday() - 4)
@@ -319,9 +322,9 @@ class Schedule(pydantic.BaseModel):
 
         ret = []
         for value in rs.xafter(dt_start, count, inc=True):
-            if value := self.do_skip_weekend(dt_start, value):
-                # convert back to date
-                ret.append(value.date())
+            adjusted = self.do_skip_weekend(dt_start, value)
+            if adjusted:
+                ret.append(adjusted.date())
             if len(ret) == count:
                 break
         return sorted(ret)
