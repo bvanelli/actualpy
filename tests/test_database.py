@@ -5,6 +5,7 @@ import warnings
 from datetime import date, timedelta
 
 import pytest
+from freezegun import freeze_time
 from sqlmodel import select
 
 from actual import Actual, ActualError, reflect_model
@@ -548,14 +549,24 @@ def test_schedule_config(session):
         create_schedule_config(today, end_mode="after_n_occurrences")
 
 
-def test_schedule_populates_next_date(session):
-    config = create_schedule_config(datetime.date(2025, 10, 11))
-    schedule = create_schedule(session, config, 500.0, name="next_date_test")
-    session.flush()
+@pytest.mark.parametrize(
+    "frozen_today, start_date, expected_next_date",
+    [
+        # today is before the start date, so next date is the start date
+        ("2025-10-01", datetime.date(2025, 10, 11), 20251011),
+        # today is after the start date, so next date is the next monthly occurrence
+        ("2025-11-01", datetime.date(2025, 10, 11), 20251111),
+    ],
+)
+def test_schedule_populates_next_date(session, frozen_today, start_date, expected_next_date):
+    with freeze_time(frozen_today):
+        config = create_schedule_config(start_date)
+        schedule = create_schedule(session, config, 500.0, name="next_date_test")
+        session.flush()
     rows = session.exec(select(SchedulesNextDate).where(SchedulesNextDate.schedule_id == schedule.id)).all()
     assert len(rows) == 1
-    assert rows[0].local_next_date == 20251011
-    assert rows[0].base_next_date == 20251011
+    assert rows[0].local_next_date == expected_next_date
+    assert rows[0].base_next_date == expected_next_date
     assert rows[0].local_next_date_ts is not None
     assert rows[0].base_next_date_ts is not None
     assert rows[0].local_next_date_ts == rows[0].base_next_date_ts

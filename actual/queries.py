@@ -1225,7 +1225,7 @@ def create_schedule(
     s.add(schedule)
     # Compute and insert the next date row, matching upstream behavior
     if isinstance(date, Schedule):
-        next_dates = date.xafter(date.start, count=1)
+        next_dates = date.xafter()
         next_date = next_dates[0] if next_dates else date.start
     elif isinstance(date, datetime.datetime):
         next_date = date.date()

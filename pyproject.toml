@@ -51,6 +51,7 @@ dev = [
     "types-python-dateutil",
     "types-PyYAML",
     "docker>=7.1.0",
+    "freezegun",
 ]
 docs = [
     "mkdocs==1.6.1",
