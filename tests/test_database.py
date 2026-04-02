@@ -5,9 +5,10 @@ import warnings
 from datetime import date, timedelta
 
 import pytest
+from sqlmodel import select
 
 from actual import Actual, ActualError, reflect_model
-from actual.database import Transactions, ZeroBudgetMonths
+from actual.database import SchedulesNextDate, Transactions, ZeroBudgetMonths
 from actual.exceptions import ActualInvalidOperationError
 from actual.queries import (
     create_account,
@@ -545,6 +546,28 @@ def test_schedule_config(session):
         create_schedule_config(today, end_mode="on_date")
     with pytest.raises(ActualError, match="the end_occurrences must be provided"):
         create_schedule_config(today, end_mode="after_n_occurrences")
+
+
+def test_schedule_populates_next_date(session):
+    config = create_schedule_config(datetime.date(2025, 10, 11))
+    schedule = create_schedule(session, config, 500.0, name="next_date_test")
+    session.flush()
+    rows = session.exec(select(SchedulesNextDate).where(SchedulesNextDate.schedule_id == schedule.id)).all()
+    assert len(rows) == 1
+    assert rows[0].local_next_date == 20251011
+    assert rows[0].base_next_date == 20251011
+    assert rows[0].local_next_date_ts is not None
+    assert rows[0].base_next_date_ts is not None
+    assert rows[0].local_next_date_ts == rows[0].base_next_date_ts
+
+
+def test_schedule_populates_next_date_simple_date(session):
+    schedule = create_schedule(session, datetime.date(2025, 6, 15), 100.0, name="simple_date_test")
+    session.flush()
+    rows = session.exec(select(SchedulesNextDate).where(SchedulesNextDate.schedule_id == schedule.id)).all()
+    assert len(rows) == 1
+    assert rows[0].local_next_date == 20250615
+    assert rows[0].base_next_date == 20250615
 
 
 def test_get_transactions_with_cleared_filter(session):

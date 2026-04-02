@@ -674,7 +674,7 @@ class SchedulesJsonPaths(SQLModel, table=True):
     date: str | None = Field(default=None, sa_column=Column("date", Text))
 
 
-class SchedulesNextDate(SQLModel, table=True):
+class SchedulesNextDate(BaseModel, table=True):
     __tablename__ = "schedules_next_date"
 
     id: str = Field(..., sa_column=Column("id", Text, primary_key=True))

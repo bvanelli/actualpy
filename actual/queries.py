@@ -27,6 +27,7 @@ from actual.database import (
     ReflectBudgets,
     Rules,
     Schedules,
+    SchedulesNextDate,
     Tags,
     Transactions,
     ZeroBudgetMonths,
@@ -1222,6 +1223,25 @@ def create_schedule(
         rule=rule,
     )
     s.add(schedule)
+    # Compute and insert the next date row, matching upstream behavior
+    if isinstance(date, Schedule):
+        next_dates = date.xafter(date.start, count=1)
+        next_date = next_dates[0] if next_dates else date.start
+    elif isinstance(date, datetime.datetime):
+        next_date = date.date()
+    else:
+        next_date = date
+    next_date_int = date_to_int(next_date)
+    now_ts = current_timestamp()
+    next_date_row = SchedulesNextDate(
+        id=str(uuid.uuid4()),
+        schedule_id=schedule_id,
+        local_next_date=next_date_int,
+        local_next_date_ts=now_ts,
+        base_next_date=next_date_int,
+        base_next_date_ts=now_ts,
+    )
+    s.add(next_date_row)
     return schedule
 
 
