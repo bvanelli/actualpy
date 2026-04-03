@@ -572,13 +572,17 @@ def test_schedule_populates_next_date(session, frozen_today, start_date, expecte
     assert rows[0].local_next_date_ts == rows[0].base_next_date_ts
 
 
-def test_schedule_populates_next_date_simple_date(session):
-    schedule = create_schedule(session, datetime.date(2025, 6, 15), 100.0, name="simple_date_test")
+@pytest.mark.parametrize(
+    "start_date, expected_next_date",
+    [(datetime.date(2025, 6, 15), 20250615), (datetime.datetime(2025, 6, 15), 20250615)],
+)
+def test_schedule_populates_next_date_simple_date(session, start_date, expected_next_date):
+    schedule = create_schedule(session, start_date, 100.0, name="simple_date_test")
     session.flush()
     rows = session.exec(select(SchedulesNextDate).where(SchedulesNextDate.schedule_id == schedule.id)).all()
     assert len(rows) == 1
-    assert rows[0].local_next_date == 20250615
-    assert rows[0].base_next_date == 20250615
+    assert rows[0].local_next_date == expected_next_date
+    assert rows[0].base_next_date == expected_next_date
 
 
 def test_get_transactions_with_cleared_filter(session):
