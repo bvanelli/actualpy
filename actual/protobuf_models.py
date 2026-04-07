@@ -7,7 +7,7 @@ import uuid
 import proto
 
 from actual.crypto import decrypt, encrypt
-from actual.exceptions import ActualDecryptionError
+from actual.exceptions import ActualDecryptionError, ActualOverflowError
 
 """
 Protobuf message definitions taken from the [sync.proto file](
@@ -26,10 +26,12 @@ class HULC_Client:
     clocks.
     """
 
+    MAX_COUNTER: int = 0xFFFF
+
     def __init__(self, client_id: str | None = None, initial_count: int = 0, ts: datetime.datetime | None = None):
         self.client_id = client_id or self.random_client_id()
         self.initial_count = initial_count
-        self.ts = ts or datetime.datetime(1970, 1, 1, 0, 0, 0)
+        self.ts = ts
 
     @classmethod
     def from_timestamp(cls, ts: str) -> HULC_Client:
@@ -40,8 +42,8 @@ class HULC_Client:
         return cls(segments[-1], int(segments[-2], 16), parsed_ts)
 
     def __str__(self):
-        count = f"{self.initial_count:0>4X}"
-        return f"{self.ts.isoformat(timespec='milliseconds')}Z-{count}-{self.client_id}"
+        ts = self.ts or datetime.datetime(1970, 1, 1, 0, 0, 0)
+        return f"{ts.isoformat(timespec='milliseconds')}Z-{self.initial_count:0>4X}-{self.client_id}"
 
     def timestamp(self, now: datetime.datetime | None = None) -> str:
         """Actual uses Hybrid Unique Logical Clock (HULC) timestamp generator.
@@ -55,11 +57,23 @@ class HULC_Client:
         https://github.com/actualbudget/actual/blob/a9362cc6f9b974140a760ad05816cac51c849769/packages/crdt/src/crdt/timestamp.ts)
         for reference.
         """
-        if not now:
-            now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
-        count = f"{self.initial_count:0>4X}"
-        self.initial_count += 1
-        return f"{now.isoformat(timespec='milliseconds')}Z-{count}-{self.client_id}"
+        current_time = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) if now is None else now
+        # truncate to millisecond precision to match the Node.js Date.now() behavior
+        current_time = current_time.replace(microsecond=current_time.microsecond // 1000 * 1000)
+        # ensure that the logical time never goes backward
+        new_logical_time = current_time if self.ts is None else max(self.ts, current_time)
+        # advance the counter if same millisecond, otherwise reset to 0
+        new_counter = self.initial_count + 1 if (self.ts is not None and self.ts == new_logical_time) else 0
+
+        if new_counter > self.MAX_COUNTER:
+            raise ActualOverflowError(
+                f"Timestamp counter overflow (>{self.MAX_COUNTER}). "
+                "Too many sync messages were generated without the clock advancing."
+            )
+
+        self.ts = new_logical_time
+        self.initial_count = new_counter
+        return str(self)
 
     @staticmethod
     def random_client_id():
@@ -135,6 +149,16 @@ class MessageEnvelope(proto.Message):
         self.timestamp = HULC_Client(client_id, initial_count).timestamp(now)
         return self.timestamp
 
+    def message(self, master_key: bytes | None = None) -> Message:
+        if self.isEncrypted:
+            if not master_key:
+                raise ActualDecryptionError("Master key not provided and data is encrypted.")
+            encrypted = EncryptedData.deserialize(self.content)
+            content = decrypt(master_key, encrypted.iv, encrypted.data, encrypted.authTag)
+        else:
+            content = self.content
+        return Message.deserialize(content)
+
 
 class SyncRequest(proto.Message):
     """Sync request message that is sent to the server for retrieving new messages since the last synchronization."""
@@ -185,12 +209,5 @@ class SyncResponse(proto.Message):
     def get_messages(self, master_key: bytes | None = None) -> list[Message]:
         messages = []
         for message in self.messages:  # noqa
-            if message.isEncrypted:
-                if not master_key:
-                    raise ActualDecryptionError("Master key not provided and data is encrypted.")
-                encrypted = EncryptedData.deserialize(message.content)
-                content = decrypt(master_key, encrypted.iv, encrypted.data, encrypted.authTag)
-            else:
-                content = message.content
-            messages.append(Message.deserialize(content))
+            messages.append(message.message(master_key))
         return messages

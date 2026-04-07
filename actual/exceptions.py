@@ -82,6 +82,15 @@ class ActualDecryptionError(ActualError):
     pass
 
 
+class ActualOverflowError(ActualError):
+    """The HULC timestamp counter exceeded the maximum value of 0xFFFF (65535).
+
+    This means too many messages were generated within the same millisecond.
+    """
+
+    pass
+
+
 class ActualSplitTransactionError(ActualError):
     """The split transaction is invalid.
 
