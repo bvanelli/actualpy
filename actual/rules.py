@@ -183,7 +183,11 @@ def condition_evaluation(
     from actual.queries import get_account  # lazy import to prevent circular issues
 
     if true_value is None:
-        # short circuit as comparisons with NoneType are useless
+        if op == ConditionType.IS:
+            return self_value is None
+        elif op == ConditionType.IS_NOT:
+            return self_value is not None
+        # short circuit as other comparisons with NoneType are useless
         return False
     if isinstance(options, dict):
         # short circuit if the transaction should be and in/outflow but it isn't

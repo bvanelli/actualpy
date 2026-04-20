@@ -50,6 +50,16 @@ def test_category_rule(session):
     assert condition.run(t) is False
 
 
+def test_category_is_nothing_rule(session):
+    acct = create_account(session, "Bank")
+    cat = create_category(session, "Misc", "Expenses")
+    t = create_transaction(session, datetime.date(2024, 1, 1), acct, category=cat)
+    # "description is nothing" should match a transaction without payee
+    assert Condition(field="description", op="is", value=None).run(t) is True
+    # "description is not nothing" should not match an uncategorized transaction
+    assert Condition(field="description", op="isNot", value=None).run(t) is False
+
+
 def test_datetime_rule(session):
     acct = create_account(session, "Bank")
     t = create_transaction(session, datetime.date(2024, 1, 1), acct, "")
