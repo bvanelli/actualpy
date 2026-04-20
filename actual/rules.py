@@ -164,6 +164,8 @@ def get_value(
     elif value_type is ValueType.BOOLEAN:
         return int(value)  # database accepts 0 or 1
     elif value_type in (ValueType.STRING, ValueType.IMPORTED_PAYEE):
+        if value is None:
+            return ""
         if isinstance(value, list):
             return [get_value(v, value_type) for v in value]
         else:
