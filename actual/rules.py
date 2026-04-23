@@ -164,6 +164,8 @@ def get_value(
     elif value_type is ValueType.BOOLEAN:
         return int(value)  # database accepts 0 or 1
     elif value_type in (ValueType.STRING, ValueType.IMPORTED_PAYEE):
+        if value is None:
+            return ""
         if isinstance(value, list):
             return [get_value(v, value_type) for v in value]
         else:
@@ -183,7 +185,11 @@ def condition_evaluation(
     from actual.queries import get_account  # lazy import to prevent circular issues
 
     if true_value is None:
-        # short circuit as comparisons with NoneType are useless
+        if op == ConditionType.IS:
+            return self_value is None
+        elif op == ConditionType.IS_NOT:
+            return self_value is not None
+        # short circuit as other comparisons with NoneType are useless
         return False
     if isinstance(options, dict):
         # short circuit if the transaction should be and in/outflow but it isn't

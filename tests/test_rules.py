@@ -50,6 +50,26 @@ def test_category_rule(session):
     assert condition.run(t) is False
 
 
+def test_payee_is_nothing_rule(session):
+    acct = create_account(session, "Bank")
+    cat = create_category(session, "Misc", "Expenses")
+    t = create_transaction(session, datetime.date(2024, 1, 1), acct, category=cat)
+    # "description is nothing" should match a transaction without payee
+    assert Condition(field="description", op="is", value=None).run(t) is True
+    # "description is not nothing" should not match an uncategorized transaction
+    assert Condition(field="description", op="isNot", value=None).run(t) is False
+
+
+def test_notes_is_nothing_rule(session):
+    acct = create_account(session, "Bank")
+    t = create_transaction(session, datetime.date(2024, 1, 1), acct, notes=None)
+    # null notes should match "notes is nothing" (empty string), mirroring JS null -> "" coercion
+    assert Condition(field="notes", op="is", value="").run(t) is True
+    assert Condition(field="notes", op="isNot", value="").run(t) is False
+    # "notes contains foo" should not match null notes
+    assert Condition(field="notes", op="contains", value="foo").run(t) is False
+
+
 def test_datetime_rule(session):
     acct = create_account(session, "Bank")
     t = create_transaction(session, datetime.date(2024, 1, 1), acct, "")
@@ -194,7 +214,8 @@ def test_invalid_inputs():
         Action(field="notes", op="set-split-amount", value="foo").run(None)  # noqa: use None instead of transaction
     with pytest.raises(ActualError):
         condition_evaluation(None, "foo", "foo")  # noqa: use None instead of transaction
-    assert Condition(field="notes", op="is", value=None).get_value() is None  # noqa: handle when value is None
+    # null strings coerce to ""
+    assert Condition(field="notes", op="is", value=None).get_value() == ""
 
 
 def test_value_type_condition_validation():
