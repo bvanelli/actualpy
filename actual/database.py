@@ -104,15 +104,19 @@ def get_attribute_from_reflected_table_name(metadata: MetaData, table_name: str,
     return table.columns.get(column_name, None)
 
 
-def get_class_by_table_name(table_name: str) -> type["BaseModel"] | None:
+def get_class_by_table_name(table_name: str) -> type["BaseModel"]:
     """
     Returns, based on the defined tables `__tablename__` the corresponding SQLModel object.
 
-    If not found, returns `None`.
+    If not found, raises `ValueError`.
+
+    :param table_name: SQL table name.
+    :return SQLModel: SQLAlchemy object.
+    :raises ValueError: Raises `ValueError` if the table name is not existing.
     """
     entry = __TABLE_COLUMNS_MAP__.get(table_name)
     if entry is None:
-        return None
+        raise ValueError(f"Could not find table '{table_name}' on the database model.")
     return entry["entity"]
 
 

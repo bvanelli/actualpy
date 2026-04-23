@@ -5,7 +5,7 @@ from collections.abc import Iterator
 
 from sqlmodel import Session, col, select
 
-from actual.database import Categories, CategoryGroups, ReflectBudgets, Transactions, ZeroBudgets
+from actual.database import BaseBudgets, Categories, CategoryGroups, ReflectBudgets, Transactions
 from actual.queries import (
     _balance_base_query,
     _get_budget_table,
@@ -64,7 +64,7 @@ class BudgetCategory(_HasDatabaseObject):
     This reflects the values displayed on the Actual frontend.
     """
 
-    budget: ReflectBudgets | ZeroBudgets | None = None
+    budget: BaseBudgets | None = None
     """
     The underlying budget database record, if it exists.
 
