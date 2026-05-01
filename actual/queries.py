@@ -229,9 +229,13 @@ def match_transaction(
         if imported_transaction:
             return imported_transaction  # noqa
     # if not matched, look 7 days ahead and 7 days back when fuzzy matching
-    query = _transactions_base_query(
-        s, date - datetime.timedelta(days=7), date + datetime.timedelta(days=8), account=account
-    ).where(col(Transactions.amount) == round(amount * 100))
+    query = (
+        _transactions_base_query(
+            s, date - datetime.timedelta(days=7), date + datetime.timedelta(days=8), account=account
+        )
+        .where(col(Transactions.amount) == round(amount * 100))
+        .where(Transactions.is_child == 0)
+    )
     results: list[Transactions] = s.exec(query).all()  # noqa
     # filter out the ones that were already matched
     if already_matched:
