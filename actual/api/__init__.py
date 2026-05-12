@@ -54,15 +54,18 @@ class ActualServer:
         bootstrap: bool = False,
         cert: str | ssl.SSLContext | bool = True,
         extra_headers: dict[str, str] | None = None,
+        timeout: float | httpx.Timeout | None = 60.0,
     ):
         """
-        :param base_url: Url of the running Actual server
-        :param token: The token for authentication, if this is available (optional)
+        :param base_url: Url of the running Actual server.
+        :param token: The token for authentication, if this is available (optional).
         :param password: The password for authentication. It will be used on the .login() method to retrieve the token.
         :param bootstrap: if the server is not bootstrapped, bootstrap it with the password.
         :param cert: If a custom certificate should be used (e.g., self-signed certificate), its path can be provided
                      as a string or as custom [ssl.SSLContext][ssl.SSLContext]. Set to `False` for no certificate check.
-        :param extra_headers: Additional headers to be attached to each request to the Actual server
+        :param extra_headers: Additional headers to be attached to each request to the Actual server.
+        :param timeout: Timeout in seconds applied to all HTTP requests. Set to `None` to disable. Accepts a float or
+                        an [httpx.Timeout][httpx.Timeout] for fine-grained control. Defaults to 60 seconds.
         """
         self.api_url: str = base_url.rstrip("/")
         self._token: str | None = token
@@ -72,7 +75,9 @@ class ActualServer:
             verify = ssl.create_default_context()
             verify.load_verify_locations(cadata=cert)
         # todo: Rename this on the next breaking change
-        self._requests_session: httpx.Client = httpx.Client(base_url=self.api_url, headers=extra_headers, verify=verify)
+        self._requests_session: httpx.Client = httpx.Client(
+            base_url=self.api_url, headers=extra_headers, verify=verify, timeout=timeout
+        )
         if token is None and password is None and not self.is_open_id_owner_created():
             raise ValueError("Either provide a valid token or a password.")
         # already try to log in if the password was provided
