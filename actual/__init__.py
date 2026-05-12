@@ -124,7 +124,7 @@ class Actual(ActualServer):
                           https://docs.sqlalchemy.org/en/20/orm/session_api.html#sqlalchemy.orm.Session.__init__)
         :param extra_headers: Additional headers to be attached to each request to the Actual server.
         :param timeout: Timeout in seconds applied to all HTTP requests. Set to `None` to disable. Accepts a float or
-                        an [httpx.Timeout][httpx.Timeout] for fine-grained control. Defaults to 60 seconds.
+                        an `httpx.Timeout` object for fine-grained control. Defaults to 60 seconds.
         """
         super().__init__(base_url, token, password, bootstrap, cert, extra_headers, timeout)
         self._file: RemoteFileListDTO | None = None

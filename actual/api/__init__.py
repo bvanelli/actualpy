@@ -65,7 +65,7 @@ class ActualServer:
                      as a string or as custom [ssl.SSLContext][ssl.SSLContext]. Set to `False` for no certificate check.
         :param extra_headers: Additional headers to be attached to each request to the Actual server.
         :param timeout: Timeout in seconds applied to all HTTP requests. Set to `None` to disable. Accepts a float or
-                        an [httpx.Timeout][httpx.Timeout] for fine-grained control. Defaults to 60 seconds.
+                        an `httpx.Timeout` object for fine-grained control. Defaults to 60 seconds.
         """
         self.api_url: str = base_url.rstrip("/")
         self._token: str | None = token
