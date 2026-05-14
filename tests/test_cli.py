@@ -23,6 +23,7 @@ from tests.conftest import ACTUAL_SERVER_INTEGRATION_VERSIONS
 
 runner = CliRunner()
 server_version = ACTUAL_SERVER_INTEGRATION_VERSIONS[-1]  # use latest version
+os.environ["COLUMNS"] = "120"
 
 
 def base_dataset(actual: Actual, budget_name: str = "Test", encryption_password: str | None = None):
