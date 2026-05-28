@@ -9,11 +9,11 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from actual import Actual, get_accounts, get_transactions
+from actual import Actual
 from actual.budgets import EnvelopeBudget, TrackingBudget, get_budget_history
 from actual.cli.config import BudgetConfig, Config, OutputType, State
 from actual.cli.formatters import colored_number_format, decimal_format
-from actual.queries import get_payees
+from actual.queries import get_accounts, get_payees, get_transactions
 from actual.version import __version__
 
 # avoid displaying warnings on a CLI

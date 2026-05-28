@@ -149,7 +149,7 @@ def apply_change(session: Session, table: Table, table_id: str, values: dict[Col
     insert_stmt = (
         insert(table).values({"id": table_id, **values}).on_conflict_do_update(index_elements=["id"], set_=values)
     )
-    session.exec(insert_stmt)  # type: ignore[arg-type]
+    session.exec(insert_stmt)
 
 
 def strong_reference_session(session: Session):

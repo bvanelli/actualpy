@@ -11,10 +11,9 @@ import pydantic
 from pydantic import model_serializer
 from sqlmodel import Session
 
-from actual import ActualError
 from actual.crypto import is_uuid
 from actual.database import BaseModel, Transactions, get_attribute_by_table_name
-from actual.exceptions import ActualSplitTransactionError
+from actual.exceptions import ActualError, ActualSplitTransactionError
 from actual.schedules import Schedule
 
 
@@ -433,11 +432,12 @@ class Action(pydantic.BaseModel):
             ret.pop("options", None)
         return ret
 
-    @pydantic.model_validator(mode="after")
-    def convert_value(self):
-        if self.field in ("cleared",) and self.value in (0, 1):
-            self.value = bool(self.value)
-        return self
+    @pydantic.field_validator("value", mode="before")
+    @classmethod
+    def convert_value(cls, value, info):
+        if info.data.get("field") == "cleared" and value in (0, 1):
+            return bool(value)
+        return value
 
     @pydantic.model_validator(mode="after")
     def check_operation_type(self):
@@ -561,7 +561,7 @@ class Rule(pydantic.BaseModel):
         fixed_split_amount_actions = [a for a in split_amount_actions if a.options["method"] == "fixed-amount"]  # type: ignore[index]
         remainder = transaction.amount
         for action in fixed_split_amount_actions:
-            remainder -= action.value  # type: ignore[operator, assignment]
+            remainder -= action.value  # type: ignore[operator]
             split = create_split(session, transaction, decimal.Decimal(action.value) / 100)  # type: ignore[arg-type]
             split_by_index[action.get_split_index() - 1] = split
         # now do the ones with a percentage amount
