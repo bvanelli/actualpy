@@ -120,4 +120,3 @@ strict_equality = true
 [[tool.mypy.overrides]]
 module = ["proto", "proto.*", "testcontainers", "testcontainers.*"]
 ignore_missing_imports = true
-follow_untyped_imports = false
