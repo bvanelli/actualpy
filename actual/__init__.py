@@ -350,8 +350,11 @@ class Actual(ActualServer):
             z.write(self.data_dir / "metadata.json", "metadata.json")
         content = temp_file.getvalue()
         if output_file:
-            with open(output_file, "wb") as f:
-                f.write(content)
+            if isinstance(output_file, (str, PathLike)):
+                with open(output_file, "wb") as f:
+                    f.write(content)
+            else:
+                output_file.write(content)
         return content
 
     def encrypt(self, encryption_password: str):

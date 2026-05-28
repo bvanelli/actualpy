@@ -13,10 +13,12 @@ from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 from sqlalchemy.sql.expression import Select
 from sqlmodel import Session, col, select
+from sqlmodel.sql.expression import SelectOfScalar
 
 from actual.crypto import is_uuid
 from actual.database import (
     Accounts,
+    BaseBudgets,
     Categories,
     CategoryGroups,
     CategoryMapping,
@@ -56,8 +58,8 @@ def _transactions_base_query(
     account: Accounts | str | None | None = None,
     category: Categories | str | None = None,
     include_deleted: bool = False,
-) -> Select:
-    query = (
+) -> SelectOfScalar[Transactions]:
+    query: SelectOfScalar[Transactions] = (
         select(Transactions)
         .options(
             joinedload(Transactions.account),
@@ -236,7 +238,7 @@ def match_transaction(
         .where(col(Transactions.amount) == round(amount * 100))
         .where(Transactions.is_child == 0)
     )
-    results: list[Transactions] = s.exec(query).all()  # noqa
+    results: list[Transactions] = list(s.exec(query).all())
     # filter out the ones that were already matched
     if already_matched:
         matched = {t.id for t in already_matched}
@@ -539,13 +541,17 @@ def create_split(s: Session, transaction: Transactions, amount: float | decimal.
     return split
 
 
-def _base_query(instance: type[T], name: str | None = None, include_deleted: bool = False) -> Select:
+def _base_query(instance: type[T], name: str | None = None, include_deleted: bool = False) -> SelectOfScalar[T]:
     """Internal method to reduce querying complexity on sub-functions."""
     query = select(instance)
     if not include_deleted:
-        query = query.where(sqlalchemy.func.coalesce(instance.tombstone, 0) == 0)
+        tombstone_col = getattr(instance, "tombstone", None)
+        if tombstone_col is not None:
+            query = query.where(sqlalchemy.func.coalesce(tombstone_col, 0) == 0)
     if name:
-        query = query.where(instance.name.ilike(f"%{sqlalchemy.text(name).compile()}%"))
+        name_col = getattr(instance, "name", None)
+        if name_col is not None:
+            query = query.where(name_col.ilike(f"%{sqlalchemy.text(name).compile()}%"))
     return query
 
 
@@ -843,7 +849,7 @@ def get_or_create_account(s: Session, name: str | Accounts) -> Accounts:
     return account
 
 
-def _get_budget_table(s: Session) -> type[ReflectBudgets | ZeroBudgets]:
+def _get_budget_table(s: Session) -> type[ZeroBudgets] | type[ReflectBudgets]:
     """
     Finds out which type of budget the user uses. The types are:
 
@@ -862,7 +868,7 @@ def _get_budget_table(s: Session) -> type[ReflectBudgets | ZeroBudgets]:
 
 def get_budgets(
     s: Session, month: datetime.date | None = None, category: str | Categories | None = None
-) -> typing.Sequence[ZeroBudgets | ReflectBudgets]:
+) -> typing.Sequence[BaseBudgets]:
     """
     Returns a list of all available budgets.
 
@@ -893,7 +899,7 @@ def get_budgets(
     return s.exec(query).unique().all()
 
 
-def get_budget(s: Session, month: datetime.date, category: str | Categories) -> ZeroBudgets | ReflectBudgets | None:
+def get_budget(s: Session, month: datetime.date, category: str | Categories) -> BaseBudgets | None:
     """
     Gets an existing budget by category name, returns `None` if not found.
 
@@ -914,7 +920,7 @@ def create_budget(
     category: str | Categories,
     amount: decimal.Decimal | float | int = 0.0,
     carryover: bool | None = None,
-) -> ZeroBudgets | ReflectBudgets:
+) -> BaseBudgets:
     """
     Gets an existing budget based on the month and category. If it already exists, the amount will be replaced by
     the new amount.
@@ -1144,6 +1150,32 @@ def get_schedules(
     return s.exec(query).all()
 
 
+@typing.overload
+def create_schedule(
+    s: Session,
+    date: datetime.date | datetime.datetime | Schedule,
+    amount: tuple[decimal.Decimal, decimal.Decimal] | tuple[float, float],
+    amount_operation: typing.Literal["isbetween"],
+    name: str | None,
+    payee: str | Payees | None,
+    account: str | Accounts | None,
+    posts_transaction: bool,
+) -> Schedules: ...
+
+
+@typing.overload
+def create_schedule(
+    s: Session,
+    date: datetime.date | datetime.datetime | Schedule,
+    amount: decimal.Decimal | float,
+    amount_operation: typing.Literal["is", "isapprox"],
+    name: str | None,
+    payee: str | Payees | None,
+    account: str | Accounts | None,
+    posts_transaction: bool,
+) -> Schedules: ...
+
+
 def create_schedule(
     s: Session,
     date: datetime.date | datetime.datetime | Schedule,
@@ -1175,9 +1207,6 @@ def create_schedule(
     :param posts_transaction: Whether the schedule should auto-post transactions on your behalf. Defaults to false.
     :return: Rule database object created.
     """
-    if amount_operation == "isbetween" and not isinstance(amount, tuple):
-        raise ActualError("When using 'isbetween', amount must be a tuple (num1, num2), where num1 < num2.")
-
     schedule_id = str(uuid.uuid4())
     conditions = []
     # Handle the payee condition
@@ -1201,6 +1230,8 @@ def create_schedule(
     )
     # Handle the amount condition
     if amount_operation == "isbetween":
+        if not isinstance(amount, tuple):
+            raise ActualError("When using 'isbetween', amount must be a tuple (num1, num2), where num1 < num2.")
         conditions.append(
             Condition(
                 field="amount",
@@ -1209,6 +1240,8 @@ def create_schedule(
             )
         )
     else:
+        if isinstance(amount, tuple):
+            raise ActualError(f"When using '{amount_operation}', amount must be a single decimal number.")
         conditions.append(Condition(field="amount", op=ConditionType(amount_operation), value=decimal_to_cents(amount)))
 
     actions = [

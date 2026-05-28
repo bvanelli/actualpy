@@ -16,7 +16,8 @@ from actual.utils.conversions import cents_to_decimal, current_timestamp
 
 def test_get_class_by_table_name():
     assert get_class_by_table_name("transactions") == Transactions
-    assert get_class_by_table_name("foo") is None
+    with pytest.raises(ValueError, match="Could not find table 'foo'"):
+        get_class_by_table_name("foo")
 
 
 def test_get_attribute_by_table_name():

@@ -548,10 +548,6 @@ def test_schedule_is_betweeen(session):
     payee = get_or_create_payee(session, "Insurance company")
     # should always be paid on the first working day of the month
     config = create_schedule_config(expected_date, patterns=[Pattern(1, "day")], skip_weekend=True)
-    # if the amount_operation="isbetween", the schedule needs two amounts
-    with pytest.raises(ActualError, match="amount must be a tuple"):
-        create_schedule(session, config, 100.0, "isbetween", "Insurance", payee, account)
-
     schedule = create_schedule(session, config, (100.0, 110.0), "isbetween", "Insurance", payee, account)
     assert json.loads(schedule.rule.conditions) == [
         {"field": "description", "type": "id", "op": "is", "value": payee.id},
@@ -623,6 +619,18 @@ def test_schedule_populates_next_date_simple_date(session, start_date, expected_
     assert len(rows) == 1
     assert rows[0].local_next_date == expected_next_date
     assert rows[0].base_next_date == expected_next_date
+
+
+def test_schedule_exceptions(session):
+    expected_date = datetime.date(2025, 10, 11)
+    account = create_account(session, "Bank")
+    payee = get_or_create_payee(session, "Insurance company")
+    # should always be paid on the first working day of the month
+    config = create_schedule_config(expected_date, patterns=[Pattern(1, "day")], skip_weekend=True)
+    with pytest.raises(ActualError, match="amount must be a tuple"):
+        create_schedule(session, config, 100.0, "isbetween", "Insurance", payee, account)
+    with pytest.raises(ActualError, match="amount must be a single decimal number"):
+        create_schedule(session, config, (100.0, 110.0), "isapprox", "Insurance", payee, account)
 
 
 def test_get_transactions_with_cleared_filter(session):

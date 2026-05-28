@@ -1,5 +1,4 @@
 from datetime import date
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -182,9 +181,8 @@ def test_strings():
     assert str(Schedule(start="2024-05-12", frequency="daily")) == "Every day"
 
 
-def test_scheduled_rule():
-    mock = MagicMock()
-    acct = create_account(mock, "Bank")
+def test_scheduled_rule(session):
+    acct = create_account(session, "Bank")
     rule = Rule(
         id="d84d1400-4245-4bb9-95d0-be4524edafe9",
         conditions=[
@@ -212,8 +210,8 @@ def test_scheduled_rule():
     )
     assert "'date' isapprox 'Every month on the 1st'" in str(rule)
 
-    transaction_matching = create_transaction(mock, date(2024, 5, 2), acct, None, amount=-19)
-    transaction_not_matching = create_transaction(mock, date(2024, 5, 2), acct, None, amount=-15)
+    transaction_matching = create_transaction(session, date(2024, 5, 2), acct, None, amount=-19)
+    transaction_not_matching = create_transaction(session, date(2024, 5, 2), acct, None, amount=-15)
     rule.run(transaction_matching)
     rule.run(transaction_not_matching)
 

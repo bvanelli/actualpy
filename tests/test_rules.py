@@ -254,6 +254,21 @@ def test_value_type_value_validation():
     assert ValueType.DATE.validate(["2024-10-04"], ConditionType.ONE_OF) is True
 
 
+@pytest.mark.parametrize(
+    "kwargs,expected_type",
+    [
+        ({"field": "amount", "op": "gt", "value": 100}, ValueType.NUMBER),
+        ({"field": "amount", "op": "gt", "value": 100, "type": ValueType.NUMBER}, ValueType.NUMBER),
+        ({"field": "notes", "op": "is", "value": "foo"}, ValueType.STRING),
+        ({"field": "notes", "op": "is", "value": "foo", "type": ValueType.STRING}, ValueType.STRING),
+    ],
+)
+def test_condition_explicit_type_preserved(kwargs, expected_type):
+    """An explicitly-passed `type` must not be overwritten by `from_field`, and an omitted
+    `type` must still be derived from the field (legacy behavior)."""
+    assert Condition(**kwargs).type == expected_type
+
+
 def test_value_type_from_field():
     assert ValueType.from_field("description") == ValueType.ID
     assert ValueType.from_field("amount") == ValueType.NUMBER
