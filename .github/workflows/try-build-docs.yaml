@@ -9,7 +9,7 @@ jobs:
     steps:
     - uses: actions/checkout@v6
     - name: Install uv and set the python version
-      uses: astral-sh/setup-uv@v8
+      uses: astral-sh/setup-uv@v8.1.0
       with:
         python-version: 3.13
     - name: Install project dependencies
