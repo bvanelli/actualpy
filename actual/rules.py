@@ -8,8 +8,8 @@ import typing
 import unicodedata
 
 import pydantic
-import sqlalchemy.orm.session
 from pydantic import model_serializer
+from sqlmodel import Session
 
 from actual import ActualError
 from actual.crypto import is_uuid
@@ -18,7 +18,7 @@ from actual.exceptions import ActualSplitTransactionError
 from actual.schedules import Schedule
 
 
-def get_normalized_string(value: str) -> str | None:
+def get_normalized_string(value: str | None) -> str | None:
     """Normalization of string for comparison. Uses lowercase and Canonical Decomposition.
 
     See https://github.com/actualbudget/actual/blob/a22160579d6e1f7a17213561cec79c321a14525b/packages/loot-core/src/shared/normalisation.ts
@@ -153,32 +153,39 @@ class ValueType(enum.Enum):
 
 
 def get_value(
-    value: int | list[str] | str | None, value_type: ValueType
-) -> int | datetime.date | list[str] | str | None:
+    value: int | list[str] | str | BetweenValue | Schedule | datetime.date | None,
+    value_type: ValueType,
+) -> int | datetime.date | list[str] | str | BetweenValue | Schedule | None:
     """Converts the value to an actual value according to the type."""
     if value_type is ValueType.DATE:
-        if isinstance(value, str):
+        if isinstance(value, (datetime.date, Schedule)):
+            return value
+        elif isinstance(value, str):
             return datetime.datetime.strptime(value, "%Y-%m-%d").date()
         elif isinstance(value, int):
             return datetime.datetime.strptime(str(value), "%Y%m%d").date()
+        else:
+            raise ValueError(f"Value '{value}' of type '{type(value)}' cannot be converted to {value_type}.")
     elif value_type is ValueType.BOOLEAN:
-        return int(value)  # database accepts 0 or 1
+        return int(bool(value))  # database accepts 0 or 1
     elif value_type in (ValueType.STRING, ValueType.IMPORTED_PAYEE):
         if value is None:
             return ""
         if isinstance(value, list):
-            return [get_value(v, value_type) for v in value]
-        else:
+            return [get_value(v, value_type) for v in value]  # type: ignore[misc]
+        elif isinstance(value, str):
             return get_normalized_string(value)
+        else:
+            raise ValueError(f"Value '{value}' of type '{type(value)}' cannot be converted to {value_type}.")
     return value
 
 
 def condition_evaluation(
     op: ConditionType,
-    true_value: int | list[str] | str | datetime.date | None,
-    self_value: int | list[str] | str | datetime.date | BetweenValue | None,
+    true_value: int | list[str] | str | datetime.date | BetweenValue | Schedule | None,
+    self_value: int | list[str] | str | datetime.date | BetweenValue | Schedule | None,
     options: dict | None = None,
-    session: sqlalchemy.orm.session.Session | None = None,
+    session: Session | None = None,
 ) -> bool:
     """Helper function to evaluate the condition based on the true_value, value found on the transaction, and the
     self_value, value defined on rule condition."""
@@ -193,9 +200,9 @@ def condition_evaluation(
         return False
     if isinstance(options, dict):
         # short circuit if the transaction should be and in/outflow but it isn't
-        if options.get("outflow") is True and true_value > 0:
+        if options.get("outflow") is True and true_value > 0:  # type: ignore[operator]
             return False
-        if options.get("inflow") is True and true_value < 0:
+        if options.get("inflow") is True and true_value < 0:  # type: ignore[operator]
             return False
     if isinstance(self_value, int) and isinstance(options, dict) and options.get("outflow") is True:
         # if it's an outflow we use the negative value of self_value, that is positive
@@ -209,47 +216,68 @@ def condition_evaluation(
         if isinstance(true_value, datetime.date):
             # Actual uses two days as reference
             # https://github.com/actualbudget/actual/blob/98a7aac73667241da350169e55edd2fc16a6687f/packages/loot-core/src/server/accounts/rules.ts#L302-L304
-            interval = datetime.timedelta(days=2)
+            interval: datetime.timedelta | float = datetime.timedelta(days=2)
             if isinstance(self_value, Schedule):
-                return self_value.is_approx(true_value, interval)
+                return self_value.is_approx(true_value, interval)  # type: ignore[arg-type]
         else:
             # Actual uses 7.5% of the value as threshold
             # https://github.com/actualbudget/actual/blob/243703b2f70532ec1acbd3088dda879b5d07a5b3/packages/loot-core/src/shared/rules.ts#L261-L263
-            interval = round(abs(self_value) * 0.075, 2)
-        return self_value - interval <= true_value <= self_value + interval
+            interval = round(abs(self_value) * 0.075, 2)  # type: ignore[arg-type]
+        return self_value - interval <= true_value <= self_value + interval  # type: ignore[operator]
     elif op == ConditionType.ONE_OF:
-        return true_value in self_value
+        return true_value in self_value  # type: ignore[operator]
     elif op == ConditionType.CONTAINS:
-        return self_value in true_value
+        return self_value in true_value  # type: ignore[operator]
     elif op == ConditionType.MATCHES:
-        return bool(re.search(self_value, true_value, re.IGNORECASE))
+        return bool(re.search(self_value, true_value, re.IGNORECASE))  # type: ignore[arg-type]
     elif op == ConditionType.NOT_ONE_OF:
-        return true_value not in self_value
+        return true_value not in self_value  # type: ignore[operator]
     elif op == ConditionType.DOES_NOT_CONTAIN:
-        return self_value not in true_value
+        return self_value not in true_value  # type: ignore[operator]
     elif op == ConditionType.GT:
-        return true_value > self_value
+        return true_value > self_value  # type: ignore[operator]
     elif op == ConditionType.GTE:
-        return true_value >= self_value
+        return true_value >= self_value  # type: ignore[operator]
     elif op == ConditionType.LT:
-        return self_value > true_value
+        return self_value > true_value  # type: ignore[operator]
     elif op == ConditionType.LTE:
-        return self_value >= true_value
+        return self_value >= true_value  # type: ignore[operator]
     elif op == ConditionType.IS_BETWEEN:
-        return self_value.num_1 <= true_value <= self_value.num_2
+        return self_value.num_1 <= true_value <= self_value.num_2  # type: ignore[union-attr, operator]
     elif op == ConditionType.HAS_TAGS:
         # this regex is not correct, but is good enough according to testing
         # taken from https://stackoverflow.com/a/26740753/12681470
-        tags = re.findall(r"\#[\U00002600-\U000027BF\U0001f300-\U0001f64F\U0001f680-\U0001f6FF\w-]+", self_value)
-        return any(tag in true_value for tag in tags)
+        tags = re.findall(r"\#[\U00002600-\U000027BF\U0001f300-\U0001f64F\U0001f680-\U0001f6FF\w-]+", self_value)  # type: ignore[arg-type]
+        return any(tag in true_value for tag in tags)  # type: ignore[operator]
     elif op == ConditionType.ON_BUDGET:
-        account = get_account(session, true_value)
+        account = get_account(session, true_value)  # type: ignore[arg-type]
         return account is not None and account.offbudget == 0
     elif op == ConditionType.OFF_BUDGET:
-        account = get_account(session, true_value)
+        account = get_account(session, true_value)  # type: ignore[arg-type]
         return account is not None and account.offbudget == 1
     else:
         raise ActualError(f"Operation {op} not supported")
+
+
+@typing.overload
+def _coerce_value(v: str | bool | int | BaseModel | None) -> str | bool | int | None: ...
+
+
+@typing.overload
+def _coerce_value(
+    v: list[str] | Schedule | BetweenValue | list[BaseModel] | datetime.date,
+) -> list[str] | Schedule | BetweenValue | datetime.date: ...
+
+
+def _coerce_value(v):
+    """Coerce convenience input types to their stored representations."""
+    if isinstance(v, float):
+        return int(v * 100)
+    if isinstance(v, BaseModel):
+        return str(v.id)
+    if isinstance(v, list):
+        return [str(item.id) if isinstance(item, BaseModel) else item for item in v]
+    return v
 
 
 class Condition(pydantic.BaseModel):
@@ -289,8 +317,11 @@ class Condition(pydantic.BaseModel):
         "amount_outflow",
     ]
     op: ConditionType
-    value: int | float | str | list[str] | Schedule | list[BaseModel] | BetweenValue | BaseModel | datetime.date | None
-    type: ValueType | None = None
+    value: typing.Annotated[
+        int | str | list[str] | Schedule | BetweenValue | datetime.date | None,
+        pydantic.BeforeValidator(_coerce_value),
+    ]
+    type: ValueType = ValueType.ID
     options: dict | None = None
 
     def __str__(self) -> str:
@@ -305,7 +336,7 @@ class Condition(pydantic.BaseModel):
             ret.pop("options", None)
         return ret
 
-    def get_value(self) -> int | datetime.date | list[str] | str | None:
+    def get_value(self) -> int | datetime.date | list[str] | str | BetweenValue | Schedule | None:
         return get_value(self.value, self.type)
 
     @pydantic.model_validator(mode="after")
@@ -314,34 +345,27 @@ class Condition(pydantic.BaseModel):
             self.options = {self.field.split("_")[1]: True}
             self.value = abs(self.value)
             self.field = "amount"
-        if isinstance(self.value, float):
-            # convert silently in the background to a valid number
-            self.value = int(self.value * 100)
         return self
 
     @pydantic.model_validator(mode="after")
     def check_operation_type(self):
-        if not self.type:
+        if "type" not in self.model_fields_set:
             self.type = ValueType.from_field(self.field)
         # check if types are fine
         if not self.type.is_valid(self.op):
             raise ValueError(f"Operation {self.op} not supported for type {self.type}")
-        # if a pydantic object is provided and id is expected, extract the id
-        if isinstance(self.value, BaseModel):
-            self.value = str(self.value.id)
-        elif isinstance(self.value, list) and len(self.value) and isinstance(self.value[0], pydantic.BaseModel):
-            self.value = [v.id if hasattr(v, "id") else v for v in self.value]
         # make sure the data matches the value type
         if not self.type.validate(self.value, self.op):
             raise ValueError(f"Value {self.value} is not valid for type {self.type.name} and operation {self.op.name}")
         return self
 
     def run(self, transaction: Transactions) -> bool:
-        attr = get_attribute_by_table_name(Transactions.__tablename__, self.field)
+        attr = get_attribute_by_table_name(str(Transactions.__tablename__), self.field)
+        if attr is None:
+            raise ActualError(f"Unknown condition field '{self.field}'.")
         true_value = get_value(getattr(transaction, attr), self.type)
         self_value = self.get_value()
-        # get inner session from object
-        session = transaction._sa_instance_state.session  # noqa
+        session = transaction._object_session()
         return condition_evaluation(self.op, true_value, self_value, self.options, session=session)
 
 
@@ -371,22 +395,25 @@ class Action(pydantic.BaseModel):
 
     field: typing.Literal["category", "description", "notes", "cleared", "acct", "date", "amount"] | None = None
     op: ActionType = pydantic.Field(ActionType.SET, description="Action type to apply (default changes a column).")
-    value: str | bool | int | float | pydantic.BaseModel | None
-    type: ValueType | None = None
+    value: typing.Annotated[
+        str | bool | int | None,
+        pydantic.BeforeValidator(_coerce_value),
+    ]
+    type: ValueType = ValueType.ID
     options: dict[str, str | int] | None = None
 
     def __str__(self) -> str:
         if self.op in (ActionType.SET, ActionType.LINK_SCHEDULE):
             split_info = ""
-            split_index = int(self.options.get("splitIndex", 0)) if self.options else 0
+            split_index = self.get_split_index()
             if split_index > 0:
                 split_info = f" at Split {split_index}"
             field_str = f" '{self.field}'" if self.field else ""
             return f"{self.op.value}{field_str}{split_info} to '{self.value}'"
         elif self.op == ActionType.SET_SPLIT_AMOUNT:
             method = self.options.get("method", "") if self.options else ""
-            split_index = self.options.get("splitIndex", "") if self.options else ""
-            return f"allocate a {method} at Split {split_index}: {self.value}"
+            split_index_str = str(self.options.get("splitIndex", "")) if self.options else ""
+            return f"allocate a {method} at Split {split_index_str}: {self.value}"
         elif self.op in (ActionType.APPEND_NOTES, ActionType.PREPEND_NOTES):
             return (
                 f"append to notes '{self.value}'"
@@ -408,16 +435,13 @@ class Action(pydantic.BaseModel):
 
     @pydantic.model_validator(mode="after")
     def convert_value(self):
-        if isinstance(self.value, float):
-            # convert silently in the background to a valid number
-            self.value = int(self.value * 100)
         if self.field in ("cleared",) and self.value in (0, 1):
             self.value = bool(self.value)
         return self
 
     @pydantic.model_validator(mode="after")
     def check_operation_type(self):
-        if not self.type:
+        if "type" not in self.model_fields_set:
             if self.field is not None:
                 self.type = ValueType.from_field(self.field)
             elif self.op == ActionType.LINK_SCHEDULE:
@@ -432,48 +456,51 @@ class Action(pydantic.BaseModel):
         # questionable choice from the developers to set it to ID, I hope they fix it at some point, but we change it
         if self.op in (ActionType.APPEND_NOTES, ActionType.PREPEND_NOTES):
             self.type = ValueType.STRING
-        # if a pydantic object is provided and id is expected, extract the id
-        if isinstance(self.value, pydantic.BaseModel) and hasattr(self.value, "id"):
-            self.value = str(self.value.id)
         # make sure the data matches the value type
         if not self.type.validate(self.value):
             raise ValueError(f"Value {self.value} is not valid for type {self.type.name}")
         return self
 
+    def get_split_index(self) -> int:
+        """Extract splitIndex from options as an int."""
+        if self.options is None:
+            return 0
+        return int(self.options.get("splitIndex", 0))
+
     def run(self, transaction: Transactions) -> None:
         """Runs the action on the transaction, regardless of the condition. For the condition based rule, see
         [Rule.run][actual.rules.Rule.run]."""
         if self.op == ActionType.SET:
-            attr = get_attribute_by_table_name(Transactions.__tablename__, str(self.field))
+            attr = get_attribute_by_table_name(str(Transactions.__tablename__), str(self.field))
             value = get_value(self.value, self.type)
             # if the split index is existing, modify instead the split transaction
-            split_index = self.options.get("splitIndex", None) if self.options else None
+            split_index = self.get_split_index()
             if split_index and len(transaction.splits) >= split_index:
                 transaction = transaction.splits[split_index - 1]
             # set the value
             if self.type == ValueType.DATE:
-                transaction.set_date(value)
+                transaction.set_date(value)  # type: ignore[arg-type]
             elif attr == "payee_id":
                 # this has to be handled separately since, when setting a transfer payee, a transfer transaction needs
                 # to be created
                 from actual.queries import set_transaction_payee
 
                 # get inner session from object
-                session = transaction._sa_instance_state.session  # noqa
-                set_transaction_payee(session, transaction, value)
+                session = transaction._object_session()
+                set_transaction_payee(session, transaction, value)  # type: ignore[arg-type]
             else:
-                setattr(transaction, attr, value)
+                setattr(transaction, attr, value)  # type: ignore[arg-type]
         elif self.op == ActionType.LINK_SCHEDULE:
-            transaction.schedule_id = self.value
+            transaction.schedule_id = self.value  # type: ignore[assignment]
         # for the notes rule, check if the rule was already applied since actual does not do that.
         # this should ensure the prefix or suffix is not applied multiple times
         elif self.op == ActionType.APPEND_NOTES:
             notes = transaction.notes or ""
-            if not notes.endswith(self.value):
+            if not notes.endswith(self.value):  # type: ignore[arg-type]
                 transaction.notes = f"{notes}{self.value}"
         elif self.op == ActionType.PREPEND_NOTES:
             notes = transaction.notes or ""
-            if not notes.startswith(self.value):
+            if not notes.startswith(self.value):  # type: ignore[arg-type]
                 transaction.notes = f"{self.value}{notes}"
         elif self.op == ActionType.DELETE_TRANSACTIONS:
             transaction.tombstone = 1
@@ -528,39 +555,39 @@ class Rule(pydantic.BaseModel):
         if not split_amount_actions or len(transaction.splits) or transaction.is_child:
             return []  # nothing to create
         # get inner session from object
-        session = transaction._sa_instance_state.session  # noqa
+        session = transaction._object_session()
         # first, do all entries that have fixed values
-        split_by_index: list[Transactions] = [None for _ in range(len(split_amount_actions))]  # noqa
-        fixed_split_amount_actions = [a for a in split_amount_actions if a.options["method"] == "fixed-amount"]
+        split_by_index: list[Transactions] = [None for _ in range(len(split_amount_actions))]  # type: ignore[misc]
+        fixed_split_amount_actions = [a for a in split_amount_actions if a.options["method"] == "fixed-amount"]  # type: ignore[index]
         remainder = transaction.amount
         for action in fixed_split_amount_actions:
-            remainder -= action.value
-            split = create_split(session, transaction, decimal.Decimal(action.value) / 100)
-            split_by_index[action.options.get("splitIndex") - 1] = split
+            remainder -= action.value  # type: ignore[operator, assignment]
+            split = create_split(session, transaction, decimal.Decimal(action.value) / 100)  # type: ignore[arg-type]
+            split_by_index[action.get_split_index() - 1] = split
         # now do the ones with a percentage amount
-        percent_split_amount_actions = [a for a in split_amount_actions if a.options["method"] == "fixed-percent"]
+        percent_split_amount_actions = [a for a in split_amount_actions if a.options["method"] == "fixed-percent"]  # type: ignore[index]
         amount_to_distribute = remainder
         for action in percent_split_amount_actions:
-            value = round(amount_to_distribute * action.value / 100, 0)
-            remainder -= value
+            value = round(amount_to_distribute * action.value / 100, 0)  # type: ignore[operator]
+            remainder -= value  # type: ignore[operator, assignment]
             split = create_split(session, transaction, decimal.Decimal(value) / 100)
-            split_by_index[action.options.get("splitIndex") - 1] = split
+            split_by_index[action.get_split_index() - 1] = split
         # now, divide the remainder equally between the entries
-        remainder_split_amount_actions = [a for a in split_amount_actions if a.options["method"] == "remainder"]
+        remainder_split_amount_actions = [a for a in split_amount_actions if a.options["method"] == "remainder"]  # type: ignore[index]
         if not len(remainder_split_amount_actions) and remainder:
             # create a virtual split that contains the leftover remainders
             split = create_split(session, transaction, decimal.Decimal(remainder) / 100)
             split_by_index.append(split)
         elif len(remainder_split_amount_actions):
-            amount_per_remainder_split = round(remainder / len(remainder_split_amount_actions), 0)
+            amount_per_remainder_split = round(remainder / len(remainder_split_amount_actions), 0)  # type: ignore[operator]
             for action in remainder_split_amount_actions:
                 split = create_split(session, transaction, decimal.Decimal(amount_per_remainder_split) / 100)
-                remainder -= amount_per_remainder_split
-                split_by_index[action.options.get("splitIndex") - 1] = split
+                remainder -= amount_per_remainder_split  # type: ignore[operator, assignment]
+                split_by_index[action.get_split_index() - 1] = split
             # The last non-fixed split will be adjusted for the remainder
-            split_by_index[remainder_split_amount_actions[-1].options.get("splitIndex") - 1].amount += remainder
+            split_by_index[remainder_split_amount_actions[-1].get_split_index() - 1].amount += remainder  # type: ignore[operator]
         # make sure the splits are still valid and the sum equals the parent
-        if sum(s.amount for s in split_by_index) != transaction.amount:
+        if sum(s.amount for s in split_by_index) != transaction.amount:  # type: ignore[misc]
             raise ActualSplitTransactionError("Splits do not match amount of parent transaction.")
         transaction.is_parent, transaction.is_child = 1, 0
         # make sure the splits are ordered correctly
@@ -587,7 +614,8 @@ class Rule(pydantic.BaseModel):
         return condition_met
 
 
-class RuleSet(pydantic.BaseModel):
+@pydantic.dataclasses.dataclass
+class RuleSet:
     """
     A RuleSet is a collection of [Conditions][actual.rules.Condition] and [Actions][actual.rules.Action] that will
     evaluate for one or more transactions.
@@ -616,7 +644,7 @@ class RuleSet(pydantic.BaseModel):
     ```
     """
 
-    rules: list[Rule] = pydantic.Field(..., description="List of rules to be evaluated on run.")
+    rules: list[Rule]
 
     def __str__(self):
         """Returns a readable string representation of the ruleset."""
@@ -624,19 +652,19 @@ class RuleSet(pydantic.BaseModel):
 
     def __iter__(self) -> typing.Iterator[Rule]:
         """Returns an iterator over the rules in the ruleset."""
-        return self.rules.__iter__()
+        return iter(self.rules)
 
     def _run(
         self,
-        transaction: Transactions | list[Transactions],
+        transaction: Transactions | typing.Sequence[Transactions],
         stage: typing.Literal["pre", "post", None],
     ):
         for rule in [r for r in self.rules if r.stage == stage]:
-            if isinstance(transaction, list):
+            if isinstance(transaction, Transactions):
+                rule.run(transaction)
+            else:
                 for t in transaction:
                     rule.run(t)
-            else:
-                rule.run(transaction)
 
     def run(
         self,

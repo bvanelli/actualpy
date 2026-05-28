@@ -15,9 +15,9 @@ jobs:
       id-token: write  # IMPORTANT: this permission is mandatory for trusted publishing
     steps:
       # taken from https://packaging.python.org/en/latest/guides/publishing-package-distribution-releases-using-github-actions-ci-cd-workflows/
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Install uv and set the python version
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v8
         with:
           python-version: 3.13
       - name: Build a binary wheel and a source tarball

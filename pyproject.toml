@@ -76,6 +76,9 @@ actualpy = "actual.cli.main:app"
 [tool.setuptools.packages.find]
 exclude = ["docs*", "tests*", "examples*"]
 
+[tool.setuptools.package-data]
+actual = ["py.typed"]
+
 [tool.setuptools.dynamic]
 version = { attr = "actual.version.__version__" }
 
@@ -100,6 +103,21 @@ max-complexity = 18
 
 [tool.mypy]
 plugins = ["pydantic.mypy"]
+# disallow_any_generics = true
+# disallow_incomplete_defs = true
+# disallow_untyped_calls = true
+# disallow_untyped_decorators = true
+# disallow_untyped_defs = true
+# follow_imports = "normal"
+# ignore_missing_imports = true
+# no_implicit_reexport = true
+# show_error_codes = true
+# show_error_context = true
+# strict_equality = true
+# strict_optional = true
+# warn_redundant_casts = true
+# warn_return_any = true
+# warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
 module = ["proto", "proto.*", "testcontainers", "testcontainers.*"]
