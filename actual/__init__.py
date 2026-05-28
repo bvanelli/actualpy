@@ -14,6 +14,7 @@ from collections.abc import Sequence
 from os import PathLike
 from typing import IO
 
+import httpx
 from sqlalchemy.engine import Engine
 from sqlmodel import MetaData, Session, create_engine
 
@@ -71,6 +72,7 @@ class Actual(ActualServer):
         bootstrap: bool = False,
         sa_kwargs: dict | None = None,
         extra_headers: dict[str, str] | None = None,
+        timeout: float | httpx.Timeout | None = 60.0,
     ):
         """
         Parts of the implementation are [available at the following file.](
@@ -120,9 +122,11 @@ class Actual(ActualServer):
                           by default), `autocommit` (disabled by default). For a list of all parameters, check the
                           [SQLAlchemy documentation.](
                           https://docs.sqlalchemy.org/en/20/orm/session_api.html#sqlalchemy.orm.Session.__init__)
-        :param extra_headers: Additional headers to be attached to each request to the Actual server
+        :param extra_headers: Additional headers to be attached to each request to the Actual server.
+        :param timeout: Timeout in seconds applied to all HTTP requests. Set to `None` to disable. Accepts a float or
+                        an `httpx.Timeout` object for fine-grained control. Defaults to 60 seconds.
         """
-        super().__init__(base_url, token, password, bootstrap, cert, extra_headers)
+        super().__init__(base_url, token, password, bootstrap, cert, extra_headers, timeout)
         self._file: RemoteFileListDTO | None = None
         self._data_dir: pathlib.Path | None = pathlib.Path(data_dir) if data_dir else None
         self.engine: Engine | None = None

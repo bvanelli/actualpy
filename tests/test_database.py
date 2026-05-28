@@ -190,6 +190,46 @@ def test_reconcile_transaction_update(session):
     assert reconciled.notes == "New notes"
 
 
+def test_reconcile_with_split(session):
+    create_account(session, "Bank")
+
+    # Create a fine dining tx which is split to 1200 and 120, a grand total of 1320 for
+    # the actual parent tx
+    dining = create_transaction(session, today, "Bank", category="Dining", amount=-1200.0)
+    taxes = create_transaction(session, today, "Bank", category="Taxes", amount=-120.0)
+    create_splits(session, [dining, taxes], notes="Dining")
+    session.commit()
+
+    # Run a reconcile for a 1200 tx, it should not match the 1200-child but rather be created
+    # as a new tx
+    rent_payment = reconcile_transaction(
+        session,
+        today + timedelta(days=1),
+        "Bank",
+        category="Rent",
+        amount=-1200,
+        notes="New notes",
+        imported_id="unique",
+    )
+    assert rent_payment.id != dining.id
+    session.commit()
+
+    # Run another reconcile for 1200 and ensure that it matched the right tx
+    assert (
+        reconcile_transaction(
+            session,
+            today + timedelta(days=1),
+            "Bank",
+            category="Rent",
+            amount=-1200,
+            notes="New notes",
+            imported_id="unique",
+        ).id
+        == rent_payment.id
+    )
+    session.commit()
+
+
 def test_create_splits(session):
     bank = create_account(session, "Bank")
     t = create_transaction(session, today, bank, category="Dining", amount=-10.0)
