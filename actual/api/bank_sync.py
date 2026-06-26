@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import decimal
 import enum
+import typing
 
 from pydantic import AliasChoices, BaseModel, Field
 
@@ -32,7 +33,7 @@ class BankSyncAccountDTO(BaseModel):
     available_balance: str = Field(..., alias="available-balance")
     balance_date: int = Field(..., alias="balance-date")
     transactions: list[BankSyncTransactionDTO]
-    holdings: list[dict]
+    holdings: list[dict[str, typing.Any]]
 
 
 class BankSyncAmount(BaseModel):

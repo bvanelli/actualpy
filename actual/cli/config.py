@@ -11,7 +11,7 @@ from actual import Actual
 console = Console()
 
 
-def default_config_path():
+def default_config_path() -> Path:
     return Path.home() / ".actualpy" / "config.yaml"
 
 
@@ -39,7 +39,7 @@ class Config(pydantic.BaseModel):
         default_factory=dict, description="Dict of configured budgets on CLI."
     )
 
-    def save(self):
+    def save(self) -> None:
         """Saves the current configuration to a file."""
         config_path = default_config_path()
         os.makedirs(config_path.parent, exist_ok=True)
@@ -48,7 +48,7 @@ class Config(pydantic.BaseModel):
             yaml.dump(self.model_dump(by_alias=True), file)
 
     @classmethod
-    def load(cls):
+    def load(cls) -> "Config":
         """Load the configuration file. If it doesn't exist, create a basic config."""
         config_path = default_config_path()
         if not config_path.exists():

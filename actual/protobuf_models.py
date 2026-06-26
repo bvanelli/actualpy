@@ -76,7 +76,7 @@ class HULC_Client:
         return str(self)
 
     @staticmethod
-    def random_client_id():
+    def random_client_id() -> str:
         """Creates a client id for the HULC request.
 
         Implementation copied [from the source code](
@@ -186,11 +186,16 @@ class SyncRequest(proto.Message):
             is_encrypted = False
             if master_key is not None:
                 encrypted_content = encrypt("", master_key, content)
+                # encrypt() always populates iv and auth_tag; the Optional is only for server responses
+                if encrypted_content.meta.iv is None or encrypted_content.meta.auth_tag is None:
+                    raise ActualDecryptionError(
+                        f"EncryptionTestDTO does not contain the required encryption data: {encrypted_content}"
+                    )
                 encrypted_data = EncryptedData(
                     {
-                        "iv": base64.b64decode(encrypted_content["meta"]["iv"]),
-                        "authTag": base64.b64decode(encrypted_content["meta"]["authTag"]),
-                        "data": base64.b64decode(encrypted_content["value"]),
+                        "iv": base64.b64decode(encrypted_content.meta.iv),
+                        "authTag": base64.b64decode(encrypted_content.meta.auth_tag),
+                        "data": base64.b64decode(encrypted_content.value),
                     }
                 )
                 content = EncryptedData.serialize(encrypted_data)

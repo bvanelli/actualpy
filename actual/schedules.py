@@ -20,7 +20,7 @@ from dateutil.rrule import (
     weekday,
     weekdays,
 )
-from pydantic import model_serializer
+from pydantic import SerializerFunctionWrapHandler, model_serializer
 
 from actual.utils.conversions import date_to_datetime, day_to_ordinal
 
@@ -212,10 +212,9 @@ class Schedule(pydantic.BaseModel):
         return f"Every {frequency}{target}{end}{move}"
 
     @model_serializer(mode="wrap")
-    def serialize_model(self, handler) -> dict:
+    def serialize_model(self, handler: SerializerFunctionWrapHandler) -> typing.Any:
         """Converts a schedule to a dict that can be used in a rule."""
-        ret = handler(self)
-        return ret
+        return handler(self)
 
     @pydantic.model_validator(mode="after")
     def validate_end_date(self):

@@ -163,7 +163,7 @@ def convert_to_regexp(special_characters: list[str]):
     return [(re.compile(rf"\b{s}\b", re.IGNORECASE), s) for s in special_characters]
 
 
-def parse_match(match: str):
+def parse_match(match: str) -> str | None:
     first_character = match[0]
     if re.match(r"\s", first_character):
         return match[1:]
@@ -172,7 +172,7 @@ def parse_match(match: str):
     return match
 
 
-def replace_func(m: re.Match):
+def replace_func(m: re.Match[str]) -> str:
     lead, forced, lower, rest = m.groups()
     parsed_match = parse_match(m.group(0))
     if not parsed_match:
@@ -184,7 +184,7 @@ def replace_func(m: re.Match):
     return (lead or "") + (lower or forced or "").upper() + (rest or "")
 
 
-def title(title_str: str, custom_specials: list[str] | None = None):
+def title(title_str: str, custom_specials: list[str] | None = None) -> str:
     title_str = title_str.lower()
     title_str = regex.sub(replace_func, title_str)
 

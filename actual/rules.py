@@ -8,7 +8,7 @@ import typing
 import unicodedata
 
 import pydantic
-from pydantic import model_serializer
+from pydantic import SerializerFunctionWrapHandler, model_serializer
 from sqlmodel import Session
 
 from actual.crypto import is_uuid
@@ -108,7 +108,11 @@ class ValueType(enum.Enum):
             # must be BOOLEAN
             return operation.value in ("is",)
 
-    def validate(self, value: int | list[str] | str | None, operation: ConditionType | None = None) -> bool:
+    def validate(
+        self,
+        value: int | list[str] | str | datetime.date | BetweenValue | Schedule | None,
+        operation: ConditionType | None = None,
+    ) -> bool:
         if isinstance(value, list) and operation in (ConditionType.ONE_OF, ConditionType.NOT_ONE_OF):
             return all(self.validate(v, None) for v in value)
         if value is None:
@@ -328,7 +332,7 @@ class Condition(pydantic.BaseModel):
         return f"'{self.field}' {self.op.value} {v}"
 
     @model_serializer(mode="wrap")
-    def serialize_model(self, handler) -> dict:
+    def serialize_model(self, handler: SerializerFunctionWrapHandler) -> typing.Any:
         """Returns valid dict for database insertion."""
         ret = handler(self)
         if not self.options:
@@ -342,7 +346,7 @@ class Condition(pydantic.BaseModel):
     def convert_value(self):
         if self.field in ("amount_inflow", "amount_outflow") and self.options is None:
             self.options = {self.field.split("_")[1]: True}
-            self.value = abs(self.value)
+            self.value = abs(self.value)  # type: ignore[arg-type]
             self.field = "amount"
         return self
 
@@ -425,7 +429,7 @@ class Action(pydantic.BaseModel):
         return f"{self.op.value} '{self.value}'"
 
     @model_serializer(mode="wrap")
-    def serialize_model(self, handler) -> dict:
+    def serialize_model(self, handler: SerializerFunctionWrapHandler) -> typing.Any:
         """Returns valid dict for database insertion."""
         ret = handler(self)
         if not self.options:

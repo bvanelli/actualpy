@@ -71,6 +71,16 @@ class InvalidFile(ActualError):
     pass
 
 
+class ActualEncryptionError(ActualError):
+    """
+    The encryption for the file failed.
+
+    This will happen when you try to upload an encrypted file without providing a password.
+    """
+
+    pass
+
+
 class ActualDecryptionError(ActualError):
     """
     The decryption for the file failed.

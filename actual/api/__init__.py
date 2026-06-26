@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import datetime
-import json
 import ssl
-from typing import Literal, overload
+from typing import Literal, cast, overload
 
 import httpx
 
@@ -15,6 +14,7 @@ from actual.api.models import (
     BankSyncStatusDTO,
     BankSyncTransactionResponseDTO,
     BootstrapInfoDTO,
+    EncryptMetaDTO,
     Endpoints,
     GetUserFileInfoDTO,
     InfoDTO,
@@ -130,7 +130,7 @@ class ActualServer:
             if not self.is_open_id_owner_created():
                 raise AuthorizationError("OpenID server is not set-up.")
 
-            with AuthCodeReceiver() as receiver:
+            with AuthCodeReceiver() as receiver:  # type: ignore[no-untyped-call]
                 redirect_url = f"http://localhost:{receiver.get_port()}"
                 response = self._requests_session.post(
                     Endpoints.LOGIN.value,
@@ -233,7 +233,11 @@ class ActualServer:
         return db.content
 
     def upload_user_file(
-        self, binary_data: bytes, file_id: str, file_name: str = "My Finances", encryption_meta: dict | None = None
+        self,
+        binary_data: bytes,
+        file_id: str,
+        file_name: str = "My Finances",
+        encryption_meta: EncryptMetaDTO | None = None,
     ) -> UploadUserFileDTO:
         """Uploads the binary data, which is a zip folder containing the `db.sqlite` and the `metadata.json`. If the
         file is encrypted, the encryption_meta has to be provided with fields `keyId`, `algorithm`, `iv` and `authTag`
@@ -245,7 +249,7 @@ class ActualServer:
             "Content-Type": "application/encrypted-file",
         }
         if encryption_meta:
-            base_headers["X-ACTUAL-ENCRYPT-META"] = json.dumps(encryption_meta)
+            base_headers["X-ACTUAL-ENCRYPT-META"] = encryption_meta.model_dump_json(by_alias=True)
         request = self._requests_session.post(
             Endpoints.UPLOAD_USER_FILE.value,
             content=binary_data,
@@ -307,7 +311,7 @@ class ActualServer:
                 "fileId": file_id,
                 "keyId": key_id,
                 "keySalt": key_salt,
-                "testContent": json.dumps(test_content),
+                "testContent": test_content.model_dump_json(by_alias=True),
                 "token": self._token,
             },
         )
@@ -333,8 +337,7 @@ class ActualServer:
             content=SyncRequest.serialize(request),
         )
         response.raise_for_status()
-        parsed_response = SyncResponse.deserialize(response.content)
-        return parsed_response  # noqa
+        return cast(SyncResponse, SyncResponse.deserialize(response.content))
 
     def login_methods(self) -> LoginMethodsDTO:
         """Returns login methods available for the user."""
@@ -349,7 +352,7 @@ class ActualServer:
         if response.status_code > 400:
             # here, it could be that the method returns 404 for an older version
             return False
-        return response.json()
+        return bool(response.json())
 
     def open_id_config(self, password: str) -> OpenIDConfigResponseDTO:
         """Gets the OpenID configuration for the server. You will need to provide the main password to access this
