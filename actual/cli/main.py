@@ -13,6 +13,7 @@ from actual import Actual
 from actual.budgets import EnvelopeBudget, TrackingBudget, get_budget_history
 from actual.cli.config import BudgetConfig, Config, OutputType, State
 from actual.cli.formatters import colored_number_format, decimal_format
+from actual.cli.models import AccountData, PayeeData, TransactionData
 from actual.queries import get_accounts, get_payees, get_transactions
 from actual.version import __version__
 
@@ -155,10 +156,12 @@ def accounts():
     Show all accounts.
     """
     # Mock data for demonstration purposes
-    accounts_data = []
+    accounts_data: list[AccountData] = []
     with config.actual() as actual:
         accounts_raw_data = get_accounts(actual.session)
         for account in accounts_raw_data:
+            if account.name is None:  # mypy check
+                continue
             accounts_data.append(
                 {
                     "name": account.name,
@@ -171,8 +174,8 @@ def accounts():
         table.add_column("Account Name", justify="left", style="cyan", no_wrap=True)
         table.add_column("Balance", justify="right", style="green")
 
-        for account in accounts_data:
-            table.add_row(account["name"], f"{account['balance']:.2f}")
+        for account_data in accounts_data:
+            table.add_row(account_data["name"], f"{account_data['balance']:.2f}")
 
         console.print(table)
     else:
@@ -184,7 +187,7 @@ def transactions():
     """
     Show all transactions.
     """
-    transactions_data = []
+    transactions_data: list[TransactionData] = []
     with config.actual() as actual:
         transactions_raw_data = get_transactions(actual.session)
         for transaction in transactions_raw_data:
@@ -206,14 +209,14 @@ def transactions():
         table.add_column("Category", justify="left", style="cyan")
         table.add_column("Amount", justify="right", style="green")
 
-        for transaction in transactions_data:
-            color = "green" if transaction["amount"] >= 0 else "red"
+        for transaction_data in transactions_data:
+            color = "green" if transaction_data["amount"] >= 0 else "red"
             table.add_row(
-                transaction["date"],
-                transaction["payee"],
-                transaction["notes"],
-                transaction["category"],
-                f"[{color}]{transaction['amount']:.2f}[/]",
+                transaction_data["date"],
+                transaction_data["payee"],
+                transaction_data["notes"],
+                transaction_data["category"],
+                f"[{color}]{transaction_data['amount']:.2f}[/]",
             )
 
         console.print(table)
@@ -226,10 +229,12 @@ def payees():
     """
     Show all payees.
     """
-    payees_data = []
+    payees_data: list[PayeeData] = []
     with config.actual() as actual:
         payees_raw_data = get_payees(actual.session)
         for payee in payees_raw_data:
+            if payee.name is None:  # mypy check
+                continue
             payees_data.append({"name": payee.name, "balance": round(float(payee.balance), 2)})
 
     if state.output == OutputType.table:
@@ -237,11 +242,11 @@ def payees():
         table.add_column("Name", justify="left", style="cyan", no_wrap=True)
         table.add_column("Balance", justify="right")
 
-        for payee in payees_data:
-            color = "green" if payee["balance"] >= 0 else "red"
+        for payee_data in payees_data:
+            color = "green" if payee_data["balance"] >= 0 else "red"
             table.add_row(
-                payee["name"],
-                f"[{color}]{payee['balance']:.2f}[/]",
+                payee_data["name"],
+                f"[{color}]{payee_data['balance']:.2f}[/]",
             )
         console.print(table)
     else:

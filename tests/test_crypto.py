@@ -28,12 +28,10 @@ def test_encrypt_decrypt():
     key = create_key_buffer("foo", "bar")
     string_to_encrypt = b"foobar"
     encrypted = encrypt("foo", key, string_to_encrypt)
-    decrypted_from_meta = decrypt_from_meta(
-        key, base64.b64decode(encrypted["value"]), EncryptMetaDTO(**encrypted["meta"])
-    )
+    decrypted_from_meta = decrypt_from_meta(key, base64.b64decode(encrypted.value), EncryptMetaDTO(**encrypted.meta))
     assert decrypted_from_meta == string_to_encrypt
     with pytest.raises(ActualDecryptionError):
-        decrypt_from_meta(key[::-1], base64.b64decode(encrypted["value"]), EncryptMetaDTO(**encrypted["meta"]))
+        decrypt_from_meta(key[::-1], base64.b64decode(encrypted.value), EncryptMetaDTO(**encrypted.meta))
 
 
 def test_encrypt_decrypt_message():
@@ -53,9 +51,7 @@ def test_encrypt_decrypt_message():
 def test_create_test_message():
     key = create_key_buffer(make_salt(), make_salt())
     tm = make_test_message("", key)
-    dfm = decrypt(
-        key, base64.b64decode(tm["meta"]["iv"]), base64.b64decode(tm["value"]), base64.b64decode(tm["meta"]["authTag"])
-    )
+    dfm = decrypt(key, base64.b64decode(tm.meta.iv), base64.b64decode(tm.value), base64.b64decode(tm.meta.auth_tag))
     m = Message.deserialize(dfm)
     assert isinstance(m, Message)
 

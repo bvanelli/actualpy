@@ -105,18 +105,29 @@ max-complexity = 18
 plugins = ["pydantic.mypy"]
 ## TODO: Work one by one until we can enable --strict mode for mypy.
 # disallow_any_generics = true
-# disallow_subclassing_any = true
-# disallow_untyped_calls = true
+disallow_subclassing_any = true
+disallow_untyped_calls = true
 # disallow_untyped_defs = true
 # disallow_incomplete_defs = true
-# check_untyped_defs = true
+check_untyped_defs = true
 disallow_untyped_decorators = true
 warn_redundant_casts = true
 warn_unused_ignores = true
-# warn_return_any = true
+warn_return_any = true
 no_implicit_reexport = true
 strict_equality = true
 
 [[tool.mypy.overrides]]
 module = ["proto", "proto.*", "testcontainers", "testcontainers.*"]
 ignore_missing_imports = true
+
+# Copied from microsoft-authentication-library-for-python, skip type checks.
+[[tool.mypy.overrides]]
+module = ["actual.utils.openid"]
+ignore_errors = true
+
+# `proto.Message` is typed as `Any` because of the `proto` ignore_missing_imports above.
+[[tool.mypy.overrides]]
+module = ["actual.protobuf_models"]
+disallow_subclassing_any = false
+warn_return_any = false

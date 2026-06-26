@@ -12,7 +12,7 @@ import warnings
 import zipfile
 from collections.abc import Sequence
 from os import PathLike
-from typing import IO
+from typing import IO, cast
 
 import httpx
 from sqlalchemy.engine import Engine
@@ -34,6 +34,7 @@ from actual.database import (
 from actual.exceptions import (
     ActualBankSyncError,
     ActualDecryptionError,
+    ActualEncryptionError,
     ActualError,
     InvalidZipFile,
     UnknownFileId,
@@ -304,7 +305,7 @@ class Actual(ActualServer):
         # reset group id, as file cannot be synced anymore
         self.file.group_id = None
 
-    def cleanup(self):
+    def cleanup(self) -> None:
         """
         Cleans up the database from all deleted transactions, message caches and runs a `VACUUM`.
 
@@ -381,13 +382,13 @@ class Actual(ActualServer):
         self._master_key = create_key_buffer(encryption_password, salt)
         # encrypt binary data with
         encrypted = encrypt(self.file.encrypt_key_id, self._master_key, self.export_data())
-        binary_data = io.BytesIO(base64.b64decode(encrypted["value"]))
-        encryption_meta = encrypted["meta"]
+        binary_data = io.BytesIO(base64.b64decode(encrypted.value))
+        encryption_meta = encrypted.meta
         self.reset_user_file(self.file.file_id)
         self.upload_user_file(binary_data.getvalue(), self.file.file_id, self.file.name, encryption_meta)
         self.set_file(self.file.file_id)
 
-    def upload_budget(self):
+    def upload_budget(self) -> None:
         """
         Uploads the current file to the Actual server.
 
@@ -396,21 +397,24 @@ class Actual(ActualServer):
         """
         if not self._data_dir:
             raise UnknownFileId("No current file loaded.")
-        if not self._file:
+        file = self._file
+        if not file:
             file_id = str(uuid.uuid4())
             metadata = self.get_metadata()
             budget_name = metadata.get("budgetName", "My Finances")
-            self._file = RemoteFileListDTO(name=budget_name, fileId=file_id, groupId=None, deleted=0, encryptKeyId=None)
+            file = RemoteFileListDTO(name=budget_name, fileId=file_id, groupId=None, deleted=0, encryptKeyId=None)
         binary_data = io.BytesIO()
         with zipfile.ZipFile(binary_data, "a", zipfile.ZIP_DEFLATED, False) as z:
             z.write(self.data_dir / "db.sqlite", "db.sqlite")
             z.write(self.data_dir / "metadata.json", "metadata.json")
         # we have to first upload the user file so the reference id can be used to generate a new encryption key
-        self.upload_user_file(binary_data.getvalue(), self._file.file_id, self._file.name)
+        self.upload_user_file(binary_data.getvalue(), file.file_id, file.name)
         # reset local file id to retrieve the grouping id
-        self.set_file(self._file.file_id)
+        self.set_file(file.file_id)
         # encrypt the file and re-upload
-        if self._encryption_password or self._master_key or self._file.encrypt_key_id:
+        if self._encryption_password or self._master_key or file.encrypt_key_id:
+            if not self._encryption_password:
+                raise ActualEncryptionError("Budget is encrypted but password was not provided")
             self.encrypt(self._encryption_password)
 
     def reupload_budget(self):
@@ -422,7 +426,7 @@ class Actual(ActualServer):
         **This operation can be destructive**, so make sure you generate a copy before attempting to re-upload
         your budget.
         """
-        self.reset_user_file(self._file.file_id)
+        self.reset_user_file(self.file.file_id)
         self.update_metadata({"groupId": None})  # since we don't know what the new group id will be
         self.upload_budget()
 
@@ -476,7 +480,8 @@ class Actual(ActualServer):
     def get_metadata(self) -> dict:
         """Gets the content of the `metadata.json` file."""
         metadata_file = self.data_dir / "metadata.json"
-        return json.loads(metadata_file.read_text())
+        # Here, we trust the metadata will have the correct format
+        return cast(dict, json.loads(metadata_file.read_text()))
 
     def update_metadata(self, patch: dict):
         """
@@ -580,7 +585,7 @@ class Actual(ActualServer):
         zip_file.extractall(self._data_dir)
         self.create_engine()
 
-    def create_engine(self):
+    def create_engine(self) -> None:
         """Internally creates the engine for the database, and loads the reflected metadata."""
         self.engine = create_engine(f"sqlite:///{self._data_dir}/db.sqlite")
         self._database_metadata = reflect_model(self.engine)

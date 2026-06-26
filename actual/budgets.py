@@ -280,7 +280,7 @@ class BaseBudget:
         return sum([c.accumulated_balance for c in self.category_groups], start=decimal.Decimal(0))
 
     @property
-    def spent(self):
+    def spent(self) -> decimal.Decimal:
         """
         Expenses for the current month.
 

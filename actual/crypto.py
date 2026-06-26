@@ -9,6 +9,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
+from actual.api.models import EncryptionTestDTO, EncryptMetaDTO
 from actual.exceptions import ActualDecryptionError
 
 
@@ -33,21 +34,21 @@ def create_key_buffer(password: str, key_salt: str) -> bytes:
     return kdf.derive(password.encode())
 
 
-def encrypt(key_id: str, master_key: bytes, plaintext: bytes) -> dict:
+def encrypt(key_id: str, master_key: bytes, plaintext: bytes) -> EncryptionTestDTO:
     """Encrypts a plaintext (actual database) using AES-GCM."""
     iv = os.urandom(12)
     encryptor = Cipher(algorithms.AES(master_key), modes.GCM(iv)).encryptor()
     value = encryptor.update(plaintext) + encryptor.finalize()
     auth_tag = encryptor.tag
-    return {
-        "value": base64.b64encode(value).decode(),
-        "meta": {
-            "keyId": key_id,
-            "algorithm": "aes-256-gcm",
-            "iv": base64.b64encode(iv).decode(),
-            "authTag": base64.b64encode(auth_tag).decode(),
-        },
-    }
+    return EncryptionTestDTO(
+        value=base64.b64encode(value).decode(),
+        meta=EncryptMetaDTO(
+            keyId=key_id,
+            algorithm="aes-256-gcm",
+            iv=base64.b64encode(iv).decode(),
+            authTag=base64.b64encode(auth_tag).decode(),
+        ),
+    )
 
 
 def decrypt(master_key: bytes, iv: bytes, ciphertext: bytes, auth_tag: bytes | None = None) -> bytes:
@@ -66,7 +67,7 @@ def decrypt_from_meta(master_key: bytes, ciphertext: bytes, encrypt_meta) -> byt
     return decrypt(master_key, iv, ciphertext, auth_tag)
 
 
-def make_test_message(key_id: str, key: bytes) -> dict:
+def make_test_message(key_id: str, key: bytes) -> EncryptionTestDTO:
     """Reference
     https://github.com/actualbudget/actual/blob/70e37c0119f4ba95ccf6549f0df4aac770f1bb8f/packages/loot-core/src/server/sync/make-test-message.ts#L10
     """

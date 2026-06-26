@@ -18,7 +18,7 @@ import datetime
 import decimal
 import json
 from collections.abc import Sequence
-from typing import Optional, TypedDict
+from typing import Any, Optional, TypedDict, cast
 
 from sqlalchemy import MetaData, Table, engine, event, inspect
 from sqlalchemy.dialects.sqlite import insert
@@ -92,7 +92,9 @@ def get_class_from_reflected_table_name(metadata: MetaData, table_name: str) -> 
     return metadata.tables.get(table_name, None)
 
 
-def get_attribute_from_reflected_table_name(metadata: MetaData, table_name: str, column_name: str) -> Column | None:
+def get_attribute_from_reflected_table_name(
+    metadata: MetaData, table_name: str, column_name: str
+) -> Column[Any] | None:
     """
     Returns, based on the defined reflected model the corresponding and the SAColumn.
 
@@ -138,7 +140,9 @@ def get_attribute_by_table_name(table_name: str, column_name: str, reverse: bool
     return mapping.get(column_name)
 
 
-def apply_change(session: Session, table: Table, table_id: str, values: dict[Column, str | int | float | None]) -> None:
+def apply_change(
+    session: Session, table: Table, table_id: str, values: dict[Column[Any], str | int | float | None]
+) -> None:
     """
     This function upserts multiple changes into a table based on the `table_id` as the primary key.
 
@@ -239,7 +243,7 @@ class BaseModel(SQLModel):
                 changed_attributes.append(column)
         return changed_attributes
 
-    def delete(self):
+    def delete(self) -> None:
         """Deletes the model, by setting the `tombstone` attribute to 1. It is only possible to hard delete
         transactions by updating and re-uploading the downloaded budget."""
         if not hasattr(self, "tombstone"):
@@ -353,7 +357,7 @@ class Categories(BaseModel, table=True):
     sort_order: float | None = Field(default=None, sa_column=Column("sort_order", Float))
     tombstone: int | None = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
     goal_def: str | None = Field(default=None, sa_column=Column("goal_def", Text, server_default=text("null")))
-    template_settings: dict | None = Field(default=None, sa_column=Column("template_settings", JSON))
+    template_settings: dict[str, Any] | None = Field(default=None, sa_column=Column("template_settings", JSON))
 
     zero_budgets: "ZeroBudgets" = Relationship(
         back_populates="category",
@@ -543,7 +547,7 @@ class MessagesClock(SQLModel, table=True):
         """Gets the clock from JSON text to a dictionary with fields `timestamp` and `merkle`."""
         if self.clock is None:
             raise ValueError("Clock is not set")
-        return json.loads(self.clock)
+        return cast(dict, json.loads(self.clock))
 
     def set_clock(self, value: dict):
         """Sets the clock from a dictionary and stores it in the correct format."""
@@ -842,7 +846,7 @@ class Transactions(BaseModel, table=True):
         # Return the input value unmodified as this is a validator for the parent
         return v
 
-    def delete(self):
+    def delete(self) -> None:
         """Overload the delete() from the BaseModel so that we can properly delete any children splits
         as well. Otherwise things will not add up in the Actual GUI when calling delete() on a parent.
 
