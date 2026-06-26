@@ -160,11 +160,9 @@ def accounts():
     with config.actual() as actual:
         accounts_raw_data = get_accounts(actual.session)
         for account in accounts_raw_data:
-            if account.name is None:  # mypy check
-                continue
             accounts_data.append(
                 {
-                    "name": account.name,
+                    "name": account.name or "",
                     "balance": float(account.balance),
                 }
             )
@@ -233,9 +231,7 @@ def payees():
     with config.actual() as actual:
         payees_raw_data = get_payees(actual.session)
         for payee in payees_raw_data:
-            if payee.name is None:  # mypy check
-                continue
-            payees_data.append({"name": payee.name, "balance": round(float(payee.balance), 2)})
+            payees_data.append({"name": payee.name or "", "balance": round(float(payee.balance), 2)})
 
     if state.output == OutputType.table:
         table = Table(title="Payees")

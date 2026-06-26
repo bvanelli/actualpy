@@ -2,7 +2,7 @@ import base64
 
 import pytest
 
-from actual.api.models import EncryptionDTO, EncryptMetaDTO
+from actual.api.models import EncryptionDTO
 from actual.crypto import (
     create_key_buffer,
     decrypt,
@@ -28,10 +28,10 @@ def test_encrypt_decrypt():
     key = create_key_buffer("foo", "bar")
     string_to_encrypt = b"foobar"
     encrypted = encrypt("foo", key, string_to_encrypt)
-    decrypted_from_meta = decrypt_from_meta(key, base64.b64decode(encrypted.value), EncryptMetaDTO(**encrypted.meta))
+    decrypted_from_meta = decrypt_from_meta(key, base64.b64decode(encrypted.value), encrypted.meta)
     assert decrypted_from_meta == string_to_encrypt
     with pytest.raises(ActualDecryptionError):
-        decrypt_from_meta(key[::-1], base64.b64decode(encrypted.value), EncryptMetaDTO(**encrypted.meta))
+        decrypt_from_meta(key[::-1], base64.b64decode(encrypted.value), encrypted.meta)
 
 
 def test_encrypt_decrypt_message():

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime
-import json
 import ssl
 from typing import Literal, cast, overload
 
@@ -312,7 +311,7 @@ class ActualServer:
                 "fileId": file_id,
                 "keyId": key_id,
                 "keySalt": key_salt,
-                "testContent": json.dumps(test_content),
+                "testContent": test_content.model_dump_json(by_alias=True),
                 "token": self._token,
             },
         )
