@@ -684,9 +684,9 @@ class Actual(ActualServer):
             # actual uses 'startingBalance', that already comes in cents and should be enough for our purposes
             # https://github.com/actualbudget/actual/blob/f09f4af667ddd57e031dcdb0d428ae935aa2afad/packages/loot-core/src/server/accounts/sync.ts#L740-L752
             balance_to_use = new_transactions_data.data.balance
-            # For simpleFin, the startingBalance is actually the current balance, so we have to use it to deduce the
-            # actual startingBalance
-            if acct.account_sync_source and acct.account_sync_source.lower() == "simplefin":
+            # For simpleFin and Enable Banking, the startingBalance is actually the current
+            # balance, so we have to use it to deduce the actual startingBalance
+            if acct.account_sync_source and acct.account_sync_source.lower() in ("simplefin", "enablebanking"):
                 current_balance = new_transactions_data.data.balance
                 balance_to_use = current_balance - sum(t.transaction_amount.amount for t in new_transactions)
             if balance_to_use:
