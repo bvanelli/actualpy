@@ -61,11 +61,11 @@ class BetweenValue(pydantic.BaseModel):
     num_1: int | float = pydantic.Field(alias="num1")
     num_2: int | float = pydantic.Field(alias="num2")
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"({self.num_1}, {self.num_2})"
 
     @pydantic.model_validator(mode="after")
-    def convert_value(self):
+    def convert_value(self) -> BetweenValue:
         if isinstance(self.num_1, float):
             self.num_1 = int(self.num_1 * 100)
         if isinstance(self.num_2, float):
@@ -187,7 +187,7 @@ def condition_evaluation(
     op: ConditionType,
     true_value: int | list[str] | str | datetime.date | BetweenValue | Schedule | None,
     self_value: int | list[str] | str | datetime.date | BetweenValue | Schedule | None,
-    options: dict | None = None,
+    options: dict[str, typing.Any] | None = None,
     session: Session | None = None,
 ) -> bool:
     """Helper function to evaluate the condition based on the true_value, value found on the transaction, and the
@@ -272,7 +272,7 @@ def _coerce_value(
 ) -> list[str] | Schedule | BetweenValue | datetime.date: ...
 
 
-def _coerce_value(v):
+def _coerce_value(v: typing.Any) -> typing.Any:
     """Coerce convenience input types to their stored representations."""
     if isinstance(v, float):
         return int(v * 100)
@@ -325,7 +325,7 @@ class Condition(pydantic.BaseModel):
         pydantic.BeforeValidator(_coerce_value),
     ]
     type: ValueType = ValueType.ID
-    options: dict | None = None
+    options: dict[str, typing.Any] | None = None
 
     def __str__(self) -> str:
         v = f"'{self.value}'" if isinstance(self.value, str) or isinstance(self.value, Schedule) else str(self.value)
@@ -343,7 +343,7 @@ class Condition(pydantic.BaseModel):
         return get_value(self.value, self.type)
 
     @pydantic.model_validator(mode="after")
-    def convert_value(self):
+    def convert_value(self) -> Condition:
         if self.field in ("amount_inflow", "amount_outflow") and self.options is None:
             self.options = {self.field.split("_")[1]: True}
             self.value = abs(self.value)  # type: ignore[arg-type]
@@ -351,7 +351,7 @@ class Condition(pydantic.BaseModel):
         return self
 
     @pydantic.model_validator(mode="after")
-    def check_operation_type(self):
+    def check_operation_type(self) -> Condition:
         if "type" not in self.model_fields_set:
             self.type = ValueType.from_field(self.field)
         # check if types are fine
@@ -438,13 +438,13 @@ class Action(pydantic.BaseModel):
 
     @pydantic.field_validator("value", mode="before")
     @classmethod
-    def convert_value(cls, value, info):
+    def convert_value(cls, value: typing.Any, info: pydantic.ValidationInfo) -> typing.Any:
         if info.data.get("field") == "cleared" and value in (0, 1):
             return bool(value)
         return value
 
     @pydantic.model_validator(mode="after")
-    def check_operation_type(self):
+    def check_operation_type(self) -> Action:
         if "type" not in self.model_fields_set:
             if self.field is not None:
                 self.type = ValueType.from_field(self.field)
@@ -534,7 +534,7 @@ class Rule(pydantic.BaseModel):
     )
 
     @pydantic.model_validator(mode="before")
-    def correct_operation(cls, value):
+    def correct_operation(cls, value: typing.Any) -> typing.Any:
         """If the user provides the same `all` or `any` that the frontend provides, we fix it silently to `and` and
         `or` respectively."""
         if value.get("operation") == "all":
@@ -543,7 +543,7 @@ class Rule(pydantic.BaseModel):
             value["operation"] = "or"
         return value
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Returns a readable string representation of the rule."""
         operation = "all" if self.operation == "and" else "any"
         conditions = f" {self.operation} ".join([str(c) for c in self.conditions])
@@ -650,7 +650,7 @@ class RuleSet:
 
     rules: list[Rule]
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Returns a readable string representation of the ruleset."""
         return "\n".join([str(r) for r in self.rules])
 
@@ -662,7 +662,7 @@ class RuleSet:
         self,
         transaction: Transactions | typing.Sequence[Transactions],
         stage: typing.Literal["pre", "post", None],
-    ):
+    ) -> None:
         for rule in [r for r in self.rules if r.stage == stage]:
             if isinstance(transaction, Transactions):
                 rule.run(transaction)
@@ -674,7 +674,7 @@ class RuleSet:
         self,
         transaction: Transactions | typing.Sequence[Transactions],
         stage: typing.Literal["all", "pre", "post", None] = "all",
-    ):
+    ) -> None:
         """
         Runs the rules of the Ruleset for every transaction on the list.
 
@@ -691,6 +691,6 @@ class RuleSet:
         else:
             self._run(transaction, stage)  # noqa
 
-    def add(self, rule: Rule):
+    def add(self, rule: Rule) -> None:
         """Adds a new rule to the ruleset."""
         self.rules.append(rule)

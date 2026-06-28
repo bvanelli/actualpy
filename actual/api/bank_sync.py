@@ -45,7 +45,7 @@ class DebtorAccount(BaseModel):
     iban: str
 
     @property
-    def masked_iban(self):
+    def masked_iban(self) -> str:
         return f"({self.iban[:4]} XXX {self.iban[-4:]})"
 
 
@@ -97,7 +97,7 @@ class TransactionItem(BaseModel):
     posted_date: datetime.date | None = Field(None, alias="postedDate")
 
     @property
-    def imported_payee(self):
+    def imported_payee(self) -> str:
         """Deprecated method to convert the payee name. Use the payee_name instead."""
         name_parts = []
         name = self.payee or self.notes or self.additional_information

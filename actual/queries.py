@@ -11,7 +11,6 @@ import sqlalchemy
 from pydantic import TypeAdapter
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload
-from sqlalchemy.sql.expression import Select
 from sqlmodel import Session, col, select
 from sqlmodel.sql.expression import SelectOfScalar
 
@@ -100,7 +99,7 @@ def _balance_base_query(
     end_date: datetime.date | None,
     account: Accounts | str | None = None,
     category: Categories | str | None = None,
-) -> Select:
+) -> SelectOfScalar[int | None]:
     query = select(func.coalesce(func.sum(Transactions.amount), 0)).where(
         Transactions.is_parent == 0,
         Transactions.tombstone == 0,
@@ -557,7 +556,7 @@ def _base_query(instance: type[T], name: str | None = None, include_deleted: boo
 
 def get_category_groups(
     s: Session, name: str | None = None, include_deleted: bool = False, is_income: bool | None = None
-):
+) -> typing.Sequence[CategoryGroups]:
     """
     Returns a list of all available category groups.
 

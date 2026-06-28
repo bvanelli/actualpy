@@ -217,7 +217,7 @@ class Schedule(pydantic.BaseModel):
         return handler(self)
 
     @pydantic.model_validator(mode="after")
-    def validate_end_date(self):
+    def validate_end_date(self) -> "Schedule":
         if self.end_mode == EndMode.ON_DATE and self.end_date is None:
             raise ValueError("endDate cannot be 'None' when ")
         if self.end_date is None:

@@ -161,7 +161,7 @@ class ActualServer:
         self._token = login_response.data.token
         return login_response
 
-    def headers(self, file_id: str | None = None, extra_headers: dict | None = None) -> dict:
+    def headers(self, file_id: str | None = None, extra_headers: dict[str, str] | None = None) -> dict[str, str]:
         """
         Generates a header based on the stored token for the connection.
 
@@ -280,7 +280,7 @@ class ActualServer:
         response.raise_for_status()
         return StatusDTO.model_validate(response.json())
 
-    def delete_user_file(self, file_id: str):
+    def delete_user_file(self, file_id: str) -> StatusDTO:
         """Deletes the user file loaded from the remote server."""
         response = self._requests_session.post(
             Endpoints.DELETE_USER_FILE.value, json={"fileId": file_id, "token": self._token}
