@@ -12,7 +12,7 @@ import warnings
 import zipfile
 from collections.abc import Sequence
 from os import PathLike
-from typing import IO, cast
+from typing import IO, Any, cast
 
 import httpx
 from sqlalchemy.engine import Engine
@@ -71,7 +71,7 @@ class Actual(ActualServer):
         data_dir: str | pathlib.Path | None = None,
         cert: bool | ssl.SSLContext | str = True,
         bootstrap: bool = False,
-        sa_kwargs: dict | None = None,
+        sa_kwargs: dict[str, Any] | None = None,
         extra_headers: dict[str, str] | None = None,
         timeout: float | httpx.Timeout | None = 60.0,
     ):
@@ -150,7 +150,7 @@ class Actual(ActualServer):
             self.download_budget(self._encryption_password)
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         if self._session:
             self._session.close()
         if self.engine:
@@ -222,7 +222,7 @@ class Actual(ActualServer):
             raise UnknownFileId(f"Multiple files found with identifier '{file_id}'")
         return self.set_file(selected_files[0])
 
-    def run_migrations(self, migration_files: list[str]):
+    def run_migrations(self, migration_files: list[str]) -> None:
         """
         Runs the migration files, skipping the ones that have already been run.
 
@@ -253,7 +253,7 @@ class Actual(ActualServer):
             raise ActualError("Engine not initialized. Download or create a budget first.")
         self._database_metadata = reflect_model(self.engine)
 
-    def create_budget(self, budget_name: str):
+    def create_budget(self, budget_name: str) -> None:
         """
         Creates a budget using the remote server default database and migrations.
 
@@ -295,11 +295,11 @@ class Actual(ActualServer):
             get_or_create_clock(session, self._hulc_client)
             session.commit()
 
-    def rename_budget(self, budget_name: str):
+    def rename_budget(self, budget_name: str) -> None:
         """Renames the budget with the given name."""
         self.update_user_file_name(self.file.file_id, budget_name)
 
-    def delete_budget(self):
+    def delete_budget(self) -> None:
         """Deletes the currently loaded file from the server."""
         self.delete_user_file(self.file.file_id)
         # reset group id, as file cannot be synced anymore
@@ -358,7 +358,7 @@ class Actual(ActualServer):
                 output_file.write(content)
         return content
 
-    def encrypt(self, encryption_password: str):
+    def encrypt(self, encryption_password: str) -> None:
         """
         Encrypts the local database using a new key, and re-uploads to the server.
 
@@ -417,7 +417,7 @@ class Actual(ActualServer):
                 raise ActualEncryptionError("Budget is encrypted but password was not provided")
             self.encrypt(self._encryption_password)
 
-    def reupload_budget(self):
+    def reupload_budget(self) -> None:
         """
         Resets the user file on the backend and re-uploads the current copy instead.
 
@@ -477,13 +477,13 @@ class Actual(ActualServer):
             s.commit()
             return changes
 
-    def get_metadata(self) -> dict:
+    def get_metadata(self) -> dict[str, Any]:
         """Gets the content of the `metadata.json` file."""
         metadata_file = self.data_dir / "metadata.json"
         # Here, we trust the metadata will have the correct format
-        return cast(dict, json.loads(metadata_file.read_text()))
+        return cast(dict[str, Any], json.loads(metadata_file.read_text()))
 
-    def update_metadata(self, patch: dict):
+    def update_metadata(self, patch: dict[str, Any]) -> None:
         """
         Updates the `metadata.json` from the Actual file with the patch fields.
 
@@ -497,7 +497,7 @@ class Actual(ActualServer):
             config = patch
         metadata_file.write_text(json.dumps(config, separators=(",", ":")))
 
-    def download_budget(self, encryption_password: str | None = None):
+    def download_budget(self, encryption_password: str | None = None) -> None:
         """
         Downloads the budget file from the remote, applying all following changes required by the server.
 
@@ -532,6 +532,8 @@ class Actual(ActualServer):
                 if self._master_key is None:
                     raise ActualDecryptionError("Master encryption key is not set.")
                 file_info = self.get_user_file_info(self.file.file_id)
+                if file_info.data.encrypt_meta is None:
+                    raise ActualDecryptionError("Encryption metadata is missing on the user file.")
                 # decrypt file bytes
                 file_bytes = decrypt_from_meta(self._master_key, file_bytes, file_info.data.encrypt_meta)
             self.import_zip(io.BytesIO(file_bytes))
@@ -563,7 +565,7 @@ class Actual(ActualServer):
             self._master_key = create_key_buffer(encryption_password, key_info.data.salt)
         return self._master_key
 
-    def import_zip(self, file_bytes: str | PathLike[str] | IO[bytes]):
+    def import_zip(self, file_bytes: str | PathLike[str] | IO[bytes]) -> None:
         """
         Imports a zip file as the current database, as well as generating the local reflected session.
 
@@ -628,7 +630,7 @@ class Actual(ActualServer):
                 session.commit()
         return changeset
 
-    def commit(self):
+    def commit(self) -> None:
         """
         Adds all pending entries done to the local database, and sends a sync request to the remote server.
 
@@ -654,7 +656,7 @@ class Actual(ActualServer):
         if self.file.group_id:  # only files with a group id can be synced
             self.sync_sync(req)
 
-    def run_rules(self, transactions: Sequence[Transactions] | None = None):
+    def run_rules(self, transactions: Sequence[Transactions] | None = None) -> None:
         """Runs all the stored rules on the database on all transactions, without any filters."""
         if transactions is None:
             transactions = get_transactions(self.session)

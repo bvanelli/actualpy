@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Any
 
 from sqlmodel import Column, Session, select
 
@@ -23,7 +24,7 @@ class Changeset:
 
     table: type[BaseModel] = field(metadata={"description": "The SQLModel reference to the table hosting the data."})
     id: str = field(metadata={"description": "The unique id of the row that was inserted or updated."})
-    values: dict[Column, str | int | float | bool | None] = field(
+    values: dict[Column[Any], str | int | float | bool | None] = field(
         metadata={
             "description": "The list of values that were updated on the remote server, using column names as keys."
         }

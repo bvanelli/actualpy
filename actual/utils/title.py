@@ -159,7 +159,7 @@ regex = re.compile(
 )
 
 
-def convert_to_regexp(special_characters: list[str]):
+def convert_to_regexp(special_characters: list[str]) -> list[tuple[re.Pattern[str], str]]:
     return [(re.compile(rf"\b{s}\b", re.IGNORECASE), s) for s in special_characters]
 
 

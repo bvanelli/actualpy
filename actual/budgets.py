@@ -1,6 +1,7 @@
 import dataclasses
 import datetime
 import decimal
+import typing
 from collections.abc import Iterator
 
 from sqlmodel import Session, col, select
@@ -93,7 +94,7 @@ class BudgetCategory(_HasDatabaseObject):
             return False
         return bool(self.budget.carryover)
 
-    def as_dict(self) -> dict:
+    def as_dict(self) -> dict[str, str | bool | decimal.Decimal | None]:
         """
         Converts the budget category to a dictionary representation.
 
@@ -140,7 +141,7 @@ class BudgetCategoryGroup(_HasDatabaseObject):
         """Sum of all accumulated balances from the categories under this category group."""
         return sum([c.accumulated_balance for c in self.categories], start=decimal.Decimal(0))
 
-    def as_dict(self) -> dict:
+    def as_dict(self) -> dict[str, typing.Any]:
         """
         Converts the budget category group to a dictionary representation, including nested categories.
 
@@ -183,7 +184,7 @@ class IncomeCategory(_HasDatabaseObject):
     If a budget was not set for the month, it will be set to `None`, and budgeted amount assumed to be zero.
     """
 
-    def as_dict(self) -> dict:
+    def as_dict(self) -> dict[str, str | bool | decimal.Decimal | None]:
         """
         Converts the income category to a dictionary representation.
         """
@@ -225,7 +226,7 @@ class IncomeCategoryGroup(_HasDatabaseObject):
         """
         return sum([c.budgeted for c in self.categories], start=decimal.Decimal(0))
 
-    def as_dict(self) -> dict:
+    def as_dict(self) -> dict[str, typing.Any]:
         """
         Converts the income category group to a dictionary representation, including nested categories.
         """
@@ -342,7 +343,7 @@ class EnvelopeBudget(BaseBudget):
         return self.received + self.from_last_month
 
     @property
-    def to_budget(self):
+    def to_budget(self) -> decimal.Decimal:
         """
         The amount of money available for budgeting.
 
@@ -351,7 +352,7 @@ class EnvelopeBudget(BaseBudget):
         """
         return self.available_funds - self.budgeted - self.for_next_month + self.last_month_overspent
 
-    def as_dict(self) -> dict:
+    def as_dict(self) -> dict[str, typing.Any]:
         """
         Converts the envelope budget to a dictionary representation, including all category groups.
 
@@ -400,7 +401,7 @@ class TrackingBudget(BaseBudget):
         """The amount of income budgeted for the current month."""
         return sum([cat.budgeted for cat in self.income_category_groups], start=decimal.Decimal(0))
 
-    def as_dict(self) -> dict:
+    def as_dict(self) -> dict[str, typing.Any]:
         """
         Converts the tracking budget to a dictionary representation, including all category groups.
 
@@ -434,7 +435,7 @@ class BudgetList(list[EnvelopeBudget | TrackingBudget]):
     :param is_tracking_budget: Whether the budgets are tracking budgets (True) or envelope budgets (False).
     """
 
-    def __init__(self, iterable, is_tracking_budget: bool = False):
+    def __init__(self, iterable: typing.Iterable["EnvelopeBudget | TrackingBudget"], is_tracking_budget: bool = False):
         super().__init__(iterable)
         self.is_tracking_budget: bool = is_tracking_budget
 
@@ -489,14 +490,14 @@ def _get_category_detailed_budget(
     if not budget:
         # create a temporary budget
         range_start, range_end = month_range(month)
-        balance = s.scalar(_balance_base_query(s, range_start, range_end, category=category))
+        scalar_balance = s.scalar(_balance_base_query(s, range_start, range_end, category=category))
         budgeted = decimal.Decimal(0)
-        spent = cents_to_decimal(balance)
+        spent = cents_to_decimal(scalar_balance)
     else:
         budgeted = budget.get_amount()
         spent = budget.balance
     # Balance is the simple subtraction of the spent from the budget amount
-    balance = budgeted + spent
+    balance: decimal.Decimal = budgeted + spent
     # The accumulated balance relates to a previous budget
     return BudgetCategory(
         category,
@@ -578,7 +579,7 @@ def _calculate_accumulated_balance(
 def _process_expense_categories(
     s: Session,
     month: datetime.date,
-    category_groups: list[CategoryGroups],
+    category_groups: typing.Sequence[CategoryGroups],
     previous_budget: EnvelopeBudget | TrackingBudget | None,
     is_tracking: bool,
 ) -> list[BudgetCategoryGroup]:
@@ -595,7 +596,7 @@ def _process_expense_categories(
 
 
 def _process_income_categories(
-    s: Session, month: datetime.date, income_category_groups: list[CategoryGroups], is_tracking: bool
+    s: Session, month: datetime.date, income_category_groups: typing.Sequence[CategoryGroups], is_tracking: bool
 ) -> list[IncomeCategoryGroup]:
     """Processes all income category groups for a given month."""
     income_cat_group_list: list[IncomeCategoryGroup] = []

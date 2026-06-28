@@ -60,8 +60,10 @@ def decrypt(master_key: bytes, iv: bytes, ciphertext: bytes, auth_tag: bytes | N
         raise ActualDecryptionError("Error decrypting file. Is the encryption key correct?") from None
 
 
-def decrypt_from_meta(master_key: bytes, ciphertext: bytes, encrypt_meta) -> bytes:
+def decrypt_from_meta(master_key: bytes, ciphertext: bytes, encrypt_meta: EncryptMetaDTO) -> bytes:
     """Decrypts a cyphertext (actual database) using AES-GCM using the provided metadata."""
+    if encrypt_meta.iv is None or encrypt_meta.auth_tag is None:
+        raise ActualDecryptionError("Encryption metadata is missing required iv or authTag.")
     iv = base64.b64decode(encrypt_meta.iv)
     auth_tag = base64.b64decode(encrypt_meta.auth_tag)
     return decrypt(master_key, iv, ciphertext, auth_tag)
@@ -79,7 +81,7 @@ def make_test_message(key_id: str, key: bytes) -> EncryptionTestDTO:
     return encrypt(key_id, key, binary_message)
 
 
-def is_uuid(text: str, version: int = 4):
+def is_uuid(text: str, version: int = 4) -> bool:
     """
     Check if uuid_to_test is a valid UUID. Taken from [this thread](https://stackoverflow.com/a/54254115/12681470)
 

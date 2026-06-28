@@ -41,7 +41,7 @@ class HULC_Client:
         parsed_ts = datetime.datetime.fromisoformat(ts_string)
         return cls(segments[-1], int(segments[-2], 16), parsed_ts)
 
-    def __str__(self):
+    def __str__(self) -> str:
         ts = self.ts or datetime.datetime(1970, 1, 1, 0, 0, 0)
         return f"{ts.isoformat(timespec='milliseconds')}Z-{self.initial_count:0>4X}-{self.client_id}"
 
@@ -178,7 +178,7 @@ class SyncRequest(proto.Message):
     def set_null_timestamp(self, client_id: str | None = None) -> str:
         return self.set_timestamp(client_id, datetime.datetime(1970, 1, 1, 0, 0, 0, 0))
 
-    def set_messages(self, messages: list[Message], client: HULC_Client, master_key: bytes | None = None):
+    def set_messages(self, messages: list[Message], client: HULC_Client, master_key: bytes | None = None) -> None:
         if not self.messages:
             self.messages = []
         for message in messages:

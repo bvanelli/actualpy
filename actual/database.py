@@ -156,7 +156,7 @@ def apply_change(
     session.exec(insert_stmt)
 
 
-def strong_reference_session(session: Session):
+def strong_reference_session(session: Session) -> Session:
     """
     References a session so that all object instances created on the session can be tracked.
 
@@ -165,7 +165,7 @@ def strong_reference_session(session: Session):
     """
 
     @event.listens_for(session, "before_flush")
-    def before_flush(sess, flush_context, instances):
+    def before_flush(sess: Session, flush_context: Any, instances: Any) -> None:
         if len(sess.deleted):
             raise ActualInvalidOperationError(
                 "Actual does not allow deleting entries, set the `tombstone` to 1 instead or call the .delete() method"
@@ -185,9 +185,9 @@ def strong_reference_session(session: Session):
     @event.listens_for(session, "after_commit")
     @event.listens_for(session, "after_soft_rollback")
     def after_commit_or_rollback(
-        sess,
-        previous_transaction=None,
-    ):
+        sess: Session,
+        previous_transaction: Any = None,
+    ) -> None:
         if sess.info.get("messages"):
             del sess.info["messages"]
 
@@ -543,13 +543,13 @@ class MessagesClock(SQLModel, table=True):
     id: int | None = Field(default=None, sa_column=Column("id", Integer, primary_key=True))
     clock: str | None = Field(default=None, sa_column=Column("clock", Text))
 
-    def get_clock(self) -> dict:
+    def get_clock(self) -> dict[str, Any]:
         """Gets the clock from JSON text to a dictionary with fields `timestamp` and `merkle`."""
         if self.clock is None:
             raise ValueError("Clock is not set")
-        return cast(dict, json.loads(self.clock))
+        return cast(dict[str, Any], json.loads(self.clock))
 
-    def set_clock(self, value: dict):
+    def set_clock(self, value: dict[str, Any]) -> None:
         """Sets the clock from a dictionary and stores it in the correct format."""
         self.clock = json.dumps(value, separators=(",", ":"))
 
@@ -820,11 +820,11 @@ class Transactions(BaseModel, table=True):
             raise ValueError("Transaction date is not set")
         return int_to_date(self.date)
 
-    def set_date(self, date: datetime.date):
+    def set_date(self, date: datetime.date) -> None:
         """Sets the transaction date as a datetime.date object, instead of as a string."""
         self.date = date_to_int(date)
 
-    def set_amount(self, amount: decimal.Decimal | int | float):
+    def set_amount(self, amount: decimal.Decimal | int | float) -> None:
         """Sets the amount as a decimal.Decimal object, instead of as an integer representing the number of cents."""
         self.amount = decimal_to_cents(amount)
 
@@ -833,7 +833,7 @@ class Transactions(BaseModel, table=True):
         return cents_to_decimal(self.amount)
 
     @validates("cleared")
-    def validate_cleared(self, key, v):
+    def validate_cleared(self, key: str, v: Any) -> Any:
         """Add an validator which ensures that clearing parent transactions also affects all splits"""
 
         # Validation only performed on parent transactions where cleared is changed
@@ -889,11 +889,11 @@ class ZeroBudgetMonths(BaseModel, table=True):
         """Returns the month as a datetime.date object, instead of as a string."""
         return int_to_date(self.id.replace("-", ""), month_only=True)
 
-    def set_month(self, month: datetime.date):
+    def set_month(self, month: datetime.date) -> None:
         """Sets the month as a datetime.date object, instead of as a string."""
         self.id = datetime.date.strftime(month, "%Y-%m")
 
-    def set_amount(self, amount: decimal.Decimal | int | float):
+    def set_amount(self, amount: decimal.Decimal | int | float) -> None:
         """Sets the amount as a decimal.Decimal object, instead of as an integer representing the number of cents."""
         self.buffered = decimal_to_cents(amount)
 
@@ -924,7 +924,7 @@ class BaseBudgets(BaseModel):
             raise ValueError("Budget month is not set")
         return int_to_date(self.month, month_only=True)
 
-    def set_date(self, date: datetime.date):
+    def set_date(self, date: datetime.date) -> None:
         """
         Sets the transaction date as a datetime.date object, instead of as a string.
 
@@ -933,7 +933,7 @@ class BaseBudgets(BaseModel):
         """
         self.month = date_to_int(date, month_only=True)
 
-    def set_amount(self, amount: decimal.Decimal | int | float):
+    def set_amount(self, amount: decimal.Decimal | int | float) -> None:
         """Sets the amount as a decimal.Decimal object, instead of as an integer representing the number of cents."""
         self.amount = decimal_to_cents(amount)
 

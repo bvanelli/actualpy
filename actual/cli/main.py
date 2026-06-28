@@ -28,7 +28,7 @@ state: State = State()
 
 
 @app.callback()
-def main(output: OutputType = typer.Option("table", "--output", "-o", help="Output format: table or json")):
+def main(output: OutputType = typer.Option("table", "--output", "-o", help="Output format: table or json")) -> None:
     if output:
         state.output = output
 
@@ -42,7 +42,7 @@ def init(
     ),
     context: str | None = typer.Option(None, "--context", help="Context for this budget context"),
     file_id: str | None = typer.Option(None, "--file", help="File ID or name on the remote server"),
-):
+) -> None:
     """
     Initializes an actual budget config interactively if options are not provided.
     """
@@ -92,7 +92,7 @@ def init(
 
 
 @app.command()
-def use_context(context: str = typer.Argument(..., help="Context for this budget context")):
+def use_context(context: str = typer.Argument(..., help="Context for this budget context")) -> None:
     """Sets the default context for the CLI."""
     if context not in config.budgets:
         raise ValueError(f"Context '{context}' is not registered. Choose one from {list(config.budgets.keys())}")
@@ -101,7 +101,7 @@ def use_context(context: str = typer.Argument(..., help="Context for this budget
 
 
 @app.command()
-def get_contexts():
+def get_contexts() -> None:
     """Shows all configured contexts."""
     if state.output == OutputType.table:
         table = Table(title="Contexts")
@@ -127,7 +127,7 @@ def get_contexts():
 
 
 @app.command()
-def remove_context(context: str = typer.Argument(..., help="Context to be removed")):
+def remove_context(context: str = typer.Argument(..., help="Context to be removed")) -> None:
     """Removes a configured context from the configuration."""
     if context not in config.budgets:
         raise ValueError(f"Context '{context}' is not registered. Choose one from {list(config.budgets.keys())}")
@@ -137,7 +137,7 @@ def remove_context(context: str = typer.Argument(..., help="Context to be remove
 
 
 @app.command()
-def version():
+def version() -> None:
     """
     Shows the library and server version.
     """
@@ -151,7 +151,7 @@ def version():
 
 
 @app.command()
-def accounts():
+def accounts() -> None:
     """
     Show all accounts.
     """
@@ -181,7 +181,7 @@ def accounts():
 
 
 @app.command()
-def transactions():
+def transactions() -> None:
     """
     Show all transactions.
     """
@@ -223,7 +223,7 @@ def transactions():
 
 
 @app.command()
-def payees():
+def payees() -> None:
     """
     Show all payees.
     """
@@ -250,7 +250,9 @@ def payees():
 
 
 @app.command()
-def budget(month: datetime.datetime | None = typer.Argument(default=None, help="Month for which to show the budget")):
+def budget(
+    month: datetime.datetime | None = typer.Argument(default=None, help="Month for which to show the budget"),
+) -> None:
     """
     Shows the budget for a certain month.
     """
@@ -343,7 +345,7 @@ def export(
         help="Name of the file to export, in zip format. "
         "Leave it empty to export it to the current folder with default name.",
     ),
-):
+) -> None:
     """
     Generates an export from the budget (for CLI backups).
 
@@ -365,7 +367,7 @@ def export(
 
 
 @app.command()
-def metadata():
+def metadata() -> None:
     """Displays all metadata for the current budget."""
     with config.actual() as actual:
         actual_metadata = actual.get_metadata()
