@@ -5,7 +5,7 @@ import decimal
 import enum
 import typing
 
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field, model_validator
 
 from actual.utils.title import title
 
@@ -50,6 +50,7 @@ class DebtorAccount(BaseModel):
 
 
 class BalanceType(enum.Enum):
+    # goCardless/Nordigen camelCase names.
     # See https://developer.gocardless.com/bank-account-data/balance#balance_type for full documentation
     CLOSING_AVAILABLE = "closingAvailable"
     CLOSING_BOOKED = "closingBooked"
@@ -65,6 +66,25 @@ class BalanceType(enum.Enum):
     OPENING_AVAILABLE = "openingAvailable"
     OPENING_CLEARED = "openingCleared"
     PREVIOUSLY_CLOSED_BOOKED = "previouslyClosedBooked"
+    # Enable Banking returns ISO 20022 external balance-type codes instead of the
+    # camelCase names above. https://enablebanking.com/docs/api/reference/#balance
+    ISO_CLOSING_BOOKED = "CLBD"
+    ISO_CLOSING_AVAILABLE = "CLAV"
+    ISO_INTERIM_BOOKED = "ITBD"
+    ISO_INTERIM_AVAILABLE = "ITAV"
+    ISO_OPENING_BOOKED = "OPBD"
+    ISO_OPENING_AVAILABLE = "OPAV"
+    ISO_FORWARD_AVAILABLE = "FWAV"
+    ISO_EXPECTED = "XPCD"
+    ISO_PREVIOUSLY_CLOSED_BOOKED = "PRCD"
+    ISO_INFORMATION = "INFO"
+
+    @classmethod
+    def _missing_(cls, value: object) -> BalanceType:
+        # Be lenient with unknown/unmapped balance-type codes: the balance type is
+        # informational only and not used in the sync reconciliation, so an unknown
+        # code from any provider should not break parsing of the whole response.
+        return cls.INFORMATION
 
 
 class Balance(BaseModel):
@@ -95,6 +115,55 @@ class TransactionItem(BaseModel):
     additional_information: str | None = Field(None, alias="additionalInformation")
     # simpleFin optional fields
     posted_date: datetime.date | None = Field(None, alias="postedDate")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_enable_banking(cls, data: typing.Any) -> typing.Any:
+        """Map Enable Banking's native transaction shape onto the goCardless/simpleFin
+        field names this model already understands.
+
+        Enable Banking differs in several ways: the id is ``entry_reference``, the amount is
+        always positive with a separate ``credit_debit_indicator`` (``DBIT``/``CRDT``) carrying
+        the sign, there is no ``date`` field (only ``booking_date``/``transaction_date``), the
+        booked flag is a ``status`` string (``BOOK``), and the counterparty is a nested
+        ``creditor``/``debtor`` object rather than a flat ``creditorName``/``debtorName``.
+        """
+        if not isinstance(data, dict):
+            return data
+        if "entry_reference" not in data and "credit_debit_indicator" not in data:
+            return data  # not an Enable Banking payload, leave untouched
+        data = dict(data)
+        data.setdefault("transactionId", data.get("entry_reference"))
+        # amount: positive value + credit_debit_indicator -> signed transactionAmount
+        amount = data.get("transaction_amount") or data.get("transactionAmount")
+        if isinstance(amount, dict) and amount.get("amount") is not None:
+            value = decimal.Decimal(str(amount["amount"]))
+            if str(data.get("credit_debit_indicator", "")).upper() == "DBIT":
+                value = -value
+            data["transactionAmount"] = {"amount": str(value), "currency": amount.get("currency")}
+        # date: no dedicated field, derive from booking/transaction/value date
+        data.setdefault("date", data.get("booking_date") or data.get("transaction_date") or data.get("value_date"))
+        data.setdefault("bookingDate", data.get("booking_date"))
+        data.setdefault("valueDate", data.get("value_date"))
+        # booked flag from ISO status string
+        if "booked" not in data and "status" in data:
+            data["booked"] = str(data.get("status", "")).upper() == "BOOK"
+        # counterparty name from nested creditor/debtor
+        if "creditorName" not in data and "debtorName" not in data:
+            name = (data.get("creditor") or {}).get("name") or (data.get("debtor") or {}).get("name")
+            if name:
+                data["payeeName"] = data.get("payeeName") or name
+                data["debtorName"] = name
+        # counterparty account (iban) from nested creditor/debtor account
+        if "creditorAccount" not in data and "debtorAccount" not in data:
+            account = data.get("creditor_account") or data.get("debtor_account") or {}
+            if isinstance(account, dict) and account.get("iban"):
+                data["debtorAccount"] = {"iban": account["iban"]}
+        # remittance info comes as a list under a different key
+        remittance = data.get("remittance_information")
+        if "remittanceInformationUnstructuredArray" not in data and isinstance(remittance, list):
+            data["remittanceInformationUnstructuredArray"] = remittance
+        return data
 
     @property
     def imported_payee(self) -> str:
