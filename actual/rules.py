@@ -476,7 +476,14 @@ class Action(pydantic.BaseModel):
         [Rule.run][actual.rules.Rule.run]."""
         if self.op == ActionType.SET:
             attr = get_attribute_by_table_name(str(Transactions.__tablename__), str(self.field))
-            value = get_value(self.value, self.type)
+            # get_value() normalizes strings (lowercase + NFD decomposition) for
+            # condition comparison; a value being WRITTEN must keep its original
+            # form, like Actual's own rule engine does. Otherwise a rule that
+            # sets notes to '#Groceries' writes '#groceries'.
+            if self.type in (ValueType.STRING, ValueType.IMPORTED_PAYEE) and isinstance(self.value, str):
+                value = self.value
+            else:
+                value = get_value(self.value, self.type)
             # if the split index is existing, modify instead the split transaction
             split_index = self.get_split_index()
             if split_index and len(transaction.splits) >= split_index:
