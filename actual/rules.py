@@ -283,6 +283,22 @@ def _coerce_value(v: typing.Any) -> typing.Any:
     return v
 
 
+# Actual stores rule conditions and actions using the app-level field names,
+# while the transactions table (and this library) uses the internal column
+# names. Accept both so rules created in the Actual frontend can be loaded.
+FIELD_NAME_ALIASES = {
+    "payee": "description",
+    "account": "acct",
+    "imported_payee": "imported_description",
+}
+
+
+def _coerce_field_alias(v: typing.Any) -> typing.Any:
+    if isinstance(v, str):
+        return FIELD_NAME_ALIASES.get(v, v)
+    return v
+
+
 class Condition(pydantic.BaseModel):
     """
     A condition does a single comparison check for a transaction. The `op` indicates the action type, usually being
@@ -308,16 +324,19 @@ class Condition(pydantic.BaseModel):
     - `amount_outflow`: `type` must be `number` and format in cents, will set `"options":{"outflow":true}`
     """
 
-    field: typing.Literal[
-        "imported_description",
-        "acct",
-        "category",
-        "date",
-        "description",
-        "notes",
-        "amount",
-        "amount_inflow",
-        "amount_outflow",
+    field: typing.Annotated[
+        typing.Literal[
+            "imported_description",
+            "acct",
+            "category",
+            "date",
+            "description",
+            "notes",
+            "amount",
+            "amount_inflow",
+            "amount_outflow",
+        ],
+        pydantic.BeforeValidator(_coerce_field_alias),
     ]
     op: ConditionType
     value: typing.Annotated[
@@ -396,7 +415,13 @@ class Action(pydantic.BaseModel):
     - `amount`: `type` must be `number` and format in cents
     """
 
-    field: typing.Literal["category", "description", "notes", "cleared", "acct", "date", "amount"] | None = None
+    field: (
+        typing.Annotated[
+            typing.Literal["category", "description", "notes", "cleared", "acct", "date", "amount"],
+            pydantic.BeforeValidator(_coerce_field_alias),
+        ]
+        | None
+    ) = None
     op: ActionType = pydantic.Field(ActionType.SET, description="Action type to apply (default changes a column).")
     value: typing.Annotated[
         str | bool | int | None,

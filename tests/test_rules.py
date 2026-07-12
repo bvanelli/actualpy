@@ -506,3 +506,47 @@ def test_run_rules(session, mocker):
     assert splits[0].payee == target_payee
     assert splits[1].payee == source_payee
     assert t_splits.payee is None
+
+
+def test_frontend_field_names_are_accepted(session):
+    """Actual stores rule conditions/actions with app-level field names
+    ('payee', 'account', 'imported_payee'); make sure they load and run like
+    their internal counterparts ('description', 'acct', 'imported_description').
+    """
+    import json
+
+    from pydantic import TypeAdapter
+
+    acct = create_account(session, "Bank")
+    savings = create_account(session, "Savings")
+    payee = create_payee(session, "Coffee shop")
+    session.commit()
+    # conditions and actions exactly as stored by the Actual frontend
+    conditions_json = json.dumps(
+        [
+            {"op": "is", "field": "payee", "value": payee.id, "type": "id"},
+            {"op": "is", "field": "account", "value": acct.id, "type": "id"},
+            {"op": "contains", "field": "imported_payee", "value": "coffee", "type": "imported_payee"},
+        ]
+    )
+    actions_json = json.dumps([{"op": "set", "field": "notes", "value": "matched", "type": "string"}])
+    conditions = TypeAdapter(list[Condition]).validate_json(conditions_json)
+    actions = TypeAdapter(list[Action]).validate_json(actions_json)
+    assert [c.field for c in conditions] == ["description", "acct", "imported_description"]
+    rule = Rule(conditions=conditions, actions=actions, operation="and")
+    t = create_transaction(
+        session, datetime.date.today(), acct, payee, notes="", imported_payee="COFFEE PLACE 42"
+    )
+    session.commit()
+    rule.run(t)
+    assert t.notes == "matched"
+    # an action with an aliased field name also loads
+    action_alias = Action.model_validate({"op": "set", "field": "payee", "value": payee.id, "type": "id"})
+    assert action_alias.field == "description"
+    # sanity: the other account does not match
+    t2 = create_transaction(
+        session, datetime.date.today(), savings, payee, notes="", imported_payee="COFFEE PLACE 42"
+    )
+    session.commit()
+    rule.run(t2)
+    assert t2.notes == ""
