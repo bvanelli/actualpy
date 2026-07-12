@@ -534,9 +534,7 @@ def test_frontend_field_names_are_accepted(session):
     actions = TypeAdapter(list[Action]).validate_json(actions_json)
     assert [c.field for c in conditions] == ["description", "acct", "imported_description"]
     rule = Rule(conditions=conditions, actions=actions, operation="and")
-    t = create_transaction(
-        session, datetime.date.today(), acct, payee, notes="", imported_payee="COFFEE PLACE 42"
-    )
+    t = create_transaction(session, datetime.date.today(), acct, payee, notes="", imported_payee="COFFEE PLACE 42")
     session.commit()
     rule.run(t)
     assert t.notes == "matched"
@@ -544,9 +542,7 @@ def test_frontend_field_names_are_accepted(session):
     action_alias = Action.model_validate({"op": "set", "field": "payee", "value": payee.id, "type": "id"})
     assert action_alias.field == "description"
     # sanity: the other account does not match
-    t2 = create_transaction(
-        session, datetime.date.today(), savings, payee, notes="", imported_payee="COFFEE PLACE 42"
-    )
+    t2 = create_transaction(session, datetime.date.today(), savings, payee, notes="", imported_payee="COFFEE PLACE 42")
     session.commit()
     rule.run(t2)
     assert t2.notes == ""
