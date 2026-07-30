@@ -223,3 +223,28 @@ def test_bank_sync_invalid_input(session, mocker):
             actual.run_bank_sync("notExistingAccount")
         with pytest.raises(ActualError, match="Account is missing sync source"):
             actual._run_bank_sync_account(account, datetime.date.today(), False)
+
+
+def test_transaction_item_with_empty_creditor_account():
+    """Depending on the bank, goCardless sends ``creditorAccount: {}`` instead of
+    omitting the key. The union on ``payee_account`` does not cover that — the
+    empty object is validated as a ``DebtorAccount`` — so a required ``iban``
+    aborted the whole bank sync with a ValidationError."""
+    entry = copy.deepcopy(response["transactions"]["all"][0])
+    entry["creditorAccount"] = {}
+
+    item = TransactionItem.model_validate(entry)
+
+    assert item.payee_account is not None
+    assert item.payee_account.iban is None
+    assert item.payee_account.masked_iban == ""
+
+
+def test_transaction_item_keeps_iban_when_present():
+    entry = copy.deepcopy(response["transactions"]["all"][0])
+    entry["creditorAccount"] = {"iban": "DE02120300000000202051", "currency": "EUR"}
+
+    item = TransactionItem.model_validate(entry)
+
+    assert item.payee_account is not None
+    assert item.payee_account.masked_iban == "(DE02 XXX 2051)"

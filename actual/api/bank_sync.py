@@ -42,10 +42,14 @@ class BankSyncAmount(BaseModel):
 
 
 class DebtorAccount(BaseModel):
-    iban: str
+    # goCardless can send an empty object instead of omitting the key entirely,
+    # depending on the bank, so the field itself has to be optional.
+    iban: str | None = None
 
     @property
     def masked_iban(self) -> str:
+        if not self.iban:
+            return ""
         return f"({self.iban[:4]} XXX {self.iban[-4:]})"
 
 
