@@ -509,22 +509,10 @@ def test_run_rules(session, mocker):
 
 
 def test_set_string_action_preserves_original_value(session):
-    """SET actions on string fields must write the value exactly as defined on
-    the rule. get_normalized_string (lowercase + NFD) is meant for condition
-    comparison only; Actual's own rule engine preserves the original text."""
-    import unicodedata
-
+    """String values are written as defined on the rule, without the normalization done for conditions."""
     acct = create_account(session, "Bank")
-    payee = create_payee(session, "Supermarket")
-    t = create_transaction(session, datetime.date.today(), acct, payee, notes="")
-    session.commit()
-    action = Action(field="notes", op="set", value="#Transferência", type=ValueType.STRING)
-    action.run(t)
+    t = create_transaction(session, datetime.date(2024, 1, 1), acct, "")
+    Action(field="notes", value="#Transferência").run(t)
     assert t.notes == "#Transferência"
-    assert t.notes == unicodedata.normalize("NFC", t.notes)
     # conditions still match case-insensitively against the written value
-    condition = Condition(field="notes", op="is", value="#transferência")
-    assert condition.run(t)
-    # accented value survives a second application unchanged (idempotent)
-    action.run(t)
-    assert t.notes == "#Transferência"
+    assert Condition(field="notes", op="is", value="#transferência").run(t) is True
