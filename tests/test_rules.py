@@ -1,7 +1,9 @@
 import datetime
+import json
 import uuid
 
 import pytest
+from pydantic import TypeAdapter
 
 from actual import Actual, ActualError
 from actual.exceptions import ActualSplitTransactionError
@@ -509,18 +511,10 @@ def test_run_rules(session, mocker):
 
 
 def test_frontend_field_names_are_accepted(session):
-    """Actual stores rule conditions/actions with app-level field names
-    ('payee', 'account', 'imported_payee'); make sure they load and run like
-    their internal counterparts ('description', 'acct', 'imported_description').
-    """
-    import json
-
-    from pydantic import TypeAdapter
-
+    """Field names as stored by the Actual frontend load and run like their internal counterparts."""
     acct = create_account(session, "Bank")
     savings = create_account(session, "Savings")
     payee = create_payee(session, "Coffee shop")
-    session.commit()
     # conditions and actions exactly as stored by the Actual frontend
     conditions_json = json.dumps(
         [
@@ -535,7 +529,6 @@ def test_frontend_field_names_are_accepted(session):
     assert [c.field for c in conditions] == ["description", "acct", "imported_description"]
     rule = Rule(conditions=conditions, actions=actions, operation="and")
     t = create_transaction(session, datetime.date.today(), acct, payee, notes="", imported_payee="COFFEE PLACE 42")
-    session.commit()
     rule.run(t)
     assert t.notes == "matched"
     # an action with an aliased field name also loads
@@ -543,6 +536,5 @@ def test_frontend_field_names_are_accepted(session):
     assert action_alias.field == "description"
     # sanity: the other account does not match
     t2 = create_transaction(session, datetime.date.today(), savings, payee, notes="", imported_payee="COFFEE PLACE 42")
-    session.commit()
     rule.run(t2)
     assert t2.notes == ""
