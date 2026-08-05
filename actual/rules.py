@@ -471,12 +471,19 @@ class Action(pydantic.BaseModel):
             return 0
         return int(self.options.get("splitIndex", 0))
 
+    def get_value(self) -> int | datetime.date | str | None:
+        """Value to write to the transaction. Unlike [Condition.get_value][actual.rules.Condition.get_value],
+        string values are not normalized, matching Actual's rule engine."""
+        if self.type in (ValueType.STRING, ValueType.IMPORTED_PAYEE) and isinstance(self.value, str):
+            return self.value
+        return get_value(self.value, self.type)  # type: ignore[return-value]
+
     def run(self, transaction: Transactions) -> None:
         """Runs the action on the transaction, regardless of the condition. For the condition based rule, see
         [Rule.run][actual.rules.Rule.run]."""
         if self.op == ActionType.SET:
             attr = get_attribute_by_table_name(str(Transactions.__tablename__), str(self.field))
-            value = get_value(self.value, self.type)
+            value = self.get_value()
             # if the split index is existing, modify instead the split transaction
             split_index = self.get_split_index()
             if split_index and len(transaction.splits) >= split_index:

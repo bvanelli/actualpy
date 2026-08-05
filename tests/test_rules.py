@@ -506,3 +506,13 @@ def test_run_rules(session, mocker):
     assert splits[0].payee == target_payee
     assert splits[1].payee == source_payee
     assert t_splits.payee is None
+
+
+def test_set_string_action_preserves_original_value(session):
+    """String values are written as defined on the rule, without the normalization done for conditions."""
+    acct = create_account(session, "Bank")
+    t = create_transaction(session, datetime.date(2024, 1, 1), acct, "")
+    Action(field="notes", value="#Transferência").run(t)
+    assert t.notes == "#Transferência"
+    # conditions still match case-insensitively against the written value
+    assert Condition(field="notes", op="is", value="#transferência").run(t) is True
