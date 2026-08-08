@@ -150,8 +150,11 @@ def apply_change(
 
     This function has no return value, as the insert statement was crafter to execute as quick as possible.
     """
+    new_values = {getattr(k, "name", k): v for k, v in values.items()}
     insert_stmt = (
-        insert(table).values({"id": table_id, **values}).on_conflict_do_update(index_elements=["id"], set_=values)
+        insert(table)
+        .values({"id": table_id, **new_values})
+        .on_conflict_do_update(index_elements=["id"], set_=new_values)
     )
     session.exec(insert_stmt)
 

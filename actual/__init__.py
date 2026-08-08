@@ -460,9 +460,14 @@ class Actual(ActualServer):
                 next_id = message.row
                 if current_id and current_table is not None and (current_id != next_id or table != current_table):
                     apply_change(s, current_table, current_id, current_value)
-                    # update changes
-                    change = Changeset(get_class_by_table_name(str(current_table.name)), current_id, current_value)
-                    changes.append(change)
+                    # try to update changes
+                    try:
+                        change = Changeset(get_class_by_table_name(str(current_table.name)), current_id, current_value)
+                        changes.append(change)
+                    except ValueError:
+                        warnings.warn(
+                            f"Table '{current_table.name}' not found on the model, will be missing from the changeset."
+                        )
                     # update local cache
                     current_table, current_id, current_value = table, next_id, {column: message.get_value()}
                 # otherwise update the cache with the current value
@@ -471,9 +476,14 @@ class Actual(ActualServer):
             # if after finishing all values there is a value left, update it too
             if current_table is not None and current_id is not None and current_value is not None:
                 apply_change(s, current_table, current_id, current_value)
-                # return a list of changes on this endpoint
-                change = Changeset(get_class_by_table_name(str(current_table.name)), current_id, current_value)
-                changes.append(change)
+                # try to return a list of changes on this endpoint
+                try:
+                    change = Changeset(get_class_by_table_name(str(current_table.name)), current_id, current_value)
+                    changes.append(change)
+                except ValueError:
+                    warnings.warn(
+                        f"Table '{current_table.name}' not found on the model, will be missing from the changeset."
+                    )
             s.commit()
             return changes
 
