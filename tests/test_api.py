@@ -4,10 +4,12 @@ from unittest.mock import patch
 
 import pytest
 from httpx import Client
+from sqlmodel import text
 
 from actual import Actual, reflect_model
 from actual.api import ListUserFilesDTO
 from actual.api.models import RemoteFileListDTO, StatusCode
+from actual.database import Accounts
 from actual.exceptions import ActualError, AuthorizationError, UnknownFileId
 from actual.protobuf_models import Message
 from tests.conftest import RequestsMock
@@ -31,6 +33,27 @@ def test_api_apply(login_mocks, session):
     m.dataset = "accounts"
     with pytest.raises(ActualError, match="column 'bar' at table 'accounts' not found"):
         actual.apply_changes([m])
+
+
+def test_api_apply_table_missing_on_model(login_mocks, session):
+    # a table can exist on the remote database but not be mapped on the models, for example on a newer server version
+    session.exec(text("CREATE TABLE unmapped (id TEXT PRIMARY KEY, foo TEXT)"))
+    session.commit()
+    actual = Actual(token="foo")
+    actual.engine = session.bind
+    actual._database_metadata = reflect_model(session.bind)
+    unmapped_message = Message(dict(dataset="unmapped", row="foobar", column="foo"))
+    unmapped_message.set_value("bar")
+    account_message = Message(dict(dataset="accounts", row="account-id", column="name"))
+    account_message.set_value("Bank")
+    with pytest.warns(UserWarning, match="Table 'unmapped' not found on the model"):
+        changes = actual.apply_changes([unmapped_message, account_message])
+    # the unmapped table is skipped, but the remaining changes are still returned
+    assert len(changes) == 1
+    assert changes[0].table is Accounts
+    assert changes[0].id == "account-id"
+    # the change itself is applied to the local database regardless
+    assert session.exec(text("select foo from unmapped where id = 'foobar'")).scalar_one() == "bar"
 
 
 def test_rename_delete_budget_without_file(login_mocks):
