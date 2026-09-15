@@ -42,10 +42,12 @@ class BankSyncAmount(BaseModel):
 
 
 class DebtorAccount(BaseModel):
-    iban: str
+    iban: str | None = None
 
     @property
     def masked_iban(self) -> str:
+        if not self.iban:
+            return ""
         return f"({self.iban[:4]} XXX {self.iban[-4:]})"
 
 
