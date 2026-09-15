@@ -42,8 +42,6 @@ class BankSyncAmount(BaseModel):
 
 
 class DebtorAccount(BaseModel):
-    # goCardless can send an empty object instead of omitting the key entirely,
-    # depending on the bank, so the field itself has to be optional.
     iban: str | None = None
 
     @property
