@@ -430,3 +430,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# In case the agent clones ./node/ directory
+node/
