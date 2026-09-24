@@ -1,17 +1,21 @@
 import copy
 import datetime
 import decimal
+from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 from httpx import Client
+from pytest_mock import MockerFixture
+from sqlmodel import Session
 
 from actual import Actual, ActualBankSyncError, ActualError
 from actual.api.bank_sync import TransactionItem
-from actual.database import Banks
+from actual.database import Accounts, Banks
 from actual.queries import create_account
 from tests.conftest import RequestsMock
 
-response = {
+response: dict[str, Any] = {
     "iban": "DE123",
     "balances": [
         {
@@ -75,7 +79,7 @@ fail_response = {
 }
 
 
-def create_accounts(session, protocol: str):
+def create_accounts(session: Session, protocol: str) -> Accounts:
     bank = create_account(session, "Bank")
     create_account(session, "Not related")
     bank.account_sync_source = protocol
@@ -85,11 +89,11 @@ def create_accounts(session, protocol: str):
     return bank
 
 
-def generate_bank_sync_data(mocker, starting_balance: int | None = None):
+def generate_bank_sync_data(mocker: MockerFixture, starting_balance: int | None = None) -> MagicMock:
     response_full = copy.deepcopy(response)
     if starting_balance:
         response_full["startingBalance"] = starting_balance
-    response_empty: dict = copy.deepcopy(response)
+    response_empty: dict[str, Any] = copy.deepcopy(response)
     response_empty["transactions"]["all"] = []
     mocker.patch.object(Client, "get").return_value = RequestsMock({"status": "ok", "data": {"validated": True}})
     main_mock = mocker.patch.object(Client, "post")
@@ -103,17 +107,17 @@ def generate_bank_sync_data(mocker, starting_balance: int | None = None):
 
 
 @pytest.fixture
-def bank_sync_data_match(mocker):
+def bank_sync_data_match(mocker: MockerFixture) -> MagicMock:
     # call for validate
     return generate_bank_sync_data(mocker)
 
 
 @pytest.fixture
-def bank_sync_data_no_match(mocker):
+def bank_sync_data_no_match(mocker: MockerFixture) -> MagicMock:
     return generate_bank_sync_data(mocker, 2500)
 
 
-def test_full_bank_sync_go_cardless(session, bank_sync_data_match):
+def test_full_bank_sync_go_cardless(session: Session, bank_sync_data_match: MagicMock) -> None:
     with Actual(token="foo") as actual:
         actual._session = session
         create_accounts(session, "goCardless")
@@ -126,6 +130,7 @@ def test_full_bank_sync_go_cardless(session, bank_sync_data_match):
         assert imported_transactions[0].get_date() == datetime.date(2024, 6, 13)
         # goCardless provides the correct starting balance
         assert imported_transactions[0].get_amount() == decimal.Decimal("1.49")
+        assert imported_transactions[0].payee is not None
         assert imported_transactions[0].payee.name == "Starting Balance"
         assert imported_transactions[0].notes is None
 
@@ -133,6 +138,7 @@ def test_full_bank_sync_go_cardless(session, bank_sync_data_match):
         assert imported_transactions[1].get_date() == datetime.date(2024, 6, 13)
         assert imported_transactions[1].get_amount() == decimal.Decimal("-7.77")
         # the name of the payee was normalized (from GmbH to Gmbh) and the masked iban is included
+        assert imported_transactions[1].payee is not None
         assert imported_transactions[1].payee.name == "Institution Gmbh (DE12 XXX 6789)"
         assert imported_transactions[1].notes == "Payment"
         # also test the iban generation functions
@@ -142,6 +148,7 @@ def test_full_bank_sync_go_cardless(session, bank_sync_data_match):
         assert imported_transactions[2].financial_id == "208584e9-343f-4831-8095-7b9f4a34a77e"
         assert imported_transactions[2].get_date() == datetime.date(2024, 6, 13)
         assert imported_transactions[2].get_amount() == decimal.Decimal("9.26")
+        assert imported_transactions[2].payee is not None
         assert imported_transactions[2].payee.name == "John Doe"
         assert imported_transactions[2].notes == "Transferring Money"
 
@@ -152,7 +159,7 @@ def test_full_bank_sync_go_cardless(session, bank_sync_data_match):
         assert bank_sync_data_match.call_args_list[3][1]["json"]["startDate"] == "2024-06-13"
 
 
-def test_full_bank_sync_go_simplefin(session, bank_sync_data_match):
+def test_full_bank_sync_go_simplefin(session: Session, bank_sync_data_match: MagicMock) -> None:
     with Actual(token="foo") as actual:
         actual._session = session
         create_accounts(session, "simpleFin")
@@ -163,17 +170,19 @@ def test_full_bank_sync_go_simplefin(session, bank_sync_data_match):
         assert imported_transactions[0].financial_id == "a2c2fafe-334a-46a6-8d05-200c2e41397b"
         assert imported_transactions[0].get_date() == datetime.date(2024, 6, 13)
         assert imported_transactions[0].get_amount() == decimal.Decimal("-7.77")
+        assert imported_transactions[0].payee is not None
         assert imported_transactions[0].payee.name == "Institution Gmbh (DE12 XXX 6789)"
         assert imported_transactions[0].notes == "Payment"
 
         assert imported_transactions[1].financial_id == "208584e9-343f-4831-8095-7b9f4a34a77e"
         assert imported_transactions[1].get_date() == datetime.date(2024, 6, 13)
         assert imported_transactions[1].get_amount() == decimal.Decimal("9.26")
+        assert imported_transactions[1].payee is not None
         assert imported_transactions[1].payee.name == "John Doe"
         assert imported_transactions[1].notes == "Transferring Money"
 
 
-def test_bank_sync_with_starting_balance(session, bank_sync_data_no_match):
+def test_bank_sync_with_starting_balance(session: Session, bank_sync_data_no_match: MagicMock) -> None:
     with Actual(token="foo") as actual:
         actual._session = session
         create_accounts(session, "simpleFin")
@@ -186,7 +195,7 @@ def test_bank_sync_with_starting_balance(session, bank_sync_data_no_match):
         assert imported_transactions[0].get_amount() == decimal.Decimal("23.51")
 
 
-def test_bank_sync_unconfigured(mocker, session):
+def test_bank_sync_unconfigured(mocker: MockerFixture, session: Session) -> None:
     mocker.patch.object(Client, "get").return_value = RequestsMock({"status": "ok", "data": {"validated": True}})
     main_mock = mocker.patch.object(Client, "post")
     main_mock.return_value = RequestsMock({"status": "ok", "data": {"configured": False}})
@@ -197,7 +206,7 @@ def test_bank_sync_unconfigured(mocker, session):
         assert actual.run_bank_sync() == []
 
 
-def test_bank_sync_failed_response_exception(session, mocker):
+def test_bank_sync_failed_response_exception(session: Session, mocker: MockerFixture) -> None:
     mocker.patch.object(Client, "get").return_value = RequestsMock({"status": "ok", "data": {"validated": True}})
     main_mock = mocker.patch.object(Client, "post")
     main_mock.side_effect = [
@@ -213,7 +222,7 @@ def test_bank_sync_failed_response_exception(session, mocker):
             actual.run_bank_sync()
 
 
-def test_bank_sync_invalid_input(session, mocker):
+def test_bank_sync_invalid_input(session: Session, mocker: MockerFixture) -> None:
     mocker.patch.object(Client, "get").return_value = RequestsMock({"status": "ok", "data": {"validated": True}})
 
     account = create_account(session, "notSync")
@@ -225,7 +234,7 @@ def test_bank_sync_invalid_input(session, mocker):
             actual._run_bank_sync_account(account, datetime.date.today(), False)
 
 
-def test_transaction_item_with_empty_creditor_account():
+def test_transaction_item_with_empty_creditor_account() -> None:
     """Test that an empty ``creditorAccount`` object does not abort the sync."""
     entry = copy.deepcopy(response["transactions"]["all"][0])
     entry["creditorAccount"] = {}

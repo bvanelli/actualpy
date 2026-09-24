@@ -2,11 +2,13 @@ import datetime
 import json
 import os
 import pathlib
+from collections.abc import Iterator
 
 import pytest
+from pytest_mock import MockerFixture
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.waiting_utils import wait_for_logs
-from typer.testing import CliRunner, Result
+from typer.testing import CliRunner, Result  # type: ignore[attr-defined]  # not re-exported, but click may be missing
 
 from actual import Actual, __version__
 from actual.cli.config import Config, default_config_path
@@ -25,7 +27,7 @@ server_version = ACTUAL_SERVER_INTEGRATION_VERSIONS[-1]  # use latest version
 os.environ["COLUMNS"] = "120"
 
 
-def base_dataset(actual: Actual, budget_name: str = "Test", encryption_password: str | None = None):
+def base_dataset(actual: Actual, budget_name: str = "Test", encryption_password: str | None = None) -> None:
     actual.create_budget(budget_name)
     bank = create_account(actual.session, "Bank")
     income_group = get_or_create_category_group(actual.session, "Income")
@@ -57,7 +59,7 @@ def base_dataset(actual: Actual, budget_name: str = "Test", encryption_password:
 
 
 @pytest.fixture(scope="module")
-def actual_server(module_mocker, tmp_path_factory):
+def actual_server(module_mocker: MockerFixture, tmp_path_factory: pytest.TempPathFactory) -> Iterator[Actual]:
     path = pathlib.Path(tmp_path_factory.mktemp("config"))
     module_mocker.patch("actual.cli.config.default_config_path", return_value=path / "config.yaml")
     with DockerContainer(f"actualbudget/actual-server:{server_version}").with_exposed_ports(5006) as container:
@@ -92,7 +94,7 @@ def invoke(command: list[str]) -> Result:
     return runner.invoke(app, command)
 
 
-def test_init_interactive(actual_server, mocker):
+def test_init_interactive(actual_server: Actual, mocker: MockerFixture) -> None:
     # create a new encrypted file using a separate Actual instance
     # to avoid modifying the shared actual_server fixture
     with Actual(actual_server.api_url, password="mypass", bootstrap=True) as actual:
@@ -114,7 +116,7 @@ def test_init_interactive(actual_server, mocker):
     assert invoke(["remove-context", "myextra"]).exit_code != 0
 
 
-def test_load_config(actual_server):
+def test_load_config(actual_server: Actual) -> None:
     cfg = Config.load()
     assert cfg.default_context == "test"
     assert str(default_config_path()).endswith(".actualpy" + os.sep + "config.yaml")
@@ -124,7 +126,7 @@ def test_load_config(actual_server):
         cfg.actual()
 
 
-def test_app(actual_server):
+def test_app(actual_server: Actual) -> None:
     result = invoke(["version"])
     assert result.exit_code == 0
     assert result.stdout == f"Library Version: {__version__}\nServer Version: {server_version}\n"
@@ -133,7 +135,7 @@ def test_app(actual_server):
     assert json.loads(result.stdout) == {"library_version": __version__, "server_version": server_version}
 
 
-def test_metadata(actual_server):
+def test_metadata(actual_server: Actual) -> None:
     result = invoke(["metadata"])
     assert result.exit_code == 0
     assert "" in result.stdout
@@ -142,7 +144,7 @@ def test_metadata(actual_server):
     assert "budgetName" in json.loads(result.stdout)
 
 
-def test_accounts(actual_server):
+def test_accounts(actual_server: Actual) -> None:
     result = invoke(["accounts"])
     assert result.exit_code == 0
 
@@ -157,7 +159,7 @@ def test_accounts(actual_server):
     assert json.loads(result.stdout) == [{"name": "Bank", "balance": 40.00}]
 
 
-def test_transactions(actual_server):
+def test_transactions(actual_server: Actual) -> None:
     result = invoke(["transactions"])
     assert result.exit_code == 0
 
@@ -182,7 +184,7 @@ def test_transactions(actual_server):
     } in json.loads(result.stdout)
 
 
-def test_payees(actual_server):
+def test_payees(actual_server: Actual) -> None:
     result = invoke(["payees"])
     assert result.exit_code == 0
 
@@ -199,7 +201,7 @@ def test_payees(actual_server):
     assert {"name": "Shopping Center", "balance": -110.00} in json.loads(result.stdout)
 
 
-def test_envelope_budget(actual_server):
+def test_envelope_budget(actual_server: Actual) -> None:
     result = invoke(["budget", "2024-12-01"])
     assert result.exit_code == 0
 
@@ -232,7 +234,7 @@ def test_envelope_budget(actual_server):
     assert result.exit_code == 0
 
 
-def test_tracking_budget(actual_server):
+def test_tracking_budget(actual_server: Actual) -> None:
     get_or_create_preference(actual_server.session, "budgetType", "tracking")
     actual_server.commit()
 
@@ -270,7 +272,7 @@ def test_tracking_budget(actual_server):
     actual_server.commit()
 
 
-def test_export(actual_server, mocker):
+def test_export(actual_server: Actual, mocker: MockerFixture) -> None:
     export_data = mocker.patch("actual.Actual.export_data")
     invoke(["export"])
     export_data.assert_called_once()

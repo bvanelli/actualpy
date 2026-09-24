@@ -87,8 +87,7 @@ def main():
             for transaction in book.transactions:
                 if len(transaction.splits) > 2:
                     print(
-                        f"Could not parse transaction {transaction.guid}. "
-                        "Please, make sure you support splits manually"
+                        f"Could not parse transaction {transaction.guid}. Please, make sure you support splits manually"
                     )
                     continue
                 # for the actual transaction, get account in and out

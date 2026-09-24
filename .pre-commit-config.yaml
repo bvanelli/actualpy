@@ -1,6 +1,6 @@
 repos:
   - repo: 'https://github.com/charliermarsh/ruff-pre-commit'
-    rev: v0.14.0
+    rev: v0.16.8
     hooks:
       - id: ruff-check
         args:
@@ -16,3 +16,22 @@ repos:
       - id: check-added-large-files
         args:
           - '--maxkb=2048'  # allow screenshots
+  # This isn't the perfect hook, as it re-states the dependencies, but it was the only way to get mypy
+  # to cooperate with the env without using a local hook.
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: 'v2.3.1'
+    hooks:
+      - id: mypy
+        args: []
+        # Keep these versions in sync with uv.lock
+        additional_dependencies:
+          - 'pydantic==2.13.4'
+          - 'sqlmodel==0.0.38'
+          - 'httpx==0.28.1'
+          - 'cryptography==48.0.0'
+          - 'typer==0.25.1'
+          - 'pytest==9.0.3'
+          - 'pytest-mock==3.15.1'
+          - 'freezegun==1.5.5'
+          - 'types-PyYAML==6.0.12.20260518'
+          - 'types-python-dateutil==2.9.0.20260518'

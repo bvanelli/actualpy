@@ -1,13 +1,15 @@
 from datetime import date
 
 import pytest
+from sqlmodel import Session
 
 from actual.queries import create_account, create_transaction
 from actual.rules import Rule
-from actual.schedules import Schedule, date_to_datetime
+from actual.schedules import Schedule, WeekendSolveMode
+from actual.utils.conversions import date_to_datetime
 
 
-def test_basic_schedules():
+def test_basic_schedules() -> None:
     s = Schedule.model_validate(
         {
             "start": "2024-05-12",
@@ -28,7 +30,7 @@ def test_basic_schedules():
     assert str(s) == "Every month on the 12th, 3 times"
 
 
-def test_complex_schedules():
+def test_complex_schedules() -> None:
     s = Schedule.model_validate(
         {
             "start": "2024-05-08",
@@ -56,7 +58,7 @@ def test_complex_schedules():
         date(2024, 6, 5),
     ]
     # change the solve mode to before
-    s.weekend_solve_mode = "before"
+    s.weekend_solve_mode = WeekendSolveMode.BEFORE
     assert s.xafter(date(2024, 5, 10), count=5) == [
         date(2024, 5, 10),
         # according to frontend, this entry happens twice
@@ -69,7 +71,7 @@ def test_complex_schedules():
     assert str(s) == "Every month on the last Sunday, 2nd Saturday, 10th, 31st, 5th (before weekend)"
 
 
-def test_skip_weekend_after_schedule():
+def test_skip_weekend_after_schedule() -> None:
     s = Schedule.model_validate(
         {
             "start": "2024-08-14",
@@ -88,7 +90,7 @@ def test_skip_weekend_after_schedule():
     assert after == []
 
 
-def test_skip_weekend_before_schedule():
+def test_skip_weekend_before_schedule() -> None:
     s = Schedule.model_validate(
         {
             "start": "2024-04-10",
@@ -111,7 +113,7 @@ def test_skip_weekend_before_schedule():
     assert s.before(date(2024, 9, 22)) is None
 
 
-def test_is_approx():
+def test_is_approx() -> None:
     # create schedule for every 1st and last day of the month (30th or 31st)
     s = Schedule.model_validate(
         {
@@ -154,13 +156,13 @@ def test_is_approx():
     assert str(s) == "Every month on the 1st, last day, until 2024-07-01 (after weekend)"
 
 
-def test_date_to_datetime():
+def test_date_to_datetime() -> None:
     dt = date(2024, 5, 1)
     assert date_to_datetime(dt).date() == dt
     assert date_to_datetime(None) is None
 
 
-def test_exceptions():
+def test_exceptions() -> None:
     with pytest.raises(ValueError):
         # on_date is set but no date is provided
         Schedule.model_validate(
@@ -175,13 +177,13 @@ def test_exceptions():
         )
 
 
-def test_strings():
+def test_strings() -> None:
     assert str(Schedule(start="2024-05-12", frequency="yearly")) == "Every year on May 12"
     assert str(Schedule(start="2024-05-12", frequency="weekly")) == "Every week on Sunday"
     assert str(Schedule(start="2024-05-12", frequency="daily")) == "Every day"
 
 
-def test_scheduled_rule(session):
+def test_scheduled_rule(session: Session) -> None:
     acct = create_account(session, "Bank")
     rule = Rule(
         id="d84d1400-4245-4bb9-95d0-be4524edafe9",

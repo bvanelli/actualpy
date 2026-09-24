@@ -91,7 +91,6 @@ with Actual(base_url="http://localhost:5006", password="mypass", file="My budget
             transaction.notes = transaction.notes + " my suffix!"
     # commit your changes!
     actual.commit()
-
 ```
 
 When working with transactions, it is important to keep in mind that the value amounts are set with floating-point

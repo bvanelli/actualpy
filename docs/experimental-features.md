@@ -42,7 +42,6 @@ with Actual(base_url="http://localhost:5006", password="mypass") as actual:
         print(f"Added of modified {transaction}")
     # sync changes back to the server
     actual.commit()
-
 ```
 
 ## Running Rules

@@ -1,13 +1,18 @@
 import datetime
+from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
-from sqlalchemy import delete, select
+from sqlalchemy import Engine, delete
+from sqlmodel import col, select
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.waiting_utils import wait_for_logs
 
-from actual import Actual, js_migration_statements
+from actual import Actual
+from actual.api.bank_sync import BankSyncErrorData
 from actual.database import __TABLE_COLUMNS_MAP__, Dashboard, Migrations, reflect_model
 from actual.exceptions import ActualDecryptionError, ActualError, AuthorizationError
+from actual.migrations import js_migration_statements
 from actual.queries import (
     create_transaction,
     get_accounts,
@@ -25,14 +30,14 @@ from tests.conftest import ACTUAL_SERVER_INTEGRATION_VERSIONS
 
 
 @pytest.fixture(params=ACTUAL_SERVER_INTEGRATION_VERSIONS)  # todo: support multiple versions at once
-def actual_server(request):
+def actual_server(request: pytest.FixtureRequest) -> Iterator[DockerContainer]:
     # we test integration with the 5 latest versions of actual server
     with DockerContainer(f"actualbudget/actual-server:{request.param}").with_exposed_ports(5006) as container:
         wait_for_logs(container, "Listening on :::5006...")
         yield container
 
 
-def test_create_user_file(actual_server):
+def test_create_user_file(actual_server: DockerContainer) -> None:
     port = actual_server.get_exposed_port(5006)
     with Actual(f"http://localhost:{port}", password="mypass", bootstrap=True) as actual:
         assert len(actual.list_user_files().data) == 0
@@ -57,7 +62,9 @@ def test_create_user_file(actual_server):
         # run bank sync
         assert actual.run_bank_sync() == []
         # check also bank sync accounts, should fail because of no token
-        assert actual.bank_sync_accounts("simplefin").data.error_type == "INVALID_ACCESS_TOKEN"
+        bank_sync_data = actual.bank_sync_accounts("simplefin").data
+        assert isinstance(bank_sync_data, BankSyncErrorData)
+        assert bank_sync_data.error_type == "INVALID_ACCESS_TOKEN"
         # same test with goCardless returns 404 for some reason, so we don't do that
 
     # make sure a new instance can now retrieve the budget info
@@ -74,7 +81,7 @@ def test_create_user_file(actual_server):
         Actual(actual.api_url, password="mywrongpass", file="My Budget")
 
 
-def test_encrypted_file(actual_server):
+def test_encrypted_file(actual_server: DockerContainer) -> None:
     port = actual_server.get_exposed_port(5006)
     with Actual(f"http://localhost:{port}", password="mypass", encryption_password="mypass", bootstrap=True) as actual:
         actual.create_budget("My Encrypted Budget")
@@ -94,7 +101,7 @@ def test_encrypted_file(actual_server):
         Actual(f"http://localhost:{port}", password="mypass", file="My Encrypted Budget").download_budget()
 
 
-def test_update_file_name(actual_server):
+def test_update_file_name(actual_server: DockerContainer) -> None:
     port = actual_server.get_exposed_port(5006)
     with Actual(f"http://localhost:{port}", password="mypass", bootstrap=True) as actual:
         assert len(actual.list_user_files().data) == 0
@@ -110,7 +117,7 @@ def test_update_file_name(actual_server):
             actual.rename_budget("Failing name")
 
 
-def test_reimport_file_from_zip(actual_server, tmp_path):
+def test_reimport_file_from_zip(actual_server: DockerContainer, tmp_path: Path) -> None:
     port = actual_server.get_exposed_port(5006)
     backup_file = f"{tmp_path}/backup.zip"
     # create one file
@@ -133,7 +140,7 @@ def test_reimport_file_from_zip(actual_server, tmp_path):
         assert len(get_accounts(actual.session)) == 1
 
 
-def test_redownload_file(actual_server, tmp_path):
+def test_redownload_file(actual_server: DockerContainer, tmp_path: Path) -> None:
     port = actual_server.get_exposed_port(5006)
     with Actual(f"http://localhost:{port}", password="mypass", bootstrap=True) as actual:
         actual.create_budget("My Budget")
@@ -155,7 +162,7 @@ def test_redownload_file(actual_server, tmp_path):
             pass
 
 
-def test_reset_password(actual_server):
+def test_reset_password(actual_server: DockerContainer) -> None:
     port = actual_server.get_exposed_port(5006)
     with Actual(f"http://localhost:{port}", password="mypass", bootstrap=True) as actual:
         actual.create_budget("My Budget")
@@ -170,11 +177,12 @@ def test_reset_password(actual_server):
             actual2.login("mypass")
 
 
-def test_models(actual_server):
+def test_models(actual_server: DockerContainer) -> None:
     port = actual_server.get_exposed_port(5006)
     with Actual(f"http://localhost:{port}", password="mypass", encryption_password="mypass", bootstrap=True) as actual:
         actual.create_budget("My Budget")
         # check if the models are matching
+        assert isinstance(actual.session.bind, Engine)  # type check for correctness of session type
         metadata = reflect_model(actual.session.bind)
         # check first if all tables are present
         for table_name, table in metadata.tables.items():
@@ -186,7 +194,7 @@ def test_models(actual_server):
                 )
 
 
-def test_header_login():
+def test_header_login() -> None:
     # TODO: this is fixed on a previous version since header login doesn't seem to be working fully on latest version
     working_version = "25.3.0"
     with (
@@ -205,7 +213,7 @@ def test_header_login():
         assert response_login.data.token == response_header_login.data.token
 
 
-def test_session_reflection_after_migrations():
+def test_session_reflection_after_migrations() -> None:
     with DockerContainer(f"actualbudget/actual-server:{ACTUAL_SERVER_INTEGRATION_VERSIONS[-1]}").with_exposed_ports(
         5006
     ) as container:
@@ -218,15 +226,16 @@ def test_session_reflection_after_migrations():
             actual.session.add(Dashboard(id="123", x=1, y=2))
             actual.commit()
             # revert the dashboard creation migration like it never happened
-            Dashboard.__table__.drop(actual.engine)
-            actual.session.exec(delete(Migrations).where(Migrations.id == 1722804019000))
+            assert actual.engine is not None
+            Dashboard.__table__.drop(actual.engine)  # type: ignore[attr-defined]
+            actual.session.exec(delete(Migrations).where(col(Migrations.id) == 1722804019000))
             actual.session.commit()
         # now try to download the budget, it should not fail
         with Actual(f"http://localhost:{port}", file="My Budget", password="mypass") as actual:
             assert len(actual.session.exec(select(Dashboard)).all()) > 2  # there are two default dashboards
 
 
-def test_empty_query_migrations():
+def test_empty_query_migrations() -> None:
     # empty queries should not fail
     assert js_migration_statements("await db.runQuery('');") == []
     # malformed entries should not fail

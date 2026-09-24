@@ -22,6 +22,7 @@ A basic change listener implementation could look like this:
 import time
 from actual import Actual
 
+
 def main() -> None:
     with Actual(password="mypass", file="State") as actual:
         # Handle the change listener
@@ -56,9 +57,7 @@ from actual.database import Transactions
 from actual.queries import get_transactions
 
 
-def change_handler(
-    session: Session, change: Changeset, existing_transactions: set
-) -> None:
+def change_handler(session: Session, change: Changeset, existing_transactions: set) -> None:
     # We ignore all changes that are not transactions
     if change.table is not Transactions:
         return
@@ -67,10 +66,7 @@ def change_handler(
         return
     # Return the transaction object from the database
     changed_obj: Transactions = change.from_orm(session)  # type: ignore
-    print(
-        f"A new transaction with name '{changed_obj.notes}' "
-        f"was added with the amount {changed_obj.get_amount()}"
-    )
+    print(f"A new transaction with name '{changed_obj.notes}' was added with the amount {changed_obj.get_amount()}")
     # Modify the copy of existing transactions that was passed to the function,
     # so they are ignored in the future
     existing_transactions.add(change.id)

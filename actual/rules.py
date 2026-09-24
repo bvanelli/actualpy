@@ -208,7 +208,7 @@ def condition_evaluation(
         if options.get("inflow") is True and true_value < 0:  # type: ignore[operator]
             return False
     if isinstance(self_value, int) and isinstance(options, dict) and options.get("outflow") is True:
-        # if it's an outflow we use the negative value of self_value, that is positive
+        # if it's an outflow, we use the negative value of self_value, that is positive
         self_value = -self_value
     # do comparison
     if op == ConditionType.IS:
@@ -248,7 +248,7 @@ def condition_evaluation(
     elif op == ConditionType.IS_BETWEEN:
         return self_value.num_1 <= true_value <= self_value.num_2  # type: ignore[union-attr, operator]
     elif op == ConditionType.HAS_TAGS:
-        # this regex is not correct, but is good enough according to testing
+        # this regex is not correct but is good enough, according to testing
         # taken from https://stackoverflow.com/a/26740753/12681470
         tags = re.findall(r"\#[\U00002600-\U000027BF\U0001f300-\U0001f64F\U0001f680-\U0001f6FF\w-]+", self_value)  # type: ignore[arg-type]
         return any(tag in true_value for tag in tags)  # type: ignore[operator]
@@ -286,12 +286,12 @@ def _coerce_value(v: typing.Any) -> typing.Any:
 class Condition(pydantic.BaseModel):
     """
     A condition does a single comparison check for a transaction. The `op` indicates the action type, usually being
-    set to `IS` or `CONTAINS`, and the comparison is applied to a `field` with certain `value`. If the transaction
-    value matches the condition, the `run` method returns `True`, otherwise it returns `False`. The individual condition
+    set to `IS` or `CONTAINS`, and the comparison is applied to a `field` with a certain ` value `. If the transaction
+    value matches the condition, the `run` method returns `True`; otherwise it returns `False`. The individual condition
     cannot change the value of the transaction, as only the [Action][actual.rules.Action] can.
 
     **Important**: Actual shows the amount on frontend as decimal but handles it internally as cents. Make sure that, if
-    you provide the `amount` rule manually, you either provide number of cents, as an integers, or a float that get
+    you provide the `amount` rule manually, you either provide a number of cents, as an integer, or a float that gets
     automatically converted to cents. As an example, `50` will be interpreted as 50 cents, but `50.0` will be
     interpreted as 50 of the currency (or 5000 cents).
 

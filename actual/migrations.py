@@ -7,7 +7,7 @@ def js_migration_statements(js_file: str) -> list[str]:
     """
     Extracts all relevant SQL queries from a JavaScript migration file to make them run locally.
 
-    This function is required because the actual-js package provides some of the migration files as JavaScript files,
+    This function is required because the actual-js package provides some of the migration files as JavaScript files
     that cannot easily be executed on Python. This function is our best effort to extract the SQL queries from the
     migration file.
 

@@ -14,7 +14,7 @@ from actual.protobuf_models import (
 
 
 @freeze_time("2020-10-11 12:13:14.015")
-def test_timestamp():
+def test_timestamp() -> None:
     client = HULC_Client("foo")
     ts = client.timestamp()
     assert ts == "2020-10-11T12:13:14.015Z-0000-foo"
@@ -25,13 +25,13 @@ def test_timestamp():
 
 
 @freeze_time("2020-10-11 12:13:14.015")
-def test_timestamp_client_string():
+def test_timestamp_client_string() -> None:
     client = HULC_Client("foo")
     assert str(client) == "1970-01-01T00:00:00.000Z-0000-foo"
     assert client.timestamp(datetime.datetime.fromtimestamp(0)) == "1970-01-01T00:00:00.000Z-0000-foo"
 
 
-def test_timestamp_counter_reset_on_clock_advance():
+def test_timestamp_counter_reset_on_clock_advance() -> None:
     now = datetime.datetime(2020, 10, 11, 12, 13, 14, 15_000)
     client = HULC_Client("foo", initial_count=5, ts=now)
     # same timestamp: counter advances
@@ -43,20 +43,20 @@ def test_timestamp_counter_reset_on_clock_advance():
     assert ts == "2020-10-11T12:13:14.016Z-0000-foo"
 
 
-def test_timestamp_counter_overflow():
+def test_timestamp_counter_overflow() -> None:
     now = datetime.datetime(2020, 10, 11, 12, 13, 14, 15_000)
     client = HULC_Client("foo", initial_count=0xFFFF, ts=now)
     with pytest.raises(ActualOverflowError, match="Timestamp counter overflow"):
         client.timestamp(now)  # tries 0xFFFF + 1, overflows
 
 
-def test_message_envelope():
+def test_message_envelope() -> None:
     me = MessageEnvelope()
     me.set_timestamp()
     assert isinstance(MessageEnvelope.serialize(me), bytes)
 
 
-def test_sync_request():
+def test_sync_request() -> None:
     m = Message({"dataset": "foo", "row": "bar", "column": "foobar"})
     m.set_value("example")
     req = SyncRequest()
@@ -68,13 +68,18 @@ def test_sync_request():
     assert messages_decoded == [m]
 
 
-def test_message_set_value():
+def test_message_set_value() -> None:
     m = Message()
-    for data in ["foo", 1, 1.5, None]:
-        m.set_value(data)
-        assert m.get_value() == data
+    m.set_value("foo")
+    assert m.get_value() == "foo"
+    m.set_value(1)
+    assert m.get_value() == 1
+    m.set_value(1.5)
+    assert m.get_value() == 1.5
+    m.set_value(None)
+    assert m.get_value() is None
     with pytest.raises(ValueError):
-        m.set_value(object())  # noqa
+        m.set_value(object())  # type: ignore[arg-type]  # noqa
     with pytest.raises(ValueError):
         m.value = "T:foo"
         m.get_value()

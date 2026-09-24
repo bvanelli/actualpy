@@ -1,7 +1,10 @@
 import datetime
 import uuid
+from typing import Any
 
 import pytest
+from pytest_mock import MockerFixture
+from sqlmodel import Session
 
 from actual import Actual, ActualError
 from actual.exceptions import ActualSplitTransactionError
@@ -25,7 +28,7 @@ from actual.rules import (
 )
 
 
-def test_category_rule(session):
+def test_category_rule(session: Session) -> None:
     # create basic items
     acct = create_account(session, "Bank")
     cat = create_category(session, "Food", "Expenses")
@@ -50,7 +53,7 @@ def test_category_rule(session):
     assert condition.run(t) is False
 
 
-def test_payee_is_nothing_rule(session):
+def test_payee_is_nothing_rule(session: Session) -> None:
     acct = create_account(session, "Bank")
     cat = create_category(session, "Misc", "Expenses")
     t = create_transaction(session, datetime.date(2024, 1, 1), acct, category=cat)
@@ -60,7 +63,7 @@ def test_payee_is_nothing_rule(session):
     assert Condition(field="description", op="isNot", value=None).run(t) is False
 
 
-def test_notes_is_nothing_rule(session):
+def test_notes_is_nothing_rule(session: Session) -> None:
     acct = create_account(session, "Bank")
     t = create_transaction(session, datetime.date(2024, 1, 1), acct, notes=None)
     # null notes should match "notes is nothing" (empty string), mirroring JS null -> "" coercion
@@ -70,7 +73,7 @@ def test_notes_is_nothing_rule(session):
     assert Condition(field="notes", op="contains", value="foo").run(t) is False
 
 
-def test_datetime_rule(session):
+def test_datetime_rule(session: Session) -> None:
     acct = create_account(session, "Bank")
     t = create_transaction(session, datetime.date(2024, 1, 1), acct, "")
     condition = Condition(field="date", op="isapprox", value=datetime.date(2024, 1, 2))
@@ -93,7 +96,7 @@ def test_datetime_rule(session):
     assert Condition(field="date", op="lt", value=target_date + datetime.timedelta(days=1)).run(t) is True
 
 
-def test_string_condition(session):
+def test_string_condition(session: Session) -> None:
     acct = create_account(session, "Bank")
     t = create_transaction(session, datetime.date(2024, 1, 1), acct, "", "foo")
     assert Condition(field="notes", op="oneOf", value=["foo", "bar"]).run(t) is True
@@ -115,7 +118,7 @@ def test_string_condition(session):
     assert Condition(field="notes", op="doesNotContain", value="FOOBAR").run(t) is True
 
 
-def test_has_tags(session):
+def test_has_tags(session: Session) -> None:
     acct = create_account(session, "Bank")
     t = create_transaction(session, datetime.date(2024, 1, 1), acct, "", "foo #bar #✨ #🙂‍↔️")
     assert Condition(field="notes", op="hasTags", value="#bar").run(t) is True
@@ -136,7 +139,9 @@ def test_has_tags(session):
         ("matches", "market", "hypermarket", True),
     ],
 )
-def test_imported_payee_condition(session, op, condition_value, value, expected_result):
+def test_imported_payee_condition(
+    session: Session, op: str, condition_value: str | list[str], value: str | None, expected_result: bool
+) -> None:
     create_account(session, "Bank")
     t = create_transaction(session, datetime.date(2024, 1, 1), "Bank", "", amount=5, imported_payee=value)
     condition = {"field": "imported_description", "type": "imported_payee", "op": op, "value": condition_value}
@@ -144,13 +149,15 @@ def test_imported_payee_condition(session, op, condition_value, value, expected_
     assert cond.run(t) == expected_result
 
 
-def test_numeric_condition(session):
+def test_numeric_condition(session: Session) -> None:
     create_account(session, "Bank")
     t = create_transaction(session, datetime.date(2024, 1, 1), "Bank", "", amount=5)
     c1 = Condition(field="amount_inflow", op="gt", value=10.0)
+    assert c1.options is not None
     assert "inflow" in c1.options
     assert c1.run(t) is False
     c2 = Condition(field="amount_outflow", op="lt", value=-10.0)
+    assert c2.options is not None
     assert "outflow" in c2.options
     assert c2.run(t) is False  # outflow, so the comparison should be with the positive value
     # isapprox condition
@@ -164,7 +171,7 @@ def test_numeric_condition(session):
     assert str(c4) == "'amount' isbetween (500, 1000)"  # value gets converted when input as float
 
 
-def test_complex_rule(session):
+def test_complex_rule(session: Session) -> None:
     # create basic items
     acct = create_account(session, "Bank")
     cat = create_category(session, "Food", "Expenses")
@@ -199,7 +206,7 @@ def test_complex_rule(session):
     assert t_false.cleared == 0
 
 
-def test_invalid_inputs():
+def test_invalid_inputs() -> None:
     with pytest.raises(ValueError):
         Condition(field="amount", op="gt", value="foo")
     with pytest.raises(ValueError):
@@ -211,14 +218,14 @@ def test_invalid_inputs():
     with pytest.raises(ValueError):
         Condition(field="amount", op="isbetween", value=5)
     with pytest.raises(ActualError):
-        Action(field="notes", op="set-split-amount", value="foo").run(None)  # noqa: use None instead of transaction
+        Action(field="notes", op="set-split-amount", value="foo").run(None)  # type: ignore[arg-type]  # noqa: use None instead of transaction
     with pytest.raises(ActualError):
-        condition_evaluation(None, "foo", "foo")  # noqa: use None instead of transaction
+        condition_evaluation(None, "foo", "foo")  # type: ignore[arg-type]  # noqa: use None instead of transaction
     # null strings coerce to ""
     assert Condition(field="notes", op="is", value=None).get_value() == ""
 
 
-def test_value_type_condition_validation():
+def test_value_type_condition_validation() -> None:
     assert ValueType.DATE.is_valid(ConditionType.IS_APPROX) is True
     assert ValueType.DATE.is_valid(ConditionType.CONTAINS) is False
     assert ValueType.NUMBER.is_valid(ConditionType.IS_BETWEEN) is True
@@ -234,14 +241,14 @@ def test_value_type_condition_validation():
     assert ValueType.IMPORTED_PAYEE.is_valid(ConditionType.GT) is False
 
 
-def test_value_type_value_validation():
+def test_value_type_value_validation() -> None:
     assert ValueType.DATE.validate(20241004) is True
     assert ValueType.DATE.validate(123) is False
     assert ValueType.DATE.validate("2024-10-04") is True
     assert ValueType.STRING.validate("") is True
     assert ValueType.STRING.validate(123) is False
     assert ValueType.NUMBER.validate(123) is True
-    assert ValueType.NUMBER.validate(1.23) is False  # noqa: test just in case
+    assert ValueType.NUMBER.validate(1.23) is False  # type: ignore[arg-type]  # noqa: test just in case
     assert ValueType.NUMBER.validate("123") is False
     assert ValueType.ID.validate("1c1a1707-15ea-4051-b98a-e400ee2900c7") is True
     assert ValueType.ID.validate("foo") is False
@@ -263,13 +270,13 @@ def test_value_type_value_validation():
         ({"field": "notes", "op": "is", "value": "foo", "type": ValueType.STRING}, ValueType.STRING),
     ],
 )
-def test_condition_explicit_type_preserved(kwargs, expected_type):
+def test_condition_explicit_type_preserved(kwargs: dict[str, Any], expected_type: ValueType) -> None:
     """An explicitly-passed `type` must not be overwritten by `from_field`, and an omitted
     `type` must still be derived from the field (legacy behavior)."""
     assert Condition(**kwargs).type == expected_type
 
 
-def test_value_type_from_field():
+def test_value_type_from_field() -> None:
     assert ValueType.from_field("description") == ValueType.ID
     assert ValueType.from_field("amount") == ValueType.NUMBER
     assert ValueType.from_field("notes") == ValueType.STRING
@@ -288,7 +295,7 @@ def test_value_type_from_field():
         ("fixed-percent", 20, [0.50, 1.00, 3.50]),
     ],
 )
-def test_set_split_amount(session, method, value, expected_splits):
+def test_set_split_amount(session: Session, method: str, value: int | None, expected_splits: list[float]) -> None:
     acct = create_account(session, "Bank")
     cat = create_category(session, "Food", "Expenses")
     payee = create_payee(session, "My payee")
@@ -355,7 +362,7 @@ def test_set_split_amount(session, method, value, expected_splits):
         ("fixed-amount", 6, [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, -1.0]),
     ],
 )
-def test_split_amount_equal_parts(session, method, n, expected_splits):
+def test_split_amount_equal_parts(session: Session, method: str, n: int, expected_splits: list[float]) -> None:
     acct = create_account(session, "Bank")
     actions = [
         Action(
@@ -374,7 +381,7 @@ def test_split_amount_equal_parts(session, method, n, expected_splits):
     assert [float(s.get_amount()) for s in splits] == expected_splits
 
 
-def test_set_split_amount_exception(session, mocker):
+def test_set_split_amount_exception(session: Session, mocker: MockerFixture) -> None:
     mocker.patch("actual.rules.sum", lambda x: 0)
 
     acct = create_account(session, "Bank")
@@ -411,7 +418,7 @@ def test_set_split_amount_exception(session, mocker):
         ("prepend-notes", "bar", None, "bar"),
     ],
 )
-def test_preppend_append_notes(session, operation, value, note, expected):
+def test_preppend_append_notes(session: Session, operation: str, value: str, note: str | None, expected: str) -> None:
     create_account(session, "Bank")
     t = create_transaction(session, datetime.date(2024, 1, 1), "Bank", "", notes=note)
     action = Action(field="description", op=operation, value=value)
@@ -422,7 +429,7 @@ def test_preppend_append_notes(session, operation, value, note, expected):
     assert f"{operation.split('-')[0]} to notes '{value}'" in str(action)
 
 
-def test_set_transfer_payee_rule(session):
+def test_set_transfer_payee_rule(session: Session) -> None:
     bank = create_account(session, "Bank")
     t = create_transaction(session, datetime.date(2024, 1, 1), "Bank", amount=10)
     action = Action(field="description", op="set", value=bank.payee.id)
@@ -434,7 +441,7 @@ def test_set_transfer_payee_rule(session):
     assert t.transferred_id == t.transfer.id
 
 
-def test_delete_transaction_action(session):
+def test_delete_transaction_action(session: Session) -> None:
     acct = create_account(session, "Bank")
     cat = create_category(session, "Food", "Expenses")
     payee = create_payee(session, "My payee")
@@ -455,7 +462,7 @@ def test_delete_transaction_action(session):
     assert "delete transaction" in str(rule)
 
 
-def test_on_budget_condition(session):
+def test_on_budget_condition(session: Session) -> None:
     # create basic items
     acct = create_account(session, "Bank", off_budget=False)
     t = create_transaction(session, datetime.date(2024, 1, 1), acct, imported_payee="")
@@ -466,7 +473,7 @@ def test_on_budget_condition(session):
     assert cond.run(t) is False
 
 
-def test_off_budget_condition(session):
+def test_off_budget_condition(session: Session) -> None:
     # create basic items
     acct = create_account(session, "Bank", off_budget=True)
     t = create_transaction(session, datetime.date(2024, 1, 1), acct, imported_payee="")
@@ -477,7 +484,7 @@ def test_off_budget_condition(session):
     assert cond.run(t) is False
 
 
-def test_run_rules(session, mocker):
+def test_run_rules(session: Session, mocker: MockerFixture) -> None:
     # create basic items
     acct = create_account(session, "Bank")
     cat = create_category(session, "Food", "Expenses")
@@ -508,7 +515,7 @@ def test_run_rules(session, mocker):
     assert t_splits.payee is None
 
 
-def test_set_string_action_preserves_original_value(session):
+def test_set_string_action_preserves_original_value(session: Session) -> None:
     """String values are written as defined on the rule, without the normalization done for conditions."""
     acct = create_account(session, "Bank")
     t = create_transaction(session, datetime.date(2024, 1, 1), acct, "")

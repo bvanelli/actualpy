@@ -6,10 +6,12 @@ from datetime import date, timedelta
 
 import pytest
 from freezegun import freeze_time
-from sqlmodel import select
+from pytest_mock import MockerFixture
+from sqlalchemy import Engine
+from sqlmodel import Session, select
 
-from actual import Actual, ActualError, reflect_model
-from actual.database import SchedulesNextDate, Transactions, ZeroBudgetMonths
+from actual import Actual, ActualError
+from actual.database import SchedulesNextDate, Transactions, ZeroBudgetMonths, reflect_model
 from actual.exceptions import ActualInvalidOperationError
 from actual.queries import (
     create_account,
@@ -46,7 +48,7 @@ from actual.schedules import EndMode, Frequency, Pattern, WeekendSolveMode
 today = date.today()
 
 
-def test_account_relationships(session):
+def test_account_relationships(session: Session) -> None:
     bank = create_account(session, "Bank", 5000)
     create_account(session, "Savings")
     landlord = get_or_create_payee(session, "Landlord")
@@ -85,7 +87,7 @@ def test_account_relationships(session):
     assert get_accounts(session, "Bank") == [bank]
 
 
-def test_transaction(session):
+def test_transaction(session: Session) -> None:
     other = create_account(session, "Other")
     coffee = create_transaction(session, date=today, account="Other", payee="Starbucks", notes="coffee", amount=(-9.95))
     session.commit()
@@ -94,13 +96,13 @@ def test_transaction(session):
     assert other.balance == decimal.Decimal("-9.95")
 
 
-def test_transaction_without_payee(session):
+def test_transaction_without_payee(session: Session) -> None:
     other = create_account(session, "Other")
     tr = create_transaction(session, date=today, account=other)
     assert tr.payee_id is None
 
 
-def test_transfer(session):
+def test_transfer(session: Session) -> None:
     bank = create_account(session, "Bank", 200)
     savings = create_account(session, "Savings")
     origin, dst = create_transfer(session, today, "Bank", "Savings", 200, "Saving money")
@@ -110,7 +112,7 @@ def test_transfer(session):
     assert savings.balance == decimal.Decimal(200.0)
 
 
-def test_reconcile_transaction(session):
+def test_reconcile_transaction(session: Session) -> None:
     create_account(session, "Bank")
     rent_payment = create_transaction(session, today, "Bank", "Landlord", "Paying rent", "Expenses", -1200)
     unrelated = create_transaction(
@@ -132,8 +134,10 @@ def test_reconcile_transaction(session):
     session.commit()
     # check if the property was updated
     assert rent_payment.get_date() == today + timedelta(days=1)
+    assert rent_payment.category is not None
     assert rent_payment.category.name == "Rent"
     assert rent_payment.financial_id == "unique"
+    assert rent_payment.payee is not None
     assert rent_payment.payee.name == "Landlord"  # payee stayed the same
     # should still be able to match if the payee is defined, as the match is stronger
     assert (
@@ -163,7 +167,7 @@ def test_reconcile_transaction(session):
     )
 
 
-def test_reconcile_transaction_update(session):
+def test_reconcile_transaction_update(session: Session) -> None:
     # Here, we want to test if using reconcile actually updates all fields that it should
     create_account(session, "Bank")
     rent_payment = reconcile_transaction(
@@ -179,6 +183,7 @@ def test_reconcile_transaction_update(session):
     assert rent_payment.id == reconciled.id
     assert bool(reconciled.cleared) is True
     assert reconciled.payee_id == get_or_create_payee(session, "Landlord").id
+    assert reconciled.payee is not None
     assert reconciled.payee.name == "Landlord"
     assert rent_payment.notes == "Paying rent"
     assert bool(rent_payment.cleared) is True
@@ -190,7 +195,7 @@ def test_reconcile_transaction_update(session):
     assert reconciled.notes == "New notes"
 
 
-def test_reconcile_with_split(session):
+def test_reconcile_with_split(session: Session) -> None:
     create_account(session, "Bank")
 
     # Create a fine dining tx which is split to 1200 and 120, a grand total of 1320 for
@@ -230,7 +235,7 @@ def test_reconcile_with_split(session):
     session.commit()
 
 
-def test_create_splits(session):
+def test_create_splits(session: Session) -> None:
     bank = create_account(session, "Bank")
     t = create_transaction(session, today, bank, category="Dining", amount=-10.0)
     t_taxes = create_transaction(session, today, bank, category="Taxes", amount=-2.5)
@@ -250,7 +255,7 @@ def test_create_splits(session):
     assert len(category) == 1
 
 
-def test_create_splits_deprecation(session):
+def test_create_splits_deprecation(session: Session) -> None:
     bank = create_account(session, "Bank")
     t = create_transaction(session, today, bank, category="Dining", amount=-10.0)
     t_taxes = create_transaction(session, today, bank, category="Taxes", amount=-2.5)
@@ -260,7 +265,7 @@ def test_create_splits_deprecation(session):
     assert parent_transaction.payee_id is None
 
 
-def test_create_splits_error(session):
+def test_create_splits_error(session: Session) -> None:
     bank = create_account(session, "Bank")
     wallet = create_account(session, "Wallet")
     t1 = create_transaction(session, today, bank, category="Dining", amount=-10.0)
@@ -272,7 +277,7 @@ def test_create_splits_error(session):
         create_splits(session, [t1, t3])
 
 
-def test_create_splits_clearing(session):
+def test_create_splits_clearing(session: Session) -> None:
     bank = create_account(session, "Bank")
     t = create_transaction(session, today, bank, category="Dining", amount=-10.0)
     t_taxes = create_transaction(session, today, bank, category="Taxes", amount=-2.5)
@@ -292,7 +297,7 @@ def test_create_splits_clearing(session):
     assert all(not tr.cleared for tr in trs)
 
 
-def test_create_splits_delete(session):
+def test_create_splits_delete(session: Session) -> None:
     bank = create_account(session, "Bank")
     t = create_transaction(session, today, bank, category="Dining", amount=-10.0)
     t_taxes = create_transaction(session, today, bank, category="Taxes", amount=-2.5)
@@ -301,7 +306,7 @@ def test_create_splits_delete(session):
     # Verify that all is properly setup
     trs = get_transactions(session)
     assert len(trs) == 2
-    assert (t.parent == parent_transaction.id for t in trs)
+    assert all(t.parent_id == parent_transaction.id for t in trs)
 
     # Delete parent, this should result in the children getting deleted as well
     parent_transaction.delete()
@@ -309,14 +314,15 @@ def test_create_splits_delete(session):
     assert len(trs) == 0
 
 
-def test_create_transaction_without_account_error(session):
+def test_create_transaction_without_account_error(session: Session) -> None:
     with pytest.raises(ActualError):
         create_transaction(session, today, "foo", "")
     with pytest.raises(ActualError):
-        create_transaction(session, today, None, "")
+        # passing no account is the condition under test
+        create_transaction(session, today, None, "")  # type: ignore[arg-type]
 
 
-def test_rule_insertion_method(session):
+def test_rule_insertion_method(session: Session) -> None:
     # create one example transaction
     create_transaction(session, date(2024, 1, 4), create_account(session, "Bank"), "")
     session.commit()
@@ -338,6 +344,7 @@ def test_rule_insertion_method(session):
     # test full rule
     rule = Rule(conditions=[condition], actions=[action], operation="all", stage="pre")
     created_rule = create_rule(session, rule, run_immediately=True)
+    assert created_rule.conditions is not None and created_rule.actions is not None
     assert [condition.model_dump(mode="json", by_alias=True)] == json.loads(created_rule.conditions)
     assert [action.model_dump(mode="json", by_alias=True)] == json.loads(created_rule.actions)
     assert created_rule.conditions_op == "and"
@@ -350,14 +357,14 @@ def test_rule_insertion_method(session):
     assert str(rs) == "If all of these conditions match 'date' isapprox '2024-01-02' then set 'cleared' to 'True'"
 
 
-def test_normalize_payee():
+def test_normalize_payee() -> None:
     assert normalize_payee(None) == ""
     assert normalize_payee("   mY paYeE ") == "My Payee"
     assert normalize_payee("  ", raw_payee_name=True) == ""
     assert normalize_payee(" My PayeE ", raw_payee_name=True) == "My PayeE"
 
 
-def test_rollback(session):
+def test_rollback(session: Session) -> None:
     create_account(session, "Bank", 5000)
     session.flush()
     assert "messages" in session.info
@@ -366,7 +373,7 @@ def test_rollback(session):
     assert "messages" not in session.info
 
 
-def test_model_notes(session):
+def test_model_notes(session: Session) -> None:
     # Account notes
     account_with_note = create_account(session, "Bank 1")
     account_without_note = create_account(session, "Bank 2")
@@ -394,23 +401,35 @@ def test_model_notes(session):
     assert budget.notes is None
 
 
-def test_default_imported_payee(session):
+def test_default_imported_payee(session: Session) -> None:
     t = create_transaction(session, date(2024, 1, 4), create_account(session, "Bank"), imported_payee=" foo ")
     session.flush()
+    assert t.payee is not None
     assert t.payee.name == "foo"
     assert t.imported_description == "foo"
 
 
-def test_session_error(mocker):
+def test_create_payee_learn_categories_default(session: Session) -> None:
+    # learn_categories must not be synced as NULL, regression test to satisfy mypy
+    payee = get_or_create_payee(session, "Landlord")
+    session.flush()
+    payee_columns = {m.column for m in session.info["messages"] if m.dataset == "payees"}
+    assert "learn_categories" not in payee_columns
+    session.refresh(payee)
+    assert payee.learn_categories is True
+
+
+def test_session_error(mocker: MockerFixture) -> None:
     mocker.patch("actual.Actual.validate")
     with Actual(token="foo") as actual:
         with pytest.raises(ActualError, match="No session defined"):
             print(actual.session)  # try to access the session, should raise an exception
 
 
-def test_apply_changes(session, mocker):
+def test_apply_changes(session: Session, mocker: MockerFixture) -> None:
     mocker.patch("actual.Actual.validate")
     actual = Actual(token="foo")
+    assert isinstance(session.bind, Engine)
     actual._session, actual.engine, actual._database_metadata = session, session.bind, reflect_model(session.bind)
     # create elements but do not commit them
     account = create_account(session, "Bank")
@@ -442,13 +461,13 @@ def test_apply_changes(session, mocker):
     assert changes[-1].from_orm(session) == transactions[0]
 
 
-def test_get_or_create_clock(session):
+def test_get_or_create_clock(session: Session) -> None:
     clock = get_or_create_clock(session)
     assert clock.get_timestamp().ts == datetime.datetime(1970, 1, 1, 0, 0, 0)
     assert clock.get_timestamp().initial_count == 0
 
 
-def test_get_preferences(session):
+def test_get_preferences(session: Session) -> None:
     assert len(get_preferences(session)) == 0
     preference = get_or_create_preference(session, "foo", "bar")
     assert preference.value == "bar"
@@ -462,7 +481,7 @@ def test_get_preferences(session):
     assert new_preferences[0].value == "foobar"
 
 
-def test_set_payee_to_transfer(session):
+def test_set_payee_to_transfer(session: Session) -> None:
     wallet = create_account(session, "Wallet")
     bank = create_account(session, "Bank")
     session.commit()
@@ -488,7 +507,7 @@ def test_set_payee_to_transfer(session):
     assert t.transfer.payee_id == bank.payee.id
 
 
-def test_set_payee_to_transfer_off_budget(session):
+def test_set_payee_to_transfer_off_budget(session: Session) -> None:
     bank = create_account(session, "Bank")
     off_budget = create_account(session, "Off Budget", off_budget=True)
     category = get_or_create_category(session, "Groceries")
@@ -500,7 +519,7 @@ def test_set_payee_to_transfer_off_budget(session):
     assert off_budget.transactions[0].category is None
 
 
-def test_tags(session):
+def test_tags(session: Session) -> None:
     create_account(session, "Wallet")
     tag = create_tag(session, "#happy", "For the happy moments in life")
     coffee = create_transaction(session, date=today, account="Wallet", notes="Coffee #happy", amount=(-4.50))
@@ -512,13 +531,14 @@ def test_tags(session):
     assert get_tags(session, "#foobar", "moments") == []
 
 
-def test_schedules(session):
+def test_schedules(session: Session) -> None:
     config = create_schedule_config(datetime.date(2025, 10, 11))
     schedule_created = create_schedule(session, config, 500.0, name="foobar")
     session.commit()
 
     schedules = get_schedules(session)
     assert len(schedules) == 1
+    assert schedules[0].rule.conditions is not None
     cond = json.loads(schedules[0].rule.conditions)
     assert cond[1] == {
         "field": "date",
@@ -542,13 +562,14 @@ def test_schedules(session):
     assert len(get_schedules(session)) == 0
 
 
-def test_schedule_is_betweeen(session):
+def test_schedule_is_betweeen(session: Session) -> None:
     expected_date = datetime.date(2025, 10, 11)
     account = create_account(session, "Bank")
     payee = get_or_create_payee(session, "Insurance company")
     # should always be paid on the first working day of the month
     config = create_schedule_config(expected_date, patterns=[Pattern(1, "day")], skip_weekend=True)
     schedule = create_schedule(session, config, (100.0, 110.0), "isbetween", "Insurance", payee, account)
+    assert schedule.rule.conditions is not None
     assert json.loads(schedule.rule.conditions) == [
         {"field": "description", "type": "id", "op": "is", "value": payee.id},
         {"field": "acct", "type": "id", "op": "is", "value": account.id},
@@ -572,7 +593,7 @@ def test_schedule_is_betweeen(session):
     ]
 
 
-def test_schedule_config(session):
+def test_schedule_config(session: Session) -> None:
     # should work
     sc = create_schedule_config(today, "never", frequency="monthly", skip_weekend=True, weekend_solve_mode="after")
     assert sc.end_mode == EndMode.NEVER
@@ -594,7 +615,9 @@ def test_schedule_config(session):
         ("2025-11-01", datetime.date(2025, 10, 11), 20251111),
     ],
 )
-def test_schedule_populates_next_date(session, frozen_today, start_date, expected_next_date):
+def test_schedule_populates_next_date(
+    session: Session, frozen_today: str, start_date: datetime.date, expected_next_date: int
+) -> None:
     with freeze_time(frozen_today):
         config = create_schedule_config(start_date)
         schedule = create_schedule(session, config, 500.0, name="next_date_test")
@@ -612,7 +635,9 @@ def test_schedule_populates_next_date(session, frozen_today, start_date, expecte
     "start_date, expected_next_date",
     [(datetime.date(2025, 6, 15), 20250615), (datetime.datetime(2025, 6, 15), 20250615)],
 )
-def test_schedule_populates_next_date_simple_date(session, start_date, expected_next_date):
+def test_schedule_populates_next_date_simple_date(
+    session: Session, start_date: datetime.date, expected_next_date: int
+) -> None:
     schedule = create_schedule(session, start_date, 100.0, name="simple_date_test")
     session.flush()
     rows = session.exec(select(SchedulesNextDate).where(SchedulesNextDate.schedule_id == schedule.id)).all()
@@ -621,19 +646,20 @@ def test_schedule_populates_next_date_simple_date(session, start_date, expected_
     assert rows[0].base_next_date == expected_next_date
 
 
-def test_schedule_exceptions(session):
+def test_schedule_exceptions(session: Session) -> None:
     expected_date = datetime.date(2025, 10, 11)
     account = create_account(session, "Bank")
     payee = get_or_create_payee(session, "Insurance company")
     # should always be paid on the first working day of the month
     config = create_schedule_config(expected_date, patterns=[Pattern(1, "day")], skip_weekend=True)
+    # the amount/operation mismatches below are intentional, to assert the runtime validation
     with pytest.raises(ActualError, match="amount must be a tuple"):
-        create_schedule(session, config, 100.0, "isbetween", "Insurance", payee, account)
+        create_schedule(session, config, 100.0, "isbetween", "Insurance", payee, account)  # type: ignore[call-overload]
     with pytest.raises(ActualError, match="amount must be a single decimal number"):
-        create_schedule(session, config, (100.0, 110.0), "isapprox", "Insurance", payee, account)
+        create_schedule(session, config, (100.0, 110.0), "isapprox", "Insurance", payee, account)  # type: ignore[call-overload]
 
 
-def test_get_transactions_with_cleared_filter(session):
+def test_get_transactions_with_cleared_filter(session: Session) -> None:
     acct = create_account(session, "ClearedTxs")
     create_transaction(session, date=today, account=acct, amount=10, cleared=False)
     create_transaction(session, date=today, account=acct, amount=11, cleared=False)
@@ -658,7 +684,7 @@ def test_get_transactions_with_cleared_filter(session):
         assert t.cleared
 
 
-def test_get_transactions_with_of_budget_filter(session):
+def test_get_transactions_with_of_budget_filter(session: Session) -> None:
     on_budget_acct = create_account(session, "On Budget Account", off_budget=False)
     off_budget_acct = create_account(session, "Off Budget Account", off_budget=True)
 
@@ -686,7 +712,7 @@ def test_get_transactions_with_of_budget_filter(session):
         assert t.account.offbudget == 1
 
 
-def test_get_accounts_with_closed_filter(session):
+def test_get_accounts_with_closed_filter(session: Session) -> None:
     """Test get_accounts filtering by closed attribute."""
     open_account = create_account(session, "Investment")
     closed_account = create_account(session, "Checking")
@@ -711,7 +737,7 @@ def test_get_accounts_with_closed_filter(session):
     assert result[0].closed == closed_account.closed
 
 
-def test_get_accounts_with_off_budget_filter(session):
+def test_get_accounts_with_off_budget_filter(session: Session) -> None:
     """Test get_accounts filtering by off_budget attribute."""
     on_budget_account = create_account(session, "Checking", off_budget=False)
     off_budget_account = create_account(session, "Mortgage", off_budget=True)
@@ -734,7 +760,7 @@ def test_get_accounts_with_off_budget_filter(session):
     assert off_budget_only[0].offbudget == off_budget_account.offbudget
 
 
-def test_held_budget(session):
+def test_held_budget(session: Session) -> None:
     # Test getting a held budget for a month that doesn't have one
     held_budget = ZeroBudgetMonths()
     held_budget.set_month(date(2025, 1, 1))
@@ -751,7 +777,7 @@ def test_held_budget(session):
     assert non_existent_held is None
 
 
-def test_get_transactions_with_payee_filter(session):
+def test_get_transactions_with_payee_filter(session: Session) -> None:
     """Test get_transactions filtering by payee attribute."""
     account = create_account(session, "Checking")
     payee_name = "Walmart"
@@ -767,6 +793,7 @@ def test_get_transactions_with_payee_filter(session):
     transactions = get_transactions(session, account=account, payee=payee_name)
     assert len(transactions) == 2, f"Should only return transactions with {payee_name} payee"
     for transaction in transactions:
+        assert transaction.payee is not None
         assert transaction.payee.name == payee_name
 
     # Test getting only transactions matching payee
@@ -786,7 +813,7 @@ def test_get_transactions_with_payee_filter(session):
     assert len(transactions) == 0, "Should not return any transactions"
 
 
-def test_get_transactions_with_amount_filter(session):
+def test_get_transactions_with_amount_filter(session: Session) -> None:
     """Test get_transactions filtering by amount attribute."""
     account = create_account(session, "Checking")
     create_transaction(session, date=today, account=account, amount=0)
@@ -826,7 +853,7 @@ def test_get_transactions_with_amount_filter(session):
     assert len(transactions) == 0, "Should not return any transactions"
 
 
-def test_get_transactions_with_transfer_filter(session):
+def test_get_transactions_with_transfer_filter(session: Session) -> None:
     """Test get_transactions filtering by transfer attribute."""
     account_checking = create_account(session, "Checking")
     account_savings = create_account(session, "Savings")
@@ -850,7 +877,7 @@ def test_get_transactions_with_transfer_filter(session):
         assert transaction.get_amount() == 11.50
 
 
-def test_set_account_notes(session):
+def test_set_account_notes(session: Session) -> None:
     """Test setting and updating an account's notes."""
     account = create_account(session, "Checking")
     assert account.notes is None
@@ -862,7 +889,7 @@ def test_set_account_notes(session):
     assert account.notes is None
 
 
-def test_negative_transfer(session):
+def test_negative_transfer(session: Session) -> None:
     """Try to create a transfer with negative amount, ensure that an Exception is raised."""
     create_account(session, "Bank")
     create_account(session, "Savings")
@@ -873,7 +900,7 @@ def test_negative_transfer(session):
     assert str(exc_info.value).startswith("Amount must be a positive value")
 
 
-def test_database_delete_cause_exception(session):
+def test_database_delete_cause_exception(session: Session) -> None:
     """Create a transaction and attempt deleting it directly via the session,
     ensure that an Exception is thrown."""
     account = create_account(session, "Checking")
@@ -887,7 +914,7 @@ def test_database_delete_cause_exception(session):
     assert str(exc_info.value).startswith("Actual does not allow deleting entries")
 
 
-def test_get_categories(session):
+def test_get_categories(session: Session) -> None:
     """Create some categories and verify that filtering of the getter functions as expected"""
     get_or_create_category(session, "Rent")
     food = get_or_create_category(session, "Food")
@@ -916,7 +943,7 @@ def test_get_categories(session):
     assert len(get_categories(session, is_income=True, include_deleted=True)) == 4
 
 
-def test_query_guard_clauses(session):
+def test_query_guard_clauses(session: Session) -> None:
     bank = create_account(session, "Bank")
     # get_or_create_account: passthrough when given Accounts instance
     assert get_or_create_account(session, bank) is bank

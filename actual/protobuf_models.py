@@ -86,7 +86,7 @@ class HULC_Client:
 
 
 class EncryptedData(proto.Message):
-    """The encrypted data information, namely the iv, authTag and data."""
+    """The encrypted data information, namely the iv, authTag, and data."""
 
     iv = proto.Field(proto.BYTES, number=1)
     authTag = proto.Field(proto.BYTES, number=2)
@@ -94,7 +94,7 @@ class EncryptedData(proto.Message):
 
 
 class Message(proto.Message):
-    """A change message from Actual, containing the dataset (table), row (primary key), column and value."""
+    """A change message from Actual, containing the dataset (table), row (primary key), column, and value."""
 
     dataset = proto.Field(proto.STRING, number=1)
     row = proto.Field(proto.STRING, number=2)
@@ -206,7 +206,7 @@ class SyncRequest(proto.Message):
 
 
 class SyncResponse(proto.Message):
-    """Sync response that is sent to the client with the new messages."""
+    """The Sync response that is sent to the client with the new messages."""
 
     messages = proto.RepeatedField(MessageEnvelope, number=1)
     merkle = proto.Field(proto.STRING, number=2)
