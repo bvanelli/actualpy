@@ -7,7 +7,7 @@ import pytest
 from httpx import Client
 from pytest_mock import MockerFixture
 from sqlalchemy import Engine
-from sqlmodel import Session, text
+from sqlmodel import Session, create_engine, text
 
 from actual import Actual
 from actual.api.models import ListUserFilesDTO, RemoteFileListDTO, StatusCode
@@ -184,3 +184,15 @@ def test_open_id_config(_post: MagicMock, login_mocks: None) -> None:
     assert config.status == StatusCode.OK
     assert config.data["openId"].client_id == "my-client-id"
     assert config.data["openId"].auth_method == "oauth2"
+
+
+def test_run_migrations_skips_non_migration_files(tmp_path: Path, login_mocks: None, mocker: MockerFixture) -> None:
+    data_file = mocker.patch("actual.Actual.data_file", return_value=b"CREATE TABLE foo (id TEXT PRIMARY KEY);")
+    actual = Actual(token="foo", data_dir=tmp_path)
+    actual.engine = create_engine(f"sqlite:///{tmp_path}/db.sqlite")
+    with actual.engine.begin() as conn:
+        conn.execute(text("CREATE TABLE __migrations__ (id INT PRIMARY KEY NOT NULL);"))
+    actual.run_migrations(["default-db.sqlite", "migrations/1722804019000_create_foo.sql"])
+    data_file.assert_called_once_with("migrations/1722804019000_create_foo.sql")
+    with actual.engine.connect() as conn:
+        assert conn.execute(text("SELECT id FROM __migrations__")).scalars().all() == [1722804019000]
