@@ -55,6 +55,19 @@ from actual.utils.changeset import Changeset
 from actual.utils.storage import get_tmp_folder
 from actual.version import __version__ as __version__
 
+__all__ = [
+    "Actual",
+    "ActualBankSyncError",
+    "ActualDecryptionError",
+    "ActualEncryptionError",
+    "ActualError",
+    "Changeset",
+    "InvalidZipFile",
+    "Message",
+    "UnknownFileId",
+    "__version__",
+]
+
 
 class Actual(ActualServer):
     """
@@ -119,7 +132,7 @@ class Actual(ActualServer):
         :param cert: If a custom certificate should be used (e.g., self-signed certificate), its path can be provided
                      as a string or as custom [ssl.SSLContext][ssl.SSLContext]. Set to `False` for no certificate check.
         :param bootstrap: If the server is not bootstrapped, bootstrap it with the password.
-        :param sa_kwargs: Additional `kwargs` passed to the SQLAlchemy session maker. Examples are `autoflush` (enabled
+        :param sa_kwargs: Additional `kwargs`, passed to the SQLAlchemy session maker. Examples are `autoflush` (enabled
                           by default), `autocommit` (disabled by default). For a list of all parameters, check the
                           [SQLAlchemy documentation.](
                           https://docs.sqlalchemy.org/en/20/orm/session_api.html#sqlalchemy.orm.Session.__init__)
@@ -171,7 +184,7 @@ class Actual(ActualServer):
         Returns the data directory. Raises if not set.
 
         If the `data_dir` is not provided on budget creation, the default data directory will be created using a
-        temporary directory using the `fileId` as primary key.
+        temporary directory using the `fileId` as the primary key.
         """
         if self._data_dir is None:
             raise ActualError("No data directory set.")
@@ -205,7 +218,7 @@ class Actual(ActualServer):
         """
         Sets the file id for the class for further requests.
 
-        The file_id argument can be either the name, the remote id or the group id (also known as sync_id) from the
+        The file_id argument can be either the name, the remote id, or the group id (also known as sync_id) from the
         file. If there are duplicates for the name, this method will raise `UnknownFileId`.
         """
         if isinstance(file_id, RemoteFileListDTO):
@@ -226,21 +239,21 @@ class Actual(ActualServer):
         """
         Runs the migration files, skipping the ones that have already been run.
 
-        The files can be retrieved from [data_file_index][actual.Actual.data_file_index] method. This first file is
+        The files can be retrieved from the [data_file_index][actual.Actual.data_file_index] method. This first file is
         the base database, and the following files are migrations. Migrations can also be `.js` files. In this case,
         we have to extract and execute queries from the standard JS.
         """
         with sqlite3.connect(self.data_dir / "db.sqlite") as conn:
             for file in migration_files:
                 if not file.startswith("migrations"):
-                    continue  # in case db.sqlite file gets passed as one of the migrations files
+                    continue  # in case db.sqlite file gets passed as one of the migration files
                 file_id = file.split("_")[0].split("/")[1]
                 if conn.execute(f"SELECT id FROM __migrations__ WHERE id = '{file_id}';").fetchall():
-                    continue  # skip migration as it was already ran
+                    continue  # skip the migration as it had already run
                 migration = self.data_file(file)  # retrieves file from actual server
                 sql_statements = migration.decode()
                 if file.endswith(".js"):
-                    # There is at least one migration which is a Javascript file.
+                    # There is at least one migration, which is a JavaScript file.
                     # All entries inside db.execQuery(`...`) must be executed
                     exec_entries = js_migration_statements(sql_statements)
                     sql_statements = "\n".join(exec_entries)
@@ -258,7 +271,7 @@ class Actual(ActualServer):
         Creates a budget using the remote server default database and migrations.
 
         If a password is provided, the budget will be encrypted. It's important to note that `create_budget`
-        depends on the migration files from the Actual server, and those could be written in Javascript. Even though
+        depends on the migration files from the Actual server, and those could be written in JavaScript. Even though
         the library tries to execute all statements in those files, it is not an exact match. It is recommended
         to create budgets via frontend instead.
         """
@@ -307,7 +320,7 @@ class Actual(ActualServer):
 
     def cleanup(self) -> None:
         """
-        Cleans up the database from all deleted transactions, message caches and runs a `VACUUM`.
+        Cleans up the database from all deleted transactions, message caches, and runs a `VACUUM`.
 
         Useful to reduce the size of the database before exporting it.
 
@@ -366,7 +379,7 @@ class Actual(ActualServer):
         operation.
         """
         if encryption_password and not self.file.encrypt_key_id:
-            # password was provided, but encryption key not, create one
+            # The password was provided, but encryption key not. Create one
             key_id = str(uuid.uuid4())
             salt = make_salt()
             self.user_create_key(self.file.file_id, key_id, encryption_password, salt)
@@ -549,7 +562,7 @@ class Actual(ActualServer):
             self.import_zip(io.BytesIO(file_bytes))
             # sometimes downloaded budgets will not have the groupId
             self.update_metadata({"groupId": self.file.group_id})
-        # actual js always calls validation
+        # Actual client always calls validation
         self.validate()
         # run migrations if needed
         migration_files = self.data_file_index()
@@ -579,7 +592,7 @@ class Actual(ActualServer):
         """
         Imports a zip file as the current database, as well as generating the local reflected session.
 
-        This function enables you to inspect backups by loading them directly, instead of unzipping the contents.
+        This function enables you to inspect backups by loading them directly instead of unzipping the contents.
         """
         try:
             zip_file = zipfile.ZipFile(file_bytes)
@@ -598,7 +611,7 @@ class Actual(ActualServer):
         self.create_engine()
 
     def create_engine(self) -> None:
-        """Internally creates the engine for the database, and loads the reflected metadata."""
+        """Internally creates the engine for the database and loads the reflected metadata."""
         self.engine = create_engine(f"sqlite:///{self._data_dir}/db.sqlite")
         self._database_metadata = reflect_model(self.engine)
         # load the client id
@@ -634,7 +647,7 @@ class Actual(ActualServer):
         # after receiving changes, update the client clock with the latest value
         if messages:
             self._hulc_client = HULC_Client.from_timestamp(changes.messages[-1].timestamp)
-            # store timestamp also inside database. Session might not be available here, so we create one
+            # store timestamp also inside the database. Session might not be available here, so we create one
             with Session(self.engine) as session:
                 get_or_create_clock(session, self._hulc_client)
                 session.commit()
@@ -642,12 +655,12 @@ class Actual(ActualServer):
 
     def commit(self) -> None:
         """
-        Adds all pending entries done to the local database, and sends a sync request to the remote server.
+        Adds all pending entries done to the local database and sends a sync request to the remote server.
 
         Only **after** a commit operation will the remote frontend show the new data.
 
         It's important to note that this process is not atomic, so if the process is interrupted
-        before it completes successfully, the files would end up in a unknown state, leading you to have to redo
+        before it completes successfully, the files would end up in an unknown state, leading you to have to redo
         the budget download."""
         session = self.session
         # create sync request based on the session reference that is tracked
@@ -655,7 +668,7 @@ class Actual(ActualServer):
         if self.file.encrypt_key_id:
             req.keyId = self.file.encrypt_key_id
         req.set_null_timestamp(client_id=self._sync_client.client_id)
-        # flush to database, so that all data is evaluated on the database for consistency
+        # flush to database so that all data is evaluated on the database for consistency
         session.flush()
         # first we add all new entries and modify is required
         if "messages" in session.info:
@@ -693,7 +706,7 @@ class Actual(ActualServer):
         new_transactions = new_transactions_data.data.transactions.all
         imported_transactions = []
         if is_first_sync:
-            # actual uses 'startingBalance', that already comes in cents and should be enough for our purposes
+            # Actual uses 'startingBalance', that already comes in cents and should be enough for our purposes
             # https://github.com/actualbudget/actual/blob/f09f4af667ddd57e031dcdb0d428ae935aa2afad/packages/loot-core/src/server/accounts/sync.ts#L740-L752
             balance_to_use = new_transactions_data.data.balance
             # For simpleFin, the startingBalance is actually the current balance, so we have to use it to deduce the
@@ -703,7 +716,7 @@ class Actual(ActualServer):
                 balance_to_use = current_balance - sum(t.transaction_amount.amount for t in new_transactions)
             if balance_to_use:
                 payee = None if acct.offbudget else get_or_create_payee(self.session, "Starting Balance")
-                # get date from the oldest transaction.
+                # get the date from the oldest transaction.
                 # There seems to be a bug here, and it gets the youngest transaction.
                 oldest_date = new_transactions[-1].date if new_transactions else datetime.date.today()
                 reconciled_transaction = create_transaction(
@@ -738,7 +751,7 @@ class Actual(ActualServer):
         """
         Runs the bank synchronization for the selected account. If missing, all accounts are synchronized.
 
-        If a `start_date` is provided, is used as a reference; otherwise, the last timestamp of each account will be
+        If a `start_date` is provided, it is used as a reference; otherwise, the last timestamp of each account will be
         used. If the account does not have any transaction, the last 90 days are considered instead.
 
         If the `start_date` is not provided and the account does not have any transaction, a reconciled transaction will
@@ -747,7 +760,7 @@ class Actual(ActualServer):
 
         If `run_rules` is set, the rules will be run for the imported transactions. Please note that unlike Actual,
         the rules here are run at the final imported objects. This is unlikely to cause data mismatches,
-        but if you find any issue, feel free to report it on the Github repository.
+        but if you find any issue, feel free to report it on the GitHub repository.
         """
         # if no account is provided, sync all of them, otherwise just the account provided
         if account is None:

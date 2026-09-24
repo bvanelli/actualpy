@@ -52,7 +52,7 @@ def encrypt(key_id: str, master_key: bytes, plaintext: bytes) -> EncryptionTestD
 
 
 def decrypt(master_key: bytes, iv: bytes, ciphertext: bytes, auth_tag: bytes | None = None) -> bytes:
-    """Decrypts a cyphertext (actual database) using AES-GCM."""
+    """Decrypts a ciphertext (actual database) using AES-GCM."""
     decryptor = Cipher(algorithms.AES(master_key), modes.GCM(iv, auth_tag)).decryptor()
     try:
         return decryptor.update(ciphertext) + decryptor.finalize()
@@ -61,7 +61,7 @@ def decrypt(master_key: bytes, iv: bytes, ciphertext: bytes, auth_tag: bytes | N
 
 
 def decrypt_from_meta(master_key: bytes, ciphertext: bytes, encrypt_meta: EncryptMetaDTO) -> bytes:
-    """Decrypts a cyphertext (actual database) using AES-GCM using the provided metadata."""
+    """Decrypts a ciphertext (actual database) using AES-GCM using the provided metadata."""
     if encrypt_meta.iv is None or encrypt_meta.auth_tag is None:
         raise ActualDecryptionError("Encryption metadata is missing required iv or authTag.")
     iv = base64.b64decode(encrypt_meta.iv)

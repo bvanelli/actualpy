@@ -128,7 +128,7 @@ def get_transactions(
     category: Categories | str | None = None,
     is_parent: bool = False,
     include_deleted: bool = False,
-    budget: ZeroBudgets | None = None,
+    budget: BaseBudgets | None = None,
     cleared: bool | None = None,
     payee: Payees | str | None = None,
     amount: decimal.Decimal | float | int | None = None,
@@ -164,7 +164,7 @@ def get_transactions(
                      all transactions.
     :param off_budget: Optional off-budget filter for the transactions. If True, only transactions from off-budget
                        accounts are returned. If False, only transactions from on-budget accounts are returned.
-                       By default (None), returns all transactions regardless of budget status.
+                       By default, returns all transactions regardless of budget status.
     :return: List of transactions with `account`, `category` and `payee` preloaded.
     """
     query = _transactions_base_query(s, start_date, end_date, account, category, include_deleted)
@@ -216,7 +216,7 @@ def match_transaction(
 
     Described at [reconcileTransactions](
     https://github.com/actualbudget/actual/blob/b192ad955ed222d9aa388fe36557b39868029db4/packages/loot-core/src/server/accounts/sync.ts#L347).
-    The matches, from strongest to the weakest are defined as follows:
+    The matches, from the strongest to the weakest, are defined as follows:
 
     - The strongest match will be the `imported_id` (or `financial_id`),
     - The transaction with the same exact amount and around the same date (7 days), with the same payee (closest first).
@@ -249,7 +249,7 @@ def match_transaction(
     results.sort(key=lambda t: abs((t.get_date() - date).total_seconds()))
     # Next, do the fuzzy matching. This first pass matches based on the
     # payee id. We do this in multiple passes so that higher fidelity
-    # matching always happens first, i.e. a transaction should
+    # matching always happens first, e.g., a transaction should
     # match with low fidelity if a later transaction is going to match
     # the same one with high fidelity.
     resolved_payee = get_payee(s, payee) if payee else None
@@ -258,7 +258,7 @@ def match_transaction(
         if matching_payee:
             return matching_payee[0]
     # The final fuzzy matching pass. This is the lowest fidelity
-    # matching: it just find the first transaction that hasn't been
+    # matching: it just finds the first transaction that hasn't been
     # matched yet. Remember the dataset only contains transactions
     # around the same date with the same amount.
     return results[0]
@@ -328,7 +328,7 @@ def create_transaction(
     a third-party system that contains unique ids (i.e., via bank sync).
     :param cleared: Visual indication that the transaction is in both your budget and in your account statement,
     and they match.
-    :param imported_payee: Known internally as imported_description, this is the original name of the payee, when
+    :param imported_payee: Known internally as imported_description, this is the original name of the payee when
     importing data and before running rules.
     :return: The generated transaction object.
     """
@@ -395,7 +395,7 @@ def set_transaction_payee(s: Session, transaction: Transactions, payee: Payees |
 
         transfer.transferred_id, transaction.transferred_id = transaction.id, transfer.id
 
-    # finally set the payee
+    # finally, set the payee
     transaction.payee_id = payee.id if payee else None
 
 
@@ -452,7 +452,7 @@ def reconcile_transaction(
     a third-party system that contains unique ids (i.e., via bank sync).
     :param cleared: This is a visual indication that the transaction is in both your budget and in your account
     statement, and they match.
-    :param imported_payee: Known internally as imported_description, this is the original name of the payee, when
+    :param imported_payee: Known internally as imported_description, this is the original name of the payee when
     importing data and before running rules.
     :param update_existing: If the transaction should be updated to the provided properties, if a match is found.
     :param already_matched: List of the transactions that were already matched. When importing a list of transactions,
@@ -661,7 +661,7 @@ def get_tags(
     :param s: Session from the Actual local database.
     :param name: Pattern name of the tag name, case-insensitive.
     :param description: Pattern name of the tag description, case-insensitive.
-    :param include_deleted: Includes all tags which were deleted via frontend. They would not show normally.
+    :param include_deleted: Includes all tags deleted via frontend. They would not show normally.
     """
     query = _base_query(Tags, None, include_deleted)
     if name:
@@ -1110,7 +1110,7 @@ def create_rule(
 
     :param s: Session from the Actual local database.
     :param rule: A constructed [Rule][actual.rules.Rule] object. The rule format and data types are validated on the
-                 constructor **but the data itself is not**. Make sure that, if you reference uuids, that they exist.
+                 constructor, **but the data itself is not**. Make sure that, if you reference uuids, that they exist.
     :param run_immediately: If the run should run for all transactions on insert, defaults to `False`.
     :return: Rule database object created.
     """
@@ -1155,10 +1155,10 @@ def create_schedule(
     date: datetime.date | datetime.datetime | Schedule,
     amount: tuple[decimal.Decimal, decimal.Decimal] | tuple[float, float],
     amount_operation: typing.Literal["isbetween"],
-    name: str | None,
-    payee: str | Payees | None,
-    account: str | Accounts | None,
-    posts_transaction: bool,
+    name: str | None = ...,
+    payee: str | Payees | None = ...,
+    account: str | Accounts | None = ...,
+    posts_transaction: bool = ...,
 ) -> Schedules: ...
 
 
@@ -1167,11 +1167,11 @@ def create_schedule(
     s: Session,
     date: datetime.date | datetime.datetime | Schedule,
     amount: decimal.Decimal | float,
-    amount_operation: typing.Literal["is", "isapprox"],
-    name: str | None,
-    payee: str | Payees | None,
-    account: str | Accounts | None,
-    posts_transaction: bool,
+    amount_operation: typing.Literal["is", "isapprox"] = ...,
+    name: str | None = ...,
+    payee: str | Payees | None = ...,
+    account: str | Accounts | None = ...,
+    posts_transaction: bool = ...,
 ) -> Schedules: ...
 
 

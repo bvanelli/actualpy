@@ -3,6 +3,7 @@ import decimal
 import uuid
 
 import pytest
+from sqlmodel import Session
 
 from actual.database import (
     Categories,
@@ -14,13 +15,13 @@ from actual.database import (
 from actual.utils.conversions import cents_to_decimal, current_timestamp
 
 
-def test_get_class_by_table_name():
+def test_get_class_by_table_name() -> None:
     assert get_class_by_table_name("transactions") == Transactions
     with pytest.raises(ValueError, match="Could not find table 'foo'"):
         get_class_by_table_name("foo")
 
 
-def test_get_attribute_by_table_name():
+def test_get_attribute_by_table_name() -> None:
     assert get_attribute_by_table_name("transactions", "isParent") == "is_parent"
     assert get_attribute_by_table_name("transactions", "is_parent", reverse=True) == "isParent"
     assert get_attribute_by_table_name("transactions", "category") == "category_id"
@@ -31,7 +32,7 @@ def test_get_attribute_by_table_name():
     assert get_attribute_by_table_name("foo", "bar", reverse=True) is None
 
 
-def test_conversion(session):
+def test_conversion(session: Session) -> None:
     t = Transactions(
         id=str(uuid.uuid4()),
         acct="foo",
@@ -63,19 +64,19 @@ def test_conversion(session):
     assert t.tombstone == 1
 
 
-def test_cents_to_decimal():
+def test_cents_to_decimal() -> None:
     assert cents_to_decimal(100) == decimal.Decimal(1)
     assert cents_to_decimal(None) == decimal.Decimal(0)
 
 
 @pytest.mark.parametrize("hidden,expected", [(True, 1), (False, 0)])
-def test_conversion_boolean(hidden, expected):
+def test_conversion_boolean(hidden: bool, expected: int) -> None:
     cat = Categories(id=str(uuid.uuid4()), name="foobar", hidden=hidden)
     conversion = cat.convert()
     assert [c for c in conversion if c.column == "hidden"][0].get_value() == expected
 
 
-def test_delete_exception():
+def test_delete_exception() -> None:
     cm = CategoryMapping(id="foo")
     with pytest.raises(AttributeError):
         cm.delete()

@@ -49,7 +49,7 @@ from actual.budgets import get_budget_history
 with Actual("http://localhost:5006", password="mypass", file="Budget") as actual:
     history = get_budget_history(
         actual.session,
-        datetime.date(2025, 11, 1),   # Can be omitted and will output the current month instead
+        datetime.date(2025, 11, 1),  # Can be omitted and will output the current month instead
     )
     # subselect our target month
     budget = history.from_month(datetime.date(2025, 11, 1))
