@@ -5,11 +5,10 @@ import pathlib
 from collections.abc import Iterator
 
 import pytest
-from click.testing import Result
 from pytest_mock import MockerFixture
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.waiting_utils import wait_for_logs
-from typer.testing import CliRunner
+from typer.testing import CliRunner, Result  # type: ignore[attr-defined]  # not re-exported, but click may be missing
 
 from actual import Actual, __version__
 from actual.cli.config import Config, default_config_path
