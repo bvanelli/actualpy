@@ -409,6 +409,16 @@ def test_default_imported_payee(session: Session) -> None:
     assert t.imported_description == "foo"
 
 
+def test_create_payee_learn_categories_default(session: Session) -> None:
+    # learn_categories must not be synced as NULL, regression test to satisfy mypy
+    payee = get_or_create_payee(session, "Landlord")
+    session.flush()
+    payee_columns = {m.column for m in session.info["messages"] if m.dataset == "payees"}
+    assert "learn_categories" not in payee_columns
+    session.refresh(payee)
+    assert payee.learn_categories is True
+
+
 def test_session_error(mocker: MockerFixture) -> None:
     mocker.patch("actual.Actual.validate")
     with Actual(token="foo") as actual:

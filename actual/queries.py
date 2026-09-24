@@ -583,7 +583,7 @@ def create_category_group(s: Session, name: str) -> CategoryGroups:
     Make sure you avoid creating payees with duplicate names, as it makes it difficult to find them without knowing
     the unique id beforehand.
     """
-    category_group = CategoryGroups(id=str(uuid.uuid4()), name=name, is_income=0, sort_order=0)
+    category_group = CategoryGroups(id=str(uuid.uuid4()), name=name, is_income=0, hidden=False, sort_order=0)
     s.add(category_group)
     return category_group
 
@@ -640,7 +640,7 @@ def create_category(
     """
     category_group = get_or_create_category_group(s, group_name if group_name is not None else "Usual Expenses")
     category = Categories(
-        id=str(uuid.uuid4()), name=name, hidden=0, is_income=0, sort_order=0, cat_group=category_group.id
+        id=str(uuid.uuid4()), name=name, hidden=False, is_income=0, sort_order=0, cat_group=category_group.id
     )
     category_mapping = CategoryMapping(id=category.id, transfer_id=category.id)
     s.add(category)
@@ -678,7 +678,7 @@ def create_tag(s: Session, name: str, description: str | None = None, color: str
     The name will be the tag used inside the transaction. You can use this tag afterward by setting the
     notes of a transaction. If your tag is called `'foo'`, you can append `'#foo'` to the transaction notes.
 
-    The color of the tag can be provided as hexadecimal (i.e. `'#690CB0'` for purple or `'#1976D2'` for blue).
+    The color of the tag can be provided as hexadecimal (e.g., `#690CB0` for purple or `#1976D2` for blue).
     """
     tag = Tags(id=str(uuid.uuid4()), tag=name.lstrip("#"), description=description, color=color)
     s.add(tag)
@@ -779,7 +779,7 @@ def create_payee(s: Session, name: str | None) -> Payees:
     Make sure you avoid creating payees with duplicate names, as it makes it difficult to find them without knowing the
     unique id beforehand.
     """
-    payee = Payees(id=str(uuid.uuid4()), name=name)
+    payee = Payees(id=str(uuid.uuid4()), name=name, learn_categories=None)
     s.add(payee)
     # add also the payee mapping
     s.add(PayeeMapping(id=payee.id, target_id=payee.id))
@@ -1110,7 +1110,7 @@ def create_rule(
 
     :param s: Session from the Actual local database.
     :param rule: A constructed [Rule][actual.rules.Rule] object. The rule format and data types are validated on the
-                 constructor, **but the data itself is not**. Make sure that, if you reference uuids, that they exist.
+                 constructor, **but the data itself is not**. Make sure that, if you reference UUIDs, that they exist.
     :param run_immediately: If the run should run for all transactions on insert, defaults to `False`.
     :return: Rule database object created.
     """
