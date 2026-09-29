@@ -267,6 +267,41 @@ class Migrations(SQLModel, table=True):
     id: int | None = Field(default=None, sa_column=Column("id", Integer, primary_key=True))
 
 
+class AccountGroups(BaseModel, table=True):
+    """
+    Stores the groups that the accounts can belong to.
+
+    Account groups let you organize accounts into named groups, for example "Savings" or "Credit Cards".
+    An account can belong to at most one group, set through the account_group_id field on Account.
+    """
+
+    __tablename__ = "account_groups"
+
+    id: str = Field(..., sa_column=Column("id", Text, primary_key=True))
+    name: str | None = Field(default=None, sa_column=Column("name", Text))
+    sort_order: float | None = Field(default=None, sa_column=Column("sort_order", Float))
+    tombstone: int | None = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
+
+    accounts: Mapped[list["Accounts"]] = Relationship(
+        back_populates="group",
+        sa_relationship_kwargs={
+            "primaryjoin": "and_(AccountGroups.id == Accounts.account_group_id, Accounts.tombstone == 0)",
+            "order_by": "Accounts.sort_order",
+        },
+    )
+
+    def delete(self) -> None:
+        """Overload the delete() from the BaseModel so that the accounts belonging to the group are left ungrouped,
+        matching the Actual frontend behaviour."""
+        session = self._object_session()
+        accounts = session.scalars(
+            select(Accounts).where(Accounts.account_group_id == self.id, Accounts.tombstone == 0)
+        ).all()
+        for account in accounts:
+            account.account_group_id = None
+        super().delete()
+
+
 class Accounts(BaseModel, table=True):
     """
     Represents an account entity with detailed attributes describing account properties, transactions, and
@@ -295,6 +330,11 @@ class Accounts(BaseModel, table=True):
     account_sync_source: str | None = Field(default=None, sa_column=Column("account_sync_source", Text))
     last_sync: str | None = Field(default=None, sa_column=Column("last_sync", Text))
     last_reconciled: str | None = Field(default=None, sa_column=Column("last_reconciled", Text))
+    bank_sync_status: str | None = Field(default=None, sa_column=Column("bank_sync_status", Text))
+    account_group_id: str | None = Field(
+        default=None,
+        sa_column=Column("account_group_id", Text, ForeignKey("account_groups.id"), server_default=text("NULL")),
+    )
 
     payee: "Payees" = Relationship(back_populates="account", sa_relationship_kwargs={"uselist": False})
     transactions: Mapped[list["Transactions"]] = Relationship(
@@ -310,6 +350,13 @@ class Accounts(BaseModel, table=True):
         sa_relationship_kwargs={
             "uselist": False,
             "primaryjoin": "and_(Accounts.bank_id == Banks.id,Banks.tombstone == 0)",
+        },
+    )
+    group: Optional["AccountGroups"] = Relationship(
+        back_populates="accounts",
+        sa_relationship_kwargs={
+            "uselist": False,
+            "primaryjoin": "and_(Accounts.account_group_id == AccountGroups.id, AccountGroups.tombstone == 0)",
         },
     )
 
@@ -360,6 +407,7 @@ class Categories(BaseModel, table=True):
     sort_order: float | None = Field(default=None, sa_column=Column("sort_order", Float))
     tombstone: int | None = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
     goal_def: str | None = Field(default=None, sa_column=Column("goal_def", Text, server_default=text("null")))
+    cleanup_def: str | None = Field(default=None, sa_column=Column("cleanup_def", Text, server_default=text("NULL")))
     template_settings: dict[str, Any] | None = Field(default=None, sa_column=Column("template_settings", JSON))
 
     zero_budgets: "ZeroBudgets" = Relationship(
@@ -445,6 +493,14 @@ class CategoryMapping(BaseModel, table=True):
     transfer_id: str | None = Field(default=None, sa_column=Column("transferId", Text))
 
 
+class CleanupGroups(BaseModel, table=True):
+    __tablename__ = "cleanup_groups"
+
+    id: str = Field(..., sa_column=Column("id", Text, primary_key=True))
+    name: str = Field(sa_column=Column("name", Text, nullable=False))
+    tombstone: int | None = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
+
+
 class CreatedBudgets(SQLModel, table=True):
     __tablename__ = "created_budgets"
 
@@ -492,6 +548,9 @@ class CustomReports(BaseModel, table=True):
     )
     sort_by: str | None = Field(default=None, sa_column=Column("sort_by", Text, server_default=text("'desc'")))
     trim_intervals: int | None = Field(default=None, sa_column=Column("trim_intervals", Integer))
+    show_trend_lines: int | None = Field(
+        default=None, sa_column=Column("show_trend_lines", Integer, server_default=text("0"))
+    )
 
 
 class Dashboard(BaseModel, table=True):
@@ -588,6 +647,24 @@ class Notes(BaseModel, table=True):
     note: str | None = Field(default=None, sa_column=Column("note", Text))
 
 
+class PayeeLocations(BaseModel, table=True):
+    """Stores the geographical locations where a payee was used."""
+
+    __tablename__ = "payee_locations"
+    __table_args__ = (
+        Index("idx_payee_locations_payee_id", "payee_id"),
+        Index("idx_payee_locations_tombstone_payee_created", "tombstone", "payee_id", "created_at"),
+        Index("idx_payee_locations_geo_tombstone", "tombstone", "latitude", "longitude"),
+    )
+
+    id: str = Field(..., sa_column=Column("id", Text, primary_key=True))
+    payee_id: str | None = Field(default=None, sa_column=Column("payee_id", Text, ForeignKey("payees.id")))
+    latitude: float | None = Field(default=None, sa_column=Column("latitude", Float))
+    longitude: float | None = Field(default=None, sa_column=Column("longitude", Float))
+    created_at: int | None = Field(default=None, sa_column=Column("created_at", Integer))
+    tombstone: int | None = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
+
+
 class PayeeMapping(BaseModel, table=True):
     __tablename__ = "payee_mapping"
 
@@ -670,6 +747,10 @@ class Schedules(BaseModel, table=True):
     )
     tombstone: int | None = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
     name: str | None = Field(default=None, sa_column=Column("name", Text, server_default=text("NULL")))
+    custom_upcoming_length: str | None = Field(
+        default=None, sa_column=Column("custom_upcoming_length", Text, server_default=text("NULL"))
+    )
+    sort_order: float | None = Field(default=None, sa_column=Column("sort_order", Float, server_default=text("0")))
 
     rule: "Rules" = Relationship(sa_relationship_kwargs={"uselist": False})
     transactions: list["Transactions"] = Relationship(back_populates="schedule")
@@ -704,6 +785,7 @@ class Tags(BaseModel, table=True):
     )
     description: str | None = Field(default=None, sa_column=Column("description", Text))
     tombstone: int | None = Field(default=None, sa_column=Column("tombstone", Integer, server_default=text("0")))
+    hidden: bool | None = Field(default=None, sa_column=Column("hidden", Boolean, server_default=text("0")))
 
     @property
     def transactions(self) -> Sequence["Transactions"]:

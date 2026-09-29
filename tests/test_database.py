@@ -15,6 +15,7 @@ from actual.database import SchedulesNextDate, Transactions, ZeroBudgetMonths, r
 from actual.exceptions import ActualInvalidOperationError
 from actual.queries import (
     create_account,
+    create_account_group,
     create_budget,
     create_rule,
     create_schedule,
@@ -23,10 +24,13 @@ from actual.queries import (
     create_tag,
     create_transaction,
     create_transfer,
+    get_account_group,
+    get_account_groups,
     get_accounts,
     get_categories,
     get_held_budget,
     get_or_create_account,
+    get_or_create_account_group,
     get_or_create_category,
     get_or_create_clock,
     get_or_create_payee,
@@ -529,6 +533,27 @@ def test_tags(session: Session) -> None:
     assert tags[0].transactions == [coffee]
     assert tags[0] == get_tag(session, "#happy")
     assert get_tags(session, "#foobar", "moments") == []
+
+
+def test_account_groups(session: Session) -> None:
+    savings = create_account_group(session, "Savings")
+    credit_cards = get_or_create_account_group(session, "Credit Cards")
+    ally = create_account(session, "Ally")
+    ally.account_group_id = savings.id
+    session.commit()
+    assert savings.sort_order == 16384
+    assert credit_cards.sort_order == 32768
+    assert get_account_groups(session) == [savings, credit_cards]
+    assert get_account_group(session, "SAVINGS") == savings
+    assert get_or_create_account_group(session, "savings") == savings
+    assert savings.accounts == [ally]
+    assert ally.group == savings
+    with pytest.raises(ActualError, match="An 'Savings' account group already exists."):
+        create_account_group(session, "saVINGS")
+    savings.delete()
+    session.commit()
+    assert ally.account_group_id is None
+    assert get_account_groups(session) == [credit_cards]
 
 
 def test_schedules(session: Session) -> None:
