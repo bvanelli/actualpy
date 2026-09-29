@@ -16,6 +16,7 @@ from sqlmodel.sql.expression import SelectOfScalar
 
 from actual.crypto import is_uuid
 from actual.database import (
+    AccountGroups,
     Accounts,
     BaseBudgets,
     Categories,
@@ -719,6 +720,70 @@ def get_or_create_category(
     if not category:
         category = create_category(s, name, group_name or "Usual Expenses")
     return category
+
+
+def get_account_groups(
+    s: Session, name: str | None = None, include_deleted: bool = False
+) -> typing.Sequence[AccountGroups]:
+    """
+    Returns a list of all available account groups.
+
+    :param s: Session from the Actual local database.
+    :param name: Pattern name of the account group, case-insensitive.
+    :param include_deleted: Includes all account groups deleted via frontend. They would not show normally.
+    :return: List of account groups with `accounts` already loaded.
+    """
+    query = (
+        _base_query(AccountGroups, name, include_deleted)
+        .order_by(col(AccountGroups.sort_order), col(AccountGroups.id))
+        .options(joinedload(AccountGroups.accounts))
+    )
+    return s.exec(query).unique().all()
+
+
+def get_account_group(s: Session, name: str | AccountGroups) -> AccountGroups | None:
+    """
+    Gets an account group by name (case-insensitive), otherwise returns `None`. Deleted account groups are excluded
+    from the search.
+    """
+    if isinstance(name, AccountGroups):
+        return name
+    return s.exec(
+        select(AccountGroups).where(func.upper(AccountGroups.name) == name.upper(), AccountGroups.tombstone == 0)
+    ).one_or_none()
+
+
+def create_account_group(s: Session, name: str) -> AccountGroups:
+    """
+    Creates a new account group with the name `name`, placed after all existing groups.
+
+    Accounts can be assigned to the group by setting `account_group_id` on the account:
+
+    :param s: Session from the Actual local database.
+    :param name: Name of the account group. Names are unique (case-insensitive), matching the Actual frontend.
+    :return: The created account group.
+    """
+    if existing_group := get_account_group(s, name):
+        raise ActualError(f"An '{existing_group.name}' account group already exists.")
+    last_group = s.exec(
+        select(AccountGroups)
+        .where(AccountGroups.tombstone == 0)
+        .order_by(col(AccountGroups.sort_order).desc(), col(AccountGroups.id).desc())
+    ).first()
+    sort_order = ((last_group.sort_order or 0) if last_group else 0) + 16384
+    group = AccountGroups(id=str(uuid.uuid4()), name=name, sort_order=sort_order)
+    s.add(group)
+    return group
+
+
+def get_or_create_account_group(s: Session, name: str | AccountGroups) -> AccountGroups:
+    """Gets or create the account group, if not found with `name` (case-insensitive)."""
+    if isinstance(name, AccountGroups):
+        return name
+    group = get_account_group(s, name)
+    if not group:
+        group = create_account_group(s, name)
+    return group
 
 
 def get_accounts(
