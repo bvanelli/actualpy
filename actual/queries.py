@@ -181,7 +181,7 @@ def get_transactions(
             return []
         query = query.where(col(Transactions.payee_id) == payee.id)
     if amount is not None:
-        query = query.where(col(Transactions.amount) == int(amount * 100))
+        query = query.where(col(Transactions.amount) == decimal_to_cents(amount))
     if transfer is not None:
         query = query.where(
             col(Transactions.transferred_id).is_not(None) if transfer else col(Transactions.transferred_id).is_(None)
