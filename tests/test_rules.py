@@ -4,7 +4,7 @@ import uuid
 from typing import Any
 
 import pytest
-from pydantic import TypeAdapter, ValidationError
+from pydantic import ValidationError
 from pytest_mock import MockerFixture
 from sqlmodel import Session
 
@@ -524,36 +524,6 @@ def test_run_rules(session: Session, mocker: MockerFixture) -> None:
     assert t_splits.payee is None
 
 
-def test_frontend_field_names_are_accepted(session: Session) -> None:
-    """Field names as stored by the Actual frontend load and run like their internal counterparts."""
-    acct = create_account(session, "Bank")
-    savings = create_account(session, "Savings")
-    payee = create_payee(session, "Coffee shop")
-    # conditions and actions exactly as stored by the Actual frontend
-    conditions_json = json.dumps(
-        [
-            {"op": "is", "field": "payee", "value": payee.id, "type": "id"},
-            {"op": "is", "field": "account", "value": acct.id, "type": "id"},
-            {"op": "contains", "field": "imported_payee", "value": "coffee", "type": "imported_payee"},
-        ]
-    )
-    actions_json = json.dumps([{"op": "set", "field": "notes", "value": "matched", "type": "string"}])
-    conditions = TypeAdapter(list[Condition]).validate_json(conditions_json)
-    actions = TypeAdapter(list[Action]).validate_json(actions_json)
-    assert [c.field for c in conditions] == ["description", "acct", "imported_description"]
-    rule = Rule(conditions=conditions, actions=actions, operation="and")
-    t = create_transaction(session, datetime.date.today(), acct, payee, notes="", imported_payee="COFFEE PLACE 42")
-    rule.run(t)
-    assert t.notes == "matched"
-    # an action with an aliased field name also loads
-    action_alias = Action.model_validate({"op": "set", "field": "payee", "value": payee.id, "type": "id"})
-    assert action_alias.field == "description"
-    # sanity: the other account does not match
-    t2 = create_transaction(session, datetime.date.today(), savings, payee, notes="", imported_payee="COFFEE PLACE 42")
-    rule.run(t2)
-    assert t2.notes == ""
-
-
 @pytest.mark.parametrize(
     "unsupported_condition,error",
     [
@@ -607,3 +577,27 @@ def test_set_string_action_preserves_original_value(session: Session) -> None:
     assert t.notes == "#Transferência"
     # conditions still match case-insensitively against the written value
     assert Condition(field="notes", op="is", value="#transferência").run(t) is True
+
+
+def test_frontend_field_names(session: Session) -> None:
+    """Field names as stored by the Actual frontend are converted to their internal counterparts."""
+    acct = create_account(session, "Bank")
+    savings = create_account(session, "Savings")
+    payee = create_payee(session, "Coffee shop")
+    rule = Rule.model_validate(
+        {
+            "conditions": [
+                {"op": "is", "field": "payee", "value": payee.id, "type": "id"},
+                {"op": "is", "field": "account", "value": acct.id, "type": "id"},
+                {"op": "contains", "field": "imported_payee", "value": "coffee", "type": "imported_payee"},
+            ],
+            "actions": [{"op": "set", "field": "account", "value": savings.id, "type": "id"}],
+        }
+    )
+    assert [c.field for c in rule.conditions] == ["description", "acct", "imported_description"]
+    assert rule.actions[0].field == "acct"
+    t = create_transaction(session, datetime.date.today(), acct, payee, imported_payee="COFFEE PLACE 42")
+    rule.run(t)
+    assert t.acct == savings.id
+    # the transaction is now on the other account, so the rule no longer matches
+    assert rule.evaluate(t) is False

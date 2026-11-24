@@ -284,22 +284,6 @@ def _coerce_value(v: typing.Any) -> typing.Any:
     return v
 
 
-# Actual stores rule conditions and actions using the app-level field names,
-# while the transactions table (and this library) uses the internal column
-# names. Accept both so rules created in the Actual frontend can be loaded.
-FIELD_NAME_ALIASES = {
-    "payee": "description",
-    "account": "acct",
-    "imported_payee": "imported_description",
-}
-
-
-def _coerce_field_alias(v: typing.Any) -> typing.Any:
-    if isinstance(v, str):
-        return FIELD_NAME_ALIASES.get(v, v)
-    return v
-
-
 class Condition(pydantic.BaseModel):
     """
     A condition does a single comparison check for a transaction. The `op` indicates the action type, usually being
@@ -323,21 +307,25 @@ class Condition(pydantic.BaseModel):
     - `amount`: `type` must be `number` and format in cents
     - `amount_inflow`: `type` must be `number` and format in cents, will set `"options":{"inflow":true}`
     - `amount_outflow`: `type` must be `number` and format in cents, will set `"options":{"outflow":true}`
+
+    Note that the frontend refers to some fields by different names: `payee`, `account` and `imported_payee`. If you
+    provide the frontend names, they will be converted on the background automatically to `description`, `acct` and
+    `imported_description` respectively.
     """
 
-    field: typing.Annotated[
-        typing.Literal[
-            "imported_description",
-            "acct",
-            "category",
-            "date",
-            "description",
-            "notes",
-            "amount",
-            "amount_inflow",
-            "amount_outflow",
-        ],
-        pydantic.BeforeValidator(_coerce_field_alias),
+    field: typing.Literal[
+        "imported_description",
+        "acct",
+        "category",
+        "date",
+        "description",
+        "notes",
+        "amount",
+        "amount_inflow",
+        "amount_outflow",
+        "payee",
+        "account",
+        "imported_payee",
     ]
     op: ConditionType
     value: typing.Annotated[
@@ -361,6 +349,12 @@ class Condition(pydantic.BaseModel):
 
     def get_value(self) -> int | datetime.date | list[str] | str | BetweenValue | Schedule | None:
         return get_value(self.value, self.type)
+
+    @pydantic.field_validator("field", mode="before")
+    @classmethod
+    def convert_field(cls, value: typing.Any) -> typing.Any:
+        """If the user provides the field names used by the frontend, we convert them silently to the internal names."""
+        return {"payee": "description", "account": "acct", "imported_payee": "imported_description"}.get(value, value)
 
     @pydantic.model_validator(mode="after")
     def convert_value(self) -> Condition:
@@ -414,13 +408,13 @@ class Action(pydantic.BaseModel):
     - `acct`: `type` must be `id` and `value` an uuid
     - `date`: `type` must be `date` and `value` a string in the date format `"2024-04-11"`
     - `amount`: `type` must be `number` and format in cents
+
+    Note that the frontend refers to some fields by different names: `payee` and `account`. If you provide the
+    frontend names, they will be converted on the background automatically to `description` and `acct` respectively.
     """
 
     field: (
-        typing.Annotated[
-            typing.Literal["category", "description", "notes", "cleared", "acct", "date", "amount"],
-            pydantic.BeforeValidator(_coerce_field_alias),
-        ]
+        typing.Literal["category", "description", "notes", "cleared", "acct", "date", "amount", "payee", "account"]
         | None
     ) = None
     op: ActionType = pydantic.Field(ActionType.SET, description="Action type to apply (default changes a column).")
@@ -461,6 +455,12 @@ class Action(pydantic.BaseModel):
         if not self.options:
             ret.pop("options", None)
         return ret
+
+    @pydantic.field_validator("field", mode="before")
+    @classmethod
+    def convert_field(cls, value: typing.Any) -> typing.Any:
+        """If the user provides the field names used by the frontend, we convert them silently to the internal names."""
+        return {"payee": "description", "account": "acct"}.get(value, value)
 
     @pydantic.field_validator("value", mode="before")
     @classmethod
