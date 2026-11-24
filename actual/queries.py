@@ -235,7 +235,7 @@ def match_transaction(
         _transactions_base_query(
             s, date - datetime.timedelta(days=7), date + datetime.timedelta(days=8), account=account
         )
-        .where(col(Transactions.amount) == round(amount * 100))
+        .where(col(Transactions.amount) == decimal_to_cents(amount))
         .where(Transactions.is_child == 0)
     )
     results: list[Transactions] = list(s.exec(query).all())
