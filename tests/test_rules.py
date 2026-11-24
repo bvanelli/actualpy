@@ -1,8 +1,10 @@
 import datetime
+import json
 import uuid
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 from pytest_mock import MockerFixture
 from sqlmodel import Session
 
@@ -513,6 +515,51 @@ def test_run_rules(session: Session, mocker: MockerFixture) -> None:
     assert splits[0].payee == target_payee
     assert splits[1].payee == source_payee
     assert t_splits.payee is None
+
+
+@pytest.mark.parametrize(
+    "unsupported_condition,error",
+    [
+        ({"field": "unknown_field", "op": "is", "value": "foo", "type": "string"}, ValidationError),
+        # unknown keys on a schedule pattern hit Pattern.__init__, which raises TypeError instead of ValidationError
+        (
+            {
+                "field": "date",
+                "op": "isapprox",
+                "type": "date",
+                "value": {
+                    "start": "2024-01-01",
+                    "frequency": "monthly",
+                    "patterns": [{"value": 1, "type": "day", "extra": 1}],
+                },
+            },
+            TypeError,
+        ),
+    ],
+)
+def test_run_rules_skips_unsupported_rule(
+    session: Session, mocker: MockerFixture, unsupported_condition: dict[str, Any], error: type[Exception]
+) -> None:
+    acct = create_account(session, "Bank")
+    t = create_transaction(session, datetime.date.today(), acct, notes="foo")
+    supported = Rule(
+        conditions=[Condition(field="notes", op="is", value="foo")],
+        actions=[Action(field="notes", value="bar")],
+        operation="all",
+    )
+    create_rule(session, supported)
+    unsupported = create_rule(session, supported)
+    unsupported.conditions = json.dumps([unsupported_condition])
+    session.flush()
+    mocker.patch("actual.Actual.validate")
+    actual = Actual(token="foobar")
+    actual._session = session
+    with pytest.raises(error):
+        actual.run_rules()
+    assert t.notes == "foo"
+    with pytest.warns(UserWarning, match=f"Skipping rule '{unsupported.id}'"):
+        actual.run_rules(strict=False)
+    assert t.notes == "bar"
 
 
 def test_set_string_action_preserves_original_value(session: Session) -> None:

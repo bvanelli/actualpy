@@ -8,7 +8,7 @@ import uuid
 import warnings
 
 import sqlalchemy
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, ValidationError
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 from sqlmodel import Session, col, select
@@ -1145,21 +1145,38 @@ def get_rules(s: Session, include_deleted: bool = False) -> typing.Sequence[Rule
     return s.exec(_base_query(Rules, None, include_deleted)).all()
 
 
-def get_ruleset(s: Session) -> RuleSet:
+def get_ruleset(s: Session, strict: bool = True) -> RuleSet:
     """
     Returns a list of all available rules, but as a rule set that can be used to be applied to existing transactions.
 
+    By default, a rule that uses a field, operation or action not yet supported by actualpy raises an error.
+    Use `strict=False` to skip those rules with a warning instead, so that a single unsupported rule does not disable
+    the whole ruleset.
+
     :param s: Session from the Actual local database.
+    :param strict: If `True`, raises an error when a rule cannot be parsed. If `False`, skips that rule with a warning
+        and returns the remaining ones.
     :return: RuleSet object that contains all rules and can be either.
     """
     rule_set = list()
     for rule in get_rules(s):
-        # TODO: check if conditions/actions can actually be None in the Actual source code
+        # Actual reads missing conditions/actions as [] and never matches a rule without conditions; skip them here
+        # because Rule.evaluate would match everything on an empty "and" (all([]) is True)
         if not rule.conditions or not rule.actions:
             continue
-        conditions = TypeAdapter(list[Condition]).validate_json(rule.conditions)
-        actions = TypeAdapter(list[Action]).validate_json(rule.actions)
-        rs = Rule(conditions=conditions, operation=rule.conditions_op, actions=actions, stage=rule.stage)  # noqa
+        try:
+            conditions = TypeAdapter(list[Condition]).validate_json(rule.conditions)
+            actions = TypeAdapter(list[Action]).validate_json(rule.actions)
+            rs = Rule(conditions=conditions, operation=rule.conditions_op, actions=actions, stage=rule.stage)  # noqa
+        # some validators raise TypeError/ValueError directly (e.g. Pattern.__init__ on unknown keys)
+        except (ValidationError, TypeError, ValueError) as e:
+            if strict:
+                raise
+            warnings.warn(
+                f"Skipping rule '{rule.id}' not supported by actualpy: {e}\n"
+                "Please report this as an issue on https://github.com/bvanelli/actualpy/issues"
+            )
+            continue
         rule_set.append(rs)
     return RuleSet(rules=rule_set)
 
