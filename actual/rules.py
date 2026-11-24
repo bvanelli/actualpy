@@ -15,6 +15,7 @@ from actual.crypto import is_uuid
 from actual.database import BaseModel, Transactions, get_attribute_by_table_name
 from actual.exceptions import ActualError, ActualSplitTransactionError
 from actual.schedules import Schedule
+from actual.utils.conversions import decimal_to_cents
 
 
 def get_normalized_string(value: str | None) -> str | None:
@@ -67,9 +68,9 @@ class BetweenValue(pydantic.BaseModel):
     @pydantic.model_validator(mode="after")
     def convert_value(self) -> BetweenValue:
         if isinstance(self.num_1, float):
-            self.num_1 = int(self.num_1 * 100)
+            self.num_1 = decimal_to_cents(self.num_1)
         if isinstance(self.num_2, float):
-            self.num_2 = int(self.num_2 * 100)
+            self.num_2 = decimal_to_cents(self.num_2)
         # sort the values
         self.num_1, self.num_2 = sorted((self.num_1, self.num_2))
         return self
@@ -275,7 +276,7 @@ def _coerce_value(
 def _coerce_value(v: typing.Any) -> typing.Any:
     """Coerce convenience input types to their stored representations."""
     if isinstance(v, float):
-        return int(v * 100)
+        return decimal_to_cents(v)
     if isinstance(v, BaseModel):
         return str(v.id)
     if isinstance(v, list):

@@ -239,6 +239,13 @@ def test_reconcile_with_split(session: Session) -> None:
     session.commit()
 
 
+@pytest.mark.parametrize("amount", [19.99, -8.2, decimal.Decimal("1.15")])
+def test_get_transactions_amount(session: Session, amount: float | decimal.Decimal) -> None:
+    bank = create_account(session, "Bank")
+    t = create_transaction(session, today, bank, amount=amount)
+    assert get_transactions(session, amount=amount) == [t]
+
+
 def test_create_splits(session: Session) -> None:
     bank = create_account(session, "Bank")
     t = create_transaction(session, today, bank, category="Dining", amount=-10.0)

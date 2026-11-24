@@ -381,6 +381,13 @@ def test_split_amount_equal_parts(session: Session, method: str, n: int, expecte
     assert [float(s.get_amount()) for s in splits] == expected_splits
 
 
+def test_float_amounts_are_converted_to_exact_cents() -> None:
+    condition = Condition(field="amount", op="is", value=19.99)
+    assert condition.value == 1999
+    between = Condition(field="amount", op="isbetween", value={"num1": -8.2, "num2": 1.15})
+    assert str(between) == "'amount' isbetween (-820, 115)"
+
+
 def test_set_split_amount_exception(session: Session, mocker: MockerFixture) -> None:
     mocker.patch("actual.rules.sum", lambda x: 0)
 
