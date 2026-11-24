@@ -679,11 +679,20 @@ class Actual(ActualServer):
         if self.file.group_id:  # only files with a group id can be synced
             self.sync_sync(req)
 
-    def run_rules(self, transactions: Sequence[Transactions] | None = None) -> None:
-        """Runs all the stored rules on the database on all transactions, without any filters."""
+    def run_rules(self, transactions: Sequence[Transactions] | None = None, strict: bool = True) -> None:
+        """
+        Runs all the stored rules on the database on all transactions, without any filters.
+
+        By default, a rule not supported by actualpy raises an error and no rules run. See
+        [get_ruleset][actual.queries.get_ruleset] for details.
+
+        :param transactions: Transactions to run the rules on. If not provided, runs on all transactions.
+        :param strict: If `True`, raises an error when a rule cannot be parsed. If `False`, skips that rule with a
+            warning and runs the remaining ones.
+        """
         if transactions is None:
             transactions = get_transactions(self.session)
-        ruleset = get_ruleset(self.session)
+        ruleset = get_ruleset(self.session, strict=strict)
         ruleset.run(transactions)
 
     def _run_bank_sync_account(
@@ -746,7 +755,11 @@ class Actual(ActualServer):
         return imported_transactions
 
     def run_bank_sync(
-        self, account: str | Accounts | None = None, start_date: datetime.date | None = None, run_rules: bool = False
+        self,
+        account: str | Accounts | None = None,
+        start_date: datetime.date | None = None,
+        run_rules: bool = False,
+        strict_rules: bool = True,
     ) -> list[Transactions]:
         """
         Runs the bank synchronization for the selected account. If missing, all accounts are synchronized.
@@ -761,7 +774,13 @@ class Actual(ActualServer):
         If `run_rules` is set, the rules will be run for the imported transactions. Please note that unlike Actual,
         the rules here are run at the final imported objects. This is unlikely to cause data mismatches,
         but if you find any issue, feel free to report it on the GitHub repository.
+
+        The rules are parsed before any bank is contacted. With `strict_rules` set (the default), a rule not supported
+        by actualpy raises an error before syncing. Otherwise, that rule is skipped with a warning and the
+        remaining ones run. See [get_ruleset][actual.queries.get_ruleset] for details.
         """
+        # parsed up-front so an unsupported rule fails before any bank is contacted
+        ruleset = get_ruleset(self.session, strict=strict_rules) if run_rules else None
         # if no account is provided, sync all of them, otherwise just the account provided
         if account is None:
             accounts = get_accounts(self.session)
@@ -792,6 +811,6 @@ class Actual(ActualServer):
                     default_start_date = datetime.date.today() - datetime.timedelta(days=90)
             transactions = self._run_bank_sync_account(acct, default_start_date, is_first_sync)
             imported_transactions.extend(transactions)
-        if run_rules:
-            self.run_rules(imported_transactions)
+        if ruleset is not None:
+            ruleset.run(imported_transactions)
         return imported_transactions
