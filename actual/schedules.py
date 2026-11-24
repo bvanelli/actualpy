@@ -25,13 +25,13 @@ from pydantic import SerializerFunctionWrapHandler, model_serializer
 from actual.utils.conversions import date_to_datetime, day_to_ordinal
 
 
-class EndMode(str, enum.Enum):
+class EndMode(enum.StrEnum):
     AFTER_N_OCCURRENCES = "after_n_occurrences"
     ON_DATE = "on_date"
     NEVER = "never"
 
 
-class Frequency(str, enum.Enum):
+class Frequency(enum.StrEnum):
     DAILY = "daily"
     WEEKLY = "weekly"
     MONTHLY = "monthly"
@@ -42,12 +42,12 @@ class Frequency(str, enum.Enum):
         return frequency_map[self.name]  # type: ignore[return-value]
 
 
-class WeekendSolveMode(str, enum.Enum):
+class WeekendSolveMode(enum.StrEnum):
     BEFORE = "before"
     AFTER = "after"
 
 
-class PatternType(str, enum.Enum):
+class PatternType(enum.StrEnum):
     SUNDAY = "SU"
     MONDAY = "MO"
     TUESDAY = "TU"

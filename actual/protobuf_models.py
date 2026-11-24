@@ -57,7 +57,7 @@ class HULC_Client:
         https://github.com/actualbudget/actual/blob/a9362cc6f9b974140a760ad05816cac51c849769/packages/crdt/src/crdt/timestamp.ts)
         for reference.
         """
-        current_time = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) if now is None else now
+        current_time = datetime.datetime.now(datetime.UTC).replace(tzinfo=None) if now is None else now
         # truncate to millisecond precision to match the Node.js Date.now() behavior
         current_time = current_time.replace(microsecond=current_time.microsecond // 1000 * 1000)
         # ensure that the logical time never goes backward

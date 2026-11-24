@@ -28,7 +28,7 @@ def get_normalized_string(value: str | None) -> str | None:
     return unicodedata.normalize("NFD", value.lower())
 
 
-class ConditionType(str, enum.Enum):
+class ConditionType(enum.StrEnum):
     IS = "is"
     IS_APPROX = "isapprox"
     GT = "gt"
@@ -47,7 +47,7 @@ class ConditionType(str, enum.Enum):
     OFF_BUDGET = "offBudget"
 
 
-class ActionType(str, enum.Enum):
+class ActionType(enum.StrEnum):
     SET = "set"
     SET_SPLIT_AMOUNT = "set-split-amount"
     LINK_SCHEDULE = "link-schedule"
