@@ -67,7 +67,7 @@ class Pattern(pydantic.BaseModel):
     Implements a single pattern for a schedule.
 
     The pattern controls individual inclusions on the schedule. For example, if you want to make a schedule that runs
-    every month on a specific day, you could additionally add the a pattern for, for example, the 15th of the month.
+    every month on a specific day, you could additionally add the pattern for, for example, the 15th of the month.
     This translates to:
 
     ```python

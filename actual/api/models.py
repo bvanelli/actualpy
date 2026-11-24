@@ -13,7 +13,7 @@ from actual.api.bank_sync import (
 
 
 class Endpoints(enum.Enum):
-    """List of all endpoints mapped by the Actualpy API."""
+    """List of all endpoints mapped by the actualpy API."""
 
     LOGIN = "account/login"
     INFO = "info"
@@ -61,7 +61,7 @@ class BankSyncs(enum.Enum):
     """GoCardless integration. See [how to set it up](https://actualbudget.org/docs/advanced/bank-sync/gocardless/)"""
 
     SIMPLEFIN = "simplefin"
-    """Simplefin integration. See [how to set it up](https://actualbudget.org/docs/advanced/bank-sync/simplefin/)"""
+    """SimpleFIN integration. See [how to set it up](https://actualbudget.org/docs/advanced/bank-sync/simplefin/)"""
 
 
 class StatusCode(enum.Enum):

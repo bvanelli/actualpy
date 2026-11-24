@@ -82,7 +82,7 @@ class BudgetCategory(_HasDatabaseObject):
         """
         The simple balance (budgeted plus spent) for this month only.
 
-        If you are looking for the accumulated balance (taking into account previous months and carryover flags,
+        If you are looking for the accumulated balance (taking into account previous months and carryover flags),
         use `accumulated_balance` instead.
         """
         return self.budgeted + self.spent
@@ -637,7 +637,7 @@ def _get_envelope_budget_info(s: Session, until: datetime.date) -> list[Envelope
         # Process expense and income categories
         cat_group_list = _process_expense_categories(s, current_month, category_groups, last_budget, False)
         income_cat_group_list = _process_income_categories(s, current_month, income_category_groups, False)
-        # Calculate envelope-budget specific information
+        # Calculate envelope-budget-specific information
         for_next_month = _get_held_budget_amount(s, current_month)
         if last_budget is None:
             # First month: no carryover

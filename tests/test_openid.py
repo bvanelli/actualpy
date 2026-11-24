@@ -1,9 +1,12 @@
 import threading
 import time
+from collections.abc import Iterator
+from typing import Any
 
 import httpx
 import pytest
 from httpx import Client
+from pytest_mock import MockerFixture
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.waiting_utils import wait_for_logs
 
@@ -15,13 +18,13 @@ server_version = ACTUAL_SERVER_INTEGRATION_VERSIONS[-1]  # use latest version
 
 
 @pytest.fixture()
-def actual_server(request):
+def actual_server(request: pytest.FixtureRequest) -> Iterator[DockerContainer]:
     with DockerContainer(f"actualbudget/actual-server:{server_version}").with_exposed_ports(5006) as container:
         wait_for_logs(container, "Listening on :::5006...")
         yield container
 
 
-def test_openid_endpoints(actual_server, mocker):
+def test_openid_endpoints(actual_server: DockerContainer, mocker: MockerFixture) -> None:
     port = actual_server.get_exposed_port(5006)
     with Actual(f"http://localhost:{port}", password="mypass", bootstrap=True) as actual:
         actual.create_budget("My Budget")
@@ -41,7 +44,7 @@ def test_openid_endpoints(actual_server, mocker):
         assert user.id == users[0].id
         assert users[0].display_name == "foobar"
         # get permissions of file per user
-        permissions = actual.list_file_users_allowed(actual._file.file_id)
+        permissions = actual.list_file_users_allowed(actual.file.file_id)
         assert len(permissions) == 1
         assert all(user.owner is False for user in permissions)
         # Delete user does not work due to some internal exception (when not set), so we mock the response for now
@@ -51,14 +54,14 @@ def test_openid_endpoints(actual_server, mocker):
         actual.delete_open_id_user(user.id)
 
 
-def test_login_handshake(mocker):
-    def _threading_call(url: str):
+def test_login_handshake(mocker: MockerFixture) -> None:
+    def _threading_call(url: str) -> None:
         # This thread will do the interaction of the user logging in via browser
         # We just wait a second then call the endpoint passing the token from the open id callback to the API
         time.sleep(1)
         httpx.get(url, params={"token": "mytoken"})
 
-    def _login_fn(_url: str, json: dict):
+    def _login_fn(_url: str, json: dict[str, Any]) -> RequestsMock:
         assert "returnUrl" in json
         url = json.get("returnUrl")
         threading.Thread(target=_threading_call, args=(url,)).start()
@@ -74,7 +77,7 @@ def test_login_handshake(mocker):
         assert actual._token == "mytoken"
 
 
-def test_login_exceptions(mocker):
+def test_login_exceptions(mocker: MockerFixture) -> None:
     mocker.patch.object(Actual, "validate")
     mocker.patch.object(Actual, "is_open_id_owner_created", return_value=False)
 
@@ -83,4 +86,4 @@ def test_login_exceptions(mocker):
             pass
     with pytest.raises(AuthorizationError, match="OpenID server is not set-up"):
         actual = Actual("http://localhost:123", token="foo")
-        actual.login(None, "openid")
+        actual.login(method="openid")

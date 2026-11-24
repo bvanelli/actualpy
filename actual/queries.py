@@ -8,7 +8,7 @@ import uuid
 import warnings
 
 import sqlalchemy
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, ValidationError
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 from sqlmodel import Session, col, select
@@ -16,6 +16,7 @@ from sqlmodel.sql.expression import SelectOfScalar
 
 from actual.crypto import is_uuid
 from actual.database import (
+    AccountGroups,
     Accounts,
     BaseBudgets,
     Categories,
@@ -128,7 +129,7 @@ def get_transactions(
     category: Categories | str | None = None,
     is_parent: bool = False,
     include_deleted: bool = False,
-    budget: ZeroBudgets | None = None,
+    budget: BaseBudgets | None = None,
     cleared: bool | None = None,
     payee: Payees | str | None = None,
     amount: decimal.Decimal | float | int | None = None,
@@ -164,7 +165,7 @@ def get_transactions(
                      all transactions.
     :param off_budget: Optional off-budget filter for the transactions. If True, only transactions from off-budget
                        accounts are returned. If False, only transactions from on-budget accounts are returned.
-                       By default (None), returns all transactions regardless of budget status.
+                       By default, returns all transactions regardless of budget status.
     :return: List of transactions with `account`, `category` and `payee` preloaded.
     """
     query = _transactions_base_query(s, start_date, end_date, account, category, include_deleted)
@@ -180,7 +181,7 @@ def get_transactions(
             return []
         query = query.where(col(Transactions.payee_id) == payee.id)
     if amount is not None:
-        query = query.where(col(Transactions.amount) == int(amount * 100))
+        query = query.where(col(Transactions.amount) == decimal_to_cents(amount))
     if transfer is not None:
         query = query.where(
             col(Transactions.transferred_id).is_not(None) if transfer else col(Transactions.transferred_id).is_(None)
@@ -216,7 +217,7 @@ def match_transaction(
 
     Described at [reconcileTransactions](
     https://github.com/actualbudget/actual/blob/b192ad955ed222d9aa388fe36557b39868029db4/packages/loot-core/src/server/accounts/sync.ts#L347).
-    The matches, from strongest to the weakest are defined as follows:
+    The matches, from the strongest to the weakest, are defined as follows:
 
     - The strongest match will be the `imported_id` (or `financial_id`),
     - The transaction with the same exact amount and around the same date (7 days), with the same payee (closest first).
@@ -234,7 +235,7 @@ def match_transaction(
         _transactions_base_query(
             s, date - datetime.timedelta(days=7), date + datetime.timedelta(days=8), account=account
         )
-        .where(col(Transactions.amount) == round(amount * 100))
+        .where(col(Transactions.amount) == decimal_to_cents(amount))
         .where(Transactions.is_child == 0)
     )
     results: list[Transactions] = list(s.exec(query).all())
@@ -249,7 +250,7 @@ def match_transaction(
     results.sort(key=lambda t: abs((t.get_date() - date).total_seconds()))
     # Next, do the fuzzy matching. This first pass matches based on the
     # payee id. We do this in multiple passes so that higher fidelity
-    # matching always happens first, i.e. a transaction should
+    # matching always happens first, e.g., a transaction should
     # match with low fidelity if a later transaction is going to match
     # the same one with high fidelity.
     resolved_payee = get_payee(s, payee) if payee else None
@@ -258,7 +259,7 @@ def match_transaction(
         if matching_payee:
             return matching_payee[0]
     # The final fuzzy matching pass. This is the lowest fidelity
-    # matching: it just find the first transaction that hasn't been
+    # matching: it just finds the first transaction that hasn't been
     # matched yet. Remember the dataset only contains transactions
     # around the same date with the same amount.
     return results[0]
@@ -328,7 +329,7 @@ def create_transaction(
     a third-party system that contains unique ids (i.e., via bank sync).
     :param cleared: Visual indication that the transaction is in both your budget and in your account statement,
     and they match.
-    :param imported_payee: Known internally as imported_description, this is the original name of the payee, when
+    :param imported_payee: Known internally as imported_description, this is the original name of the payee when
     importing data and before running rules.
     :return: The generated transaction object.
     """
@@ -395,7 +396,7 @@ def set_transaction_payee(s: Session, transaction: Transactions, payee: Payees |
 
         transfer.transferred_id, transaction.transferred_id = transaction.id, transfer.id
 
-    # finally set the payee
+    # finally, set the payee
     transaction.payee_id = payee.id if payee else None
 
 
@@ -452,7 +453,7 @@ def reconcile_transaction(
     a third-party system that contains unique ids (i.e., via bank sync).
     :param cleared: This is a visual indication that the transaction is in both your budget and in your account
     statement, and they match.
-    :param imported_payee: Known internally as imported_description, this is the original name of the payee, when
+    :param imported_payee: Known internally as imported_description, this is the original name of the payee when
     importing data and before running rules.
     :param update_existing: If the transaction should be updated to the provided properties, if a match is found.
     :param already_matched: List of the transactions that were already matched. When importing a list of transactions,
@@ -583,7 +584,7 @@ def create_category_group(s: Session, name: str) -> CategoryGroups:
     Make sure you avoid creating payees with duplicate names, as it makes it difficult to find them without knowing
     the unique id beforehand.
     """
-    category_group = CategoryGroups(id=str(uuid.uuid4()), name=name, is_income=0, sort_order=0)
+    category_group = CategoryGroups(id=str(uuid.uuid4()), name=name, is_income=0, hidden=False, sort_order=0)
     s.add(category_group)
     return category_group
 
@@ -640,7 +641,7 @@ def create_category(
     """
     category_group = get_or_create_category_group(s, group_name if group_name is not None else "Usual Expenses")
     category = Categories(
-        id=str(uuid.uuid4()), name=name, hidden=0, is_income=0, sort_order=0, cat_group=category_group.id
+        id=str(uuid.uuid4()), name=name, hidden=False, is_income=0, sort_order=0, cat_group=category_group.id
     )
     category_mapping = CategoryMapping(id=category.id, transfer_id=category.id)
     s.add(category)
@@ -661,7 +662,7 @@ def get_tags(
     :param s: Session from the Actual local database.
     :param name: Pattern name of the tag name, case-insensitive.
     :param description: Pattern name of the tag description, case-insensitive.
-    :param include_deleted: Includes all tags which were deleted via frontend. They would not show normally.
+    :param include_deleted: Includes all tags deleted via frontend. They would not show normally.
     """
     query = _base_query(Tags, None, include_deleted)
     if name:
@@ -678,7 +679,7 @@ def create_tag(s: Session, name: str, description: str | None = None, color: str
     The name will be the tag used inside the transaction. You can use this tag afterward by setting the
     notes of a transaction. If your tag is called `'foo'`, you can append `'#foo'` to the transaction notes.
 
-    The color of the tag can be provided as hexadecimal (i.e. `'#690CB0'` for purple or `'#1976D2'` for blue).
+    The color of the tag can be provided as hexadecimal (e.g., `#690CB0` for purple or `#1976D2` for blue).
     """
     tag = Tags(id=str(uuid.uuid4()), tag=name.lstrip("#"), description=description, color=color)
     s.add(tag)
@@ -719,6 +720,70 @@ def get_or_create_category(
     if not category:
         category = create_category(s, name, group_name or "Usual Expenses")
     return category
+
+
+def get_account_groups(
+    s: Session, name: str | None = None, include_deleted: bool = False
+) -> typing.Sequence[AccountGroups]:
+    """
+    Returns a list of all available account groups.
+
+    :param s: Session from the Actual local database.
+    :param name: Pattern name of the account group, case-insensitive.
+    :param include_deleted: Includes all account groups deleted via frontend. They would not show normally.
+    :return: List of account groups with `accounts` already loaded.
+    """
+    query = (
+        _base_query(AccountGroups, name, include_deleted)
+        .order_by(col(AccountGroups.sort_order), col(AccountGroups.id))
+        .options(joinedload(AccountGroups.accounts))
+    )
+    return s.exec(query).unique().all()
+
+
+def get_account_group(s: Session, name: str | AccountGroups) -> AccountGroups | None:
+    """
+    Gets an account group by name (case-insensitive), otherwise returns `None`. Deleted account groups are excluded
+    from the search.
+    """
+    if isinstance(name, AccountGroups):
+        return name
+    return s.exec(
+        select(AccountGroups).where(func.upper(AccountGroups.name) == name.upper(), AccountGroups.tombstone == 0)
+    ).one_or_none()
+
+
+def create_account_group(s: Session, name: str) -> AccountGroups:
+    """
+    Creates a new account group with the name `name`, placed after all existing groups.
+
+    Accounts can be assigned to the group by setting `account_group_id` on the account:
+
+    :param s: Session from the Actual local database.
+    :param name: Name of the account group. Names are unique (case-insensitive), matching the Actual frontend.
+    :return: The created account group.
+    """
+    if existing_group := get_account_group(s, name):
+        raise ActualError(f"An '{existing_group.name}' account group already exists.")
+    last_group = s.exec(
+        select(AccountGroups)
+        .where(AccountGroups.tombstone == 0)
+        .order_by(col(AccountGroups.sort_order).desc(), col(AccountGroups.id).desc())
+    ).first()
+    sort_order = ((last_group.sort_order or 0) if last_group else 0) + 16384
+    group = AccountGroups(id=str(uuid.uuid4()), name=name, sort_order=sort_order)
+    s.add(group)
+    return group
+
+
+def get_or_create_account_group(s: Session, name: str | AccountGroups) -> AccountGroups:
+    """Gets or create the account group, if not found with `name` (case-insensitive)."""
+    if isinstance(name, AccountGroups):
+        return name
+    group = get_account_group(s, name)
+    if not group:
+        group = create_account_group(s, name)
+    return group
 
 
 def get_accounts(
@@ -779,7 +844,7 @@ def create_payee(s: Session, name: str | None) -> Payees:
     Make sure you avoid creating payees with duplicate names, as it makes it difficult to find them without knowing the
     unique id beforehand.
     """
-    payee = Payees(id=str(uuid.uuid4()), name=name)
+    payee = Payees(id=str(uuid.uuid4()), name=name, learn_categories=None)
     s.add(payee)
     # add also the payee mapping
     s.add(PayeeMapping(id=payee.id, target_id=payee.id))
@@ -1080,21 +1145,38 @@ def get_rules(s: Session, include_deleted: bool = False) -> typing.Sequence[Rule
     return s.exec(_base_query(Rules, None, include_deleted)).all()
 
 
-def get_ruleset(s: Session) -> RuleSet:
+def get_ruleset(s: Session, strict: bool = True) -> RuleSet:
     """
     Returns a list of all available rules, but as a rule set that can be used to be applied to existing transactions.
 
+    By default, a rule that uses a field, operation or action not yet supported by actualpy raises an error.
+    Use `strict=False` to skip those rules with a warning instead, so that a single unsupported rule does not disable
+    the whole ruleset.
+
     :param s: Session from the Actual local database.
+    :param strict: If `True`, raises an error when a rule cannot be parsed. If `False`, skips that rule with a warning
+        and returns the remaining ones.
     :return: RuleSet object that contains all rules and can be either.
     """
     rule_set = list()
     for rule in get_rules(s):
-        # TODO: check if conditions/actions can actually be None in the Actual source code
+        # Actual reads missing conditions/actions as [] and never matches a rule without conditions; skip them here
+        # because Rule.evaluate would match everything on an empty "and" (all([]) is True)
         if not rule.conditions or not rule.actions:
             continue
-        conditions = TypeAdapter(list[Condition]).validate_json(rule.conditions)
-        actions = TypeAdapter(list[Action]).validate_json(rule.actions)
-        rs = Rule(conditions=conditions, operation=rule.conditions_op, actions=actions, stage=rule.stage)  # noqa
+        try:
+            conditions = TypeAdapter(list[Condition]).validate_json(rule.conditions)
+            actions = TypeAdapter(list[Action]).validate_json(rule.actions)
+            rs = Rule(conditions=conditions, operation=rule.conditions_op, actions=actions, stage=rule.stage)  # noqa
+        # some validators raise TypeError/ValueError directly (e.g. Pattern.__init__ on unknown keys)
+        except (ValidationError, TypeError, ValueError) as e:
+            if strict:
+                raise
+            warnings.warn(
+                f"Skipping rule '{rule.id}' not supported by actualpy: {e}\n"
+                "Please report this as an issue on https://github.com/bvanelli/actualpy/issues"
+            )
+            continue
         rule_set.append(rs)
     return RuleSet(rules=rule_set)
 
@@ -1110,7 +1192,7 @@ def create_rule(
 
     :param s: Session from the Actual local database.
     :param rule: A constructed [Rule][actual.rules.Rule] object. The rule format and data types are validated on the
-                 constructor **but the data itself is not**. Make sure that, if you reference uuids, that they exist.
+                 constructor, **but the data itself is not**. Make sure that, if you reference UUIDs, that they exist.
     :param run_immediately: If the run should run for all transactions on insert, defaults to `False`.
     :return: Rule database object created.
     """
@@ -1155,10 +1237,10 @@ def create_schedule(
     date: datetime.date | datetime.datetime | Schedule,
     amount: tuple[decimal.Decimal, decimal.Decimal] | tuple[float, float],
     amount_operation: typing.Literal["isbetween"],
-    name: str | None,
-    payee: str | Payees | None,
-    account: str | Accounts | None,
-    posts_transaction: bool,
+    name: str | None = ...,
+    payee: str | Payees | None = ...,
+    account: str | Accounts | None = ...,
+    posts_transaction: bool = ...,
 ) -> Schedules: ...
 
 
@@ -1167,11 +1249,11 @@ def create_schedule(
     s: Session,
     date: datetime.date | datetime.datetime | Schedule,
     amount: decimal.Decimal | float,
-    amount_operation: typing.Literal["is", "isapprox"],
-    name: str | None,
-    payee: str | Payees | None,
-    account: str | Accounts | None,
-    posts_transaction: bool,
+    amount_operation: typing.Literal["is", "isapprox"] = ...,
+    name: str | None = ...,
+    payee: str | Payees | None = ...,
+    account: str | Accounts | None = ...,
+    posts_transaction: bool = ...,
 ) -> Schedules: ...
 
 

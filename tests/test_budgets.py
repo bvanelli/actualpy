@@ -1,10 +1,13 @@
+from __future__ import annotations
+
 import decimal
 from datetime import date
 
 import pytest
+from sqlmodel import Session
 
 from actual import ActualError
-from actual.budgets import get_budget_history
+from actual.budgets import EnvelopeBudget, get_budget_history
 from actual.database import ReflectBudgets, ZeroBudgetMonths, ZeroBudgets
 from actual.queries import (
     create_account,
@@ -20,7 +23,7 @@ from actual.queries import (
 
 
 @pytest.mark.parametrize("budget_name", ["Expenses", None])
-def test_empty_budgets(session, budget_name):
+def test_empty_budgets(session: Session, budget_name: str | None) -> None:
     if budget_name:
         category = get_or_create_category(session, budget_name)
         assert len(get_budgets(session, date(2025, 10, 1), budget_name)) == 0
@@ -34,9 +37,9 @@ def test_empty_budgets(session, budget_name):
     if budget_name:
         assert history[-1].category_groups[0].categories[0].name == budget_name
         assert history[-1].category_groups[0].categories[0].balance == decimal.Decimal(0)
-        assert history[0].from_category(
-            get_or_create_category(session, budget_name)
-        ).accumulated_balance == decimal.Decimal(0)
+        budget_category = history[0].from_category(get_or_create_category(session, budget_name))
+        assert budget_category is not None
+        assert budget_category.accumulated_balance == decimal.Decimal(0)
         assert history.total_budgeted == decimal.Decimal(0)
     # when calling the budget without a parameter, should default to the current month
     current_month = date.today().replace(day=1)
@@ -53,7 +56,7 @@ def test_empty_budgets(session, budget_name):
     "budget_type,budget_table",
     [("rollover", ZeroBudgets), ("report", ReflectBudgets), ("envelope", ZeroBudgets), ("tracking", ReflectBudgets)],
 )
-def test_budgets(session, budget_type, budget_table):
+def test_budgets(session: Session, budget_type: str, budget_table: type[ReflectBudgets | ZeroBudgets]) -> None:
     # set the config
     get_or_create_preference(session, "budgetType", budget_type)
     # insert a budget
@@ -105,8 +108,13 @@ def test_budgets(session, budget_type, budget_table):
     ],
 )
 def test_accumulated_budget_amount(
-    session, budget_type, with_reset, with_previous_value, expected_value_current_month, expected_value_previous_month
-):
+    session: Session,
+    budget_type: str,
+    with_reset: bool,
+    with_previous_value: bool,
+    expected_value_current_month: decimal.Decimal,
+    expected_value_previous_month: decimal.Decimal,
+) -> None:
     get_or_create_preference(session, "budgetType", budget_type)
 
     category = get_or_create_category(session, "Expenses")
@@ -129,16 +137,24 @@ def test_accumulated_budget_amount(
 
     # check first history entries
     history1 = get_budget_history(session, date(2025, 2, 1))
-    assert history1[-1].from_category(category).accumulated_balance == expected_value_previous_month
+    previous_month_category = history1[-1].from_category(category)
+    assert previous_month_category is not None
+    assert previous_month_category.accumulated_balance == expected_value_previous_month
 
     # check second history entries
     history2 = get_budget_history(session, date(2025, 3, 1))
-    assert history2[-2].from_category(category).accumulated_balance == expected_value_previous_month
-    assert history2[-1].from_category(category).accumulated_balance == expected_value_current_month
+    previous_month_category, current_month_category = (
+        history2[-2].from_category(category),
+        history2[-1].from_category(category),
+    )
+    assert previous_month_category is not None and current_month_category is not None
+    assert previous_month_category.accumulated_balance == expected_value_previous_month
+    assert current_month_category.accumulated_balance == expected_value_current_month
 
     # check also the accumulated balance method
     assert get_accumulated_budgeted_balance(session, date(2025, 2, 1), category) == expected_value_previous_month
     # should also work with name
+    assert category.name is not None
     assert get_accumulated_budgeted_balance(session, date(2025, 3, 1), category.name) == expected_value_current_month
 
 
@@ -146,7 +162,9 @@ def test_accumulated_budget_amount(
     "last_month_carryover,budget_type",
     [(True, "envelope"), (False, "envelope"), (True, "tracking"), (False, "tracking")],
 )
-def test_accumulated_budget_amount_with_carryover(session, last_month_carryover, budget_type):
+def test_accumulated_budget_amount_with_carryover(
+    session: Session, last_month_carryover: bool, budget_type: str
+) -> None:
     get_or_create_preference(session, "budgetType", budget_type)
 
     category = get_or_create_category(session, "Expenses")
@@ -158,17 +176,23 @@ def test_accumulated_budget_amount_with_carryover(session, last_month_carryover,
     # Add a transaction and check the final value
     create_transaction(session, date(2025, 1, 1), bank, category=category, amount=-30.0)
     history = get_budget_history(session, date(2025, 3, 1))
-    assert history[-1].from_category(category).accumulated_balance == -10
-    assert history[-2].from_category(category).accumulated_balance == -10
+    last_category, previous_category = history[-1].from_category(category), history[-2].from_category(category)
+    assert last_category is not None and previous_category is not None
+    assert last_category.accumulated_balance == -10
+    assert previous_category.accumulated_balance == -10
     # we can also extract the month using the from_month
-    assert history.from_month(date(2025, 2, 1)).from_category(category).accumulated_balance == -10
-    assert history.from_month(date(2025, 3, 1)).from_category(category).accumulated_balance == -10
+    february, march = history.from_month(date(2025, 2, 1)), history.from_month(date(2025, 3, 1))
+    assert february is not None and march is not None
+    february_category, march_category = february.from_category(category), march.from_category(category)
+    assert february_category is not None and march_category is not None
+    assert february_category.accumulated_balance == -10
+    assert march_category.accumulated_balance == -10
     # Check also the accumulated balance method
     assert get_accumulated_budgeted_balance(session, date(2025, 2, 1), category) == -10
     assert get_accumulated_budgeted_balance(session, date(2025, 3, 1), category) == -10
 
 
-def test_held_budget(session):
+def test_held_budget(session: Session) -> None:
     """Test that held budgets (for_next_month) work correctly in envelope budgeting."""
     # Create a category for testing
     expenses = get_or_create_category(session, "Expenses")
@@ -199,6 +223,7 @@ def test_held_budget(session):
 
     # Check January's budget - all values were confirmed using the Actual UI.
     jan_budget = history[0]
+    assert isinstance(jan_budget, EnvelopeBudget)
     assert jan_budget.for_next_month == decimal.Decimal(20.0)
     assert jan_budget.available_funds == decimal.Decimal(150.0)
     assert jan_budget.to_budget == decimal.Decimal(0.0)
@@ -206,5 +231,6 @@ def test_held_budget(session):
 
     # Check February's budget - it should receive the held amount from January
     feb_budget = history[1]
+    assert isinstance(feb_budget, EnvelopeBudget)
     assert feb_budget.from_last_month == decimal.Decimal(20.0)
     assert feb_budget.available_funds == decimal.Decimal(170.0)

@@ -15,6 +15,7 @@ from actual.crypto import is_uuid
 from actual.database import BaseModel, Transactions, get_attribute_by_table_name
 from actual.exceptions import ActualError, ActualSplitTransactionError
 from actual.schedules import Schedule
+from actual.utils.conversions import decimal_to_cents
 
 
 def get_normalized_string(value: str | None) -> str | None:
@@ -67,9 +68,9 @@ class BetweenValue(pydantic.BaseModel):
     @pydantic.model_validator(mode="after")
     def convert_value(self) -> BetweenValue:
         if isinstance(self.num_1, float):
-            self.num_1 = int(self.num_1 * 100)
+            self.num_1 = decimal_to_cents(self.num_1)
         if isinstance(self.num_2, float):
-            self.num_2 = int(self.num_2 * 100)
+            self.num_2 = decimal_to_cents(self.num_2)
         # sort the values
         self.num_1, self.num_2 = sorted((self.num_1, self.num_2))
         return self
@@ -208,7 +209,7 @@ def condition_evaluation(
         if options.get("inflow") is True and true_value < 0:  # type: ignore[operator]
             return False
     if isinstance(self_value, int) and isinstance(options, dict) and options.get("outflow") is True:
-        # if it's an outflow we use the negative value of self_value, that is positive
+        # if it's an outflow, we use the negative value of self_value, that is positive
         self_value = -self_value
     # do comparison
     if op == ConditionType.IS:
@@ -248,7 +249,7 @@ def condition_evaluation(
     elif op == ConditionType.IS_BETWEEN:
         return self_value.num_1 <= true_value <= self_value.num_2  # type: ignore[union-attr, operator]
     elif op == ConditionType.HAS_TAGS:
-        # this regex is not correct, but is good enough according to testing
+        # this regex is not correct but is good enough, according to testing
         # taken from https://stackoverflow.com/a/26740753/12681470
         tags = re.findall(r"\#[\U00002600-\U000027BF\U0001f300-\U0001f64F\U0001f680-\U0001f6FF\w-]+", self_value)  # type: ignore[arg-type]
         return any(tag in true_value for tag in tags)  # type: ignore[operator]
@@ -275,7 +276,7 @@ def _coerce_value(
 def _coerce_value(v: typing.Any) -> typing.Any:
     """Coerce convenience input types to their stored representations."""
     if isinstance(v, float):
-        return int(v * 100)
+        return decimal_to_cents(v)
     if isinstance(v, BaseModel):
         return str(v.id)
     if isinstance(v, list):
@@ -302,12 +303,12 @@ def _coerce_field_alias(v: typing.Any) -> typing.Any:
 class Condition(pydantic.BaseModel):
     """
     A condition does a single comparison check for a transaction. The `op` indicates the action type, usually being
-    set to `IS` or `CONTAINS`, and the comparison is applied to a `field` with certain `value`. If the transaction
-    value matches the condition, the `run` method returns `True`, otherwise it returns `False`. The individual condition
+    set to `IS` or `CONTAINS`, and the comparison is applied to a `field` with a certain ` value `. If the transaction
+    value matches the condition, the `run` method returns `True`; otherwise it returns `False`. The individual condition
     cannot change the value of the transaction, as only the [Action][actual.rules.Action] can.
 
     **Important**: Actual shows the amount on frontend as decimal but handles it internally as cents. Make sure that, if
-    you provide the `amount` rule manually, you either provide number of cents, as an integers, or a float that get
+    you provide the `amount` rule manually, you either provide a number of cents, as an integer, or a float that gets
     automatically converted to cents. As an example, `50` will be interpreted as 50 cents, but `50.0` will be
     interpreted as 50 of the currency (or 5000 cents).
 
@@ -496,12 +497,19 @@ class Action(pydantic.BaseModel):
             return 0
         return int(self.options.get("splitIndex", 0))
 
+    def get_value(self) -> int | datetime.date | str | None:
+        """Value to write to the transaction. Unlike [Condition.get_value][actual.rules.Condition.get_value],
+        string values are not normalized, matching Actual's rule engine."""
+        if self.type in (ValueType.STRING, ValueType.IMPORTED_PAYEE) and isinstance(self.value, str):
+            return self.value
+        return get_value(self.value, self.type)  # type: ignore[return-value]
+
     def run(self, transaction: Transactions) -> None:
         """Runs the action on the transaction, regardless of the condition. For the condition based rule, see
         [Rule.run][actual.rules.Rule.run]."""
         if self.op == ActionType.SET:
             attr = get_attribute_by_table_name(str(Transactions.__tablename__), str(self.field))
-            value = get_value(self.value, self.type)
+            value = self.get_value()
             # if the split index is existing, modify instead the split transaction
             split_index = self.get_split_index()
             if split_index and len(transaction.splits) >= split_index:

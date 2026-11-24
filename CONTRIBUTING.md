@@ -1,6 +1,6 @@
 # Contributing
 
-The goal is to have more features implemented and tested on the Actual API. If you have ideas, comments, bug fixes or
+The goal is to have more features implemented and tested on the Actual API. If you have ideas, comments, bug fixes, or
 requests, feel free to [open an issue](https://github.com/bvanelli/actualpy/issues/new/choose) and/or
 submit a pull request.
 
@@ -32,3 +32,12 @@ If after your changes the tests are running fine, you can commit your changes an
 
 (make sure you follow the [guidelines to a good pull request](
 https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/getting-started/helping-others-review-your-changes))
+
+# AI Usage
+
+AI is a powerful tool that can help understand and solve problems faster and with more quality. If you want to submit
+changes to the codebase, ensure that:
+
+- It took you longer to think about your changes than to write them.
+- Your changes are well-tested and documented.
+- Your PR is small and well-scoped.

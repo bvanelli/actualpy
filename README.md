@@ -53,15 +53,15 @@ from actual import Actual
 from actual.queries import get_transactions
 
 with Actual(
-        base_url="http://localhost:5006",  # Url of the Actual Server
-        password="<your_password>",  # Password for authentication
-        encryption_password=None,  # Optional: Password for the file encryption. Will not use it if set to None.
-        # Set the file to work with. Can be either the file id or file name, if name is unique
-        file="<file_id_or_name>",
-        # Optional: Directory to store downloaded files. Will use a temporary if not provided
-        data_dir="<path_to_data_directory>",
-        # Optional: Path to the certificate file to use for the connection, can also be set as False to disable SSL verification
-        cert="<path_to_cert_file>"
+    base_url="http://localhost:5006",  # Url of the Actual Server
+    password="<your_password>",  # Password for authentication
+    encryption_password=None,  # Optional: Password for the file encryption. Will not use it if set to None.
+    # Set the file to work with. Can be either the file id or file name, if name is unique
+    file="<file_id_or_name>",
+    # Optional: Directory to store downloaded files. Will use a temporary if not provided
+    data_dir="<path_to_data_directory>",
+    # Optional: Path to the certificate file to use for the connection, can also be set as False to disable SSL verification
+    cert="<path_to_cert_file>",
 ) as actual:
     transactions = get_transactions(actual.session)
     for t in transactions:
