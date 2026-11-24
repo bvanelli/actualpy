@@ -19,6 +19,7 @@ from sqlalchemy.engine import Engine
 from sqlmodel import MetaData, Session, create_engine
 
 from actual.api import ActualServer
+from actual.api.bank_sync import get_bank_sync_provider
 from actual.api.models import BankSyncErrorDTO, RemoteFileListDTO
 from actual.crypto import create_key_buffer, decrypt_from_meta, encrypt, make_salt
 from actual.database import (
@@ -693,9 +694,10 @@ class Actual(ActualServer):
         account_id = acct.account_id
         if not sync_method or not account_id:
             raise ActualError("Account is missing sync source or account id.")
-        requisition_id = acct.bank.bank_id if sync_method == "goCardless" else None
+        provider = get_bank_sync_provider(sync_method)
+        requisition_id = acct.bank.bank_id if acct.bank else None
         new_transactions_data = self.bank_sync_transactions(
-            sync_method.lower(), account_id, start_date, requisition_id=requisition_id
+            provider.name, account_id, start_date, requisition_id=requisition_id
         )
         if isinstance(new_transactions_data, BankSyncErrorDTO):
             raise ActualBankSyncError(
@@ -706,14 +708,7 @@ class Actual(ActualServer):
         new_transactions = new_transactions_data.data.transactions.all
         imported_transactions = []
         if is_first_sync:
-            # Actual uses 'startingBalance', that already comes in cents and should be enough for our purposes
-            # https://github.com/actualbudget/actual/blob/f09f4af667ddd57e031dcdb0d428ae935aa2afad/packages/loot-core/src/server/accounts/sync.ts#L740-L752
-            balance_to_use = new_transactions_data.data.balance
-            # For simpleFin, the startingBalance is actually the current balance, so we have to use it to deduce the
-            # actual startingBalance
-            if acct.account_sync_source and acct.account_sync_source.lower() == "simplefin":
-                current_balance = new_transactions_data.data.balance
-                balance_to_use = current_balance - sum(t.transaction_amount.amount for t in new_transactions)
+            balance_to_use = provider.initial_balance(new_transactions_data.data)
             if balance_to_use:
                 payee = None if acct.offbudget else get_or_create_payee(self.session, "Starting Balance")
                 # get the date from the oldest transaction.
@@ -772,7 +767,6 @@ class Actual(ActualServer):
             accounts = [matched_account]
         imported_transactions = []
 
-        is_first_sync: bool = False
         for acct in accounts:
             sync_method = acct.account_sync_source
             account_id = acct.account_id
@@ -781,6 +775,7 @@ class Actual(ActualServer):
             status = self.bank_sync_status(sync_method.lower())
             if not status.data.configured:
                 continue
+            is_first_sync = False
             if start_date is not None:
                 default_start_date = start_date
             else:

@@ -2,15 +2,20 @@ from __future__ import annotations
 
 import datetime
 import ssl
-from typing import Literal, cast, overload
+from typing import Any, Literal, cast, overload
 
 import httpx
 
+from actual.api.bank_sync import (
+    BankSyncTransactionData,
+    GoCardlessTransactionData,
+    SimpleFinTransactionData,
+    get_bank_sync_provider,
+)
 from actual.api.models import (
     BankSyncAccountDTO,
     BankSyncAccountResponseDTO,
     BankSyncErrorDTO,
-    BankSyncResponseDTO,
     BankSyncStatusDTO,
     BankSyncTransactionResponseDTO,
     BootstrapInfoDTO,
@@ -29,6 +34,7 @@ from actual.api.models import (
     UploadUserFileDTO,
     UserGetKeyDTO,
     ValidateDTO,
+    bank_sync_response_adapter,
 )
 from actual.crypto import create_key_buffer, make_test_message
 from actual.exceptions import (
@@ -447,18 +453,54 @@ class ActualServer:
         response = self._requests_session.post(endpoint, json={})
         return BankSyncAccountResponseDTO.validate_python(response.json())
 
+    @overload
     def bank_sync_transactions(
         self,
-        bank_sync: Literal["gocardless", "simplefin"] | str,
+        bank_sync: Literal["gocardless"],
         account_id: str,
         start_date: datetime.date,
         requisition_id: str | None = None,
-    ) -> BankSyncErrorDTO | BankSyncTransactionResponseDTO:
-        if bank_sync == "gocardless" and requisition_id is None:
-            raise ActualInvalidOperationError("Retrieving transactions with goCardless requires `requisition_id`")
-        endpoint = Endpoints.BANK_SYNC_TRANSACTIONS.value.format(bank_sync=bank_sync)
-        payload = {"accountId": account_id, "startDate": start_date.strftime("%Y-%m-%d")}
-        if requisition_id:
-            payload["requisitionId"] = requisition_id
+    ) -> BankSyncErrorDTO | BankSyncTransactionResponseDTO[GoCardlessTransactionData]: ...
+
+    @overload
+    def bank_sync_transactions(
+        self,
+        bank_sync: Literal["simplefin"],
+        account_id: str,
+        start_date: datetime.date,
+        requisition_id: str | None = None,
+    ) -> BankSyncErrorDTO | BankSyncTransactionResponseDTO[SimpleFinTransactionData]: ...
+
+    @overload
+    def bank_sync_transactions(
+        self,
+        bank_sync: str,
+        account_id: str,
+        start_date: datetime.date,
+        requisition_id: str | None = None,
+    ) -> BankSyncErrorDTO | BankSyncTransactionResponseDTO[BankSyncTransactionData[Any]]: ...
+
+    def bank_sync_transactions(
+        self,
+        bank_sync: str,
+        account_id: str,
+        start_date: datetime.date,
+        requisition_id: str | None = None,
+    ) -> BankSyncErrorDTO | BankSyncTransactionResponseDTO[Any]:
+        """
+        Retrieves the transactions of an account from the bank sync provider.
+
+        The transactions are parsed into the model of the provider (i.e. `GoCardlessTransaction` for `gocardless`), or
+        into the common `BankSyncTransaction` model if the provider has no dedicated implementation.
+
+        :param bank_sync: name of the bank sync provider (i.e. `gocardless`).
+        :param account_id: the account id of the provider, stored as `account_id` on the account.
+        :param start_date: the date from which the transactions should be retrieved.
+        :param requisition_id: the requisition id, required for `gocardless`.
+        :return: the transaction data of the provider, or an error if the retrieval failed.
+        """
+        provider = get_bank_sync_provider(bank_sync)
+        endpoint = Endpoints.BANK_SYNC_TRANSACTIONS.value.format(bank_sync=provider.name)
+        payload = provider.payload(account_id, start_date, requisition_id)
         response = self._requests_session.post(endpoint, json=payload)
-        return BankSyncResponseDTO.validate_python(response.json())
+        return bank_sync_response_adapter(provider.data_model).validate_python(response.json())

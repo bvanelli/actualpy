@@ -10,7 +10,7 @@ from pytest_mock import MockerFixture
 from sqlmodel import Session
 
 from actual import Actual, ActualBankSyncError, ActualError
-from actual.api.bank_sync import TransactionItem
+from actual.api.bank_sync import GoCardlessTransaction
 from actual.database import Accounts, Banks
 from actual.queries import create_account
 from tests.conftest import RequestsMock
@@ -142,7 +142,7 @@ def test_full_bank_sync_go_cardless(session: Session, bank_sync_data_match: Magi
         assert imported_transactions[1].payee.name == "Institution Gmbh (DE12 XXX 6789)"
         assert imported_transactions[1].notes == "Payment"
         # also test the iban generation functions
-        loaded_transaction = TransactionItem.model_validate(response["transactions"]["all"][1])
+        loaded_transaction = GoCardlessTransaction.model_validate(response["transactions"]["all"][1])
         assert imported_transactions[1].payee.name == loaded_transaction.imported_payee
 
         assert imported_transactions[2].financial_id == "208584e9-343f-4831-8095-7b9f4a34a77e"
@@ -239,7 +239,7 @@ def test_transaction_item_with_empty_creditor_account() -> None:
     entry = copy.deepcopy(response["transactions"]["all"][0])
     entry["creditorAccount"] = {}
 
-    item = TransactionItem.model_validate(entry)
+    item = GoCardlessTransaction.model_validate(entry)
 
     assert item.payee_account is not None
     assert item.payee_account.iban is None

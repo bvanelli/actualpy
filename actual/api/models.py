@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import enum
-from typing import Literal
+import functools
+from typing import Any, Generic, Literal, TypeVar
 
 from pydantic import BaseModel, Field, TypeAdapter
 
@@ -10,6 +11,8 @@ from actual.api.bank_sync import (
     BankSyncErrorData,
     BankSyncTransactionData,
 )
+
+D = TypeVar("D", bound=BankSyncTransactionData[Any])
 
 
 class Endpoints(enum.Enum):
@@ -269,10 +272,10 @@ class BankSyncAccountDTO(StatusDTO):
     data: BankSyncAccountData
 
 
-class BankSyncTransactionResponseDTO(StatusDTO):
-    """Bank sync transaction response model."""
+class BankSyncTransactionResponseDTO(StatusDTO, Generic[D]):
+    """Bank sync transaction response model, parametrized by the provider transaction data model."""
 
-    data: BankSyncTransactionData
+    data: D
 
 
 class BankSyncErrorDTO(StatusDTO):
@@ -359,6 +362,14 @@ class OpenIDUserFileAccessDTO(BaseOpenIDUserFileAccessDTO):
 BankSyncAccountResponseDTO: TypeAdapter[BankSyncErrorDTO | BankSyncAccountDTO] = TypeAdapter(
     BankSyncErrorDTO | BankSyncAccountDTO
 )
-BankSyncResponseDTO: TypeAdapter[BankSyncErrorDTO | BankSyncTransactionResponseDTO] = TypeAdapter(
-    BankSyncErrorDTO | BankSyncTransactionResponseDTO
-)
+
+
+@functools.cache
+def bank_sync_response_adapter(
+    data_model: type[D],
+) -> TypeAdapter[BankSyncErrorDTO | BankSyncTransactionResponseDTO[D]]:
+    """Returns the type adapter for the bank sync transaction response of a provider data model."""
+    return TypeAdapter(BankSyncErrorDTO | BankSyncTransactionResponseDTO[data_model])  # type: ignore[valid-type]
+
+
+BankSyncResponseDTO = bank_sync_response_adapter(BankSyncTransactionData)
