@@ -65,6 +65,24 @@ with Actual(base_url="http://localhost:5006", password="mypass", file="My budget
     actual.commit()
 ```
 
+Actual sometimes adds rule features (new fields, operations or actions) before actualpy supports them. By default, a
+single rule that cannot be parsed raises an error and no rules run, so that the library never runs a ruleset
+it only partially understands.
+
+If you'd rather run the rules that are supported, pass `strict=False` to either [run_rules][actual.Actual.run_rules]
+or [get_ruleset][actual.queries.get_ruleset]. Unsupported rules are then skipped with a warning, while all the other
+rules still run. If you see such a warning, please [report it as an issue](https://github.com/bvanelli/actualpy/issues)
+so support can be added.
+
+```python
+from actual import Actual
+
+with Actual(base_url="http://localhost:5006", password="mypass", file="My budget") as actual:
+    # skips (with a warning) any rule not supported by actualpy, and runs the remaining ones
+    actual.run_rules(strict=False)
+    actual.commit()
+```
+
 If you're running bank sync, you can also run rules directly on the imported transactions after performing the sync:
 
 ```python
@@ -72,6 +90,8 @@ from actual import Actual
 
 with Actual(base_url="http://localhost:5006", password="mypass") as actual:
     synchronized_transactions = actual.run_bank_sync(run_rules=True)
+    # or, to skip (with a warning) any rule not supported by actualpy:
+    synchronized_transactions = actual.run_bank_sync(run_rules=True, strict_rules=False)
 ```
 
 You can also manipulate rules individually and validate each rule that runs for each transaction, allowing you to debug
